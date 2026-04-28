@@ -135,6 +135,29 @@ func TestLinks_CRUDAndStatus(t *testing.T) {
 	}
 }
 
+func TestPrefs_Roundtrip(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	if _, err := s.GetPref(ctx, "theme"); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+	if err := s.SetPref(ctx, "theme", "dark"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetPref(ctx, "theme")
+	if err != nil || got != "dark" {
+		t.Errorf("got %q err=%v", got, err)
+	}
+	// Upsert overwrites.
+	if err := s.SetPref(ctx, "theme", "light"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetPref(ctx, "theme")
+	if got != "light" {
+		t.Errorf("after upsert: %q", got)
+	}
+}
+
 func TestMoveLink(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

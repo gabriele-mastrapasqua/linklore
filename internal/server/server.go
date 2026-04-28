@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz/llm", s.handleLLMHealth)
 	mux.HandleFunc("POST /links/{id}/summarize", s.handleReindex) // alias for the LLM-onboarding flow
 	mux.HandleFunc("POST /preferences/previews", s.handleTogglePreviews)
+	mux.HandleFunc("POST /preferences/theme", s.handleSetTheme)
 
 	mux.HandleFunc("GET /chat", s.handleChatPage)
 	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
@@ -647,6 +648,47 @@ func firstNonEmpty(xs ...string) string {
 	return ""
 }
 
+// themeFromRequest returns the active theme: "auto" (default, follows
+// system), "light", or "dark". Reads the cookie first; falls back to
+// the persisted preference; defaults to "auto" so the very first
+// pageview matches the user's OS preference.
+func (s *Server) themeFromRequest(r *http.Request) string {
+	if c, err := r.Cookie("theme"); err == nil && validTheme(c.Value) {
+		return c.Value
+	}
+	if v, err := s.store.GetPref(r.Context(), "theme"); err == nil && validTheme(v) {
+		return v
+	}
+	return "auto"
+}
+
+func validTheme(v string) bool {
+	return v == "auto" || v == "light" || v == "dark"
+}
+
+// handleSetTheme writes the new theme to both the cookie (so the
+// next page load is correct without a DB round-trip) and the
+// preferences table (so the choice survives a cookie purge).
+func (s *Server) handleSetTheme(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	v := strings.TrimSpace(r.PostForm.Get("theme"))
+	if !validTheme(v) {
+		http.Error(w, "invalid theme", http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: "theme", Value: v, Path: "/",
+		MaxAge: 60 * 60 * 24 * 365, SameSite: http.SameSiteLaxMode,
+	})
+	_ = s.store.SetPref(r.Context(), "theme", v)
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `theme: <strong>%s</strong>`, v)
+}
+
 // previewsEnabled reads the show_previews cookie. Default ON: only an
 // explicit "0" disables image/favicon previews so people who actively
 // turned them off keep their choice across requests.
@@ -884,6 +926,7 @@ func (s *Server) renderPageRq(w http.ResponseWriter, r *http.Request, name strin
 		data = map[string]any{}
 	}
 	data["Previews"] = previewsEnabled(r)
+	data["Theme"] = s.themeFromRequest(r)
 
 	// Sidebar list. Cheap query + we want it on every page; renderer
 	// suppresses it by setting HideSidebar=true (e.g. reader mode).

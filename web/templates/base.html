@@ -1,5 +1,5 @@
 {{define "base"}}<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{.Theme}}">
 <head>
 	<meta charset="utf-8">
 	<title>{{.Title}} · linklore</title>
@@ -23,6 +23,13 @@
 		        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
 			previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
 		</button>
+		<form hx-post="/preferences/theme" hx-swap="none" style="display:inline;margin:0">
+			<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
+			<button type="submit" title="cycle theme: auto → light → dark"
+			        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
+				theme: <strong>{{.Theme}}</strong>
+			</button>
+		</form>
 	</nav>
 </header>
 <div class="layout">

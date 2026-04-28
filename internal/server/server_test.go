@@ -561,6 +561,68 @@ func TestMoveLink_unknownDest400(t *testing.T) {
 	}
 }
 
+func TestTheme_defaultIsAuto(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `data-theme="auto"`) {
+		t.Errorf("default theme not auto: %s", body[:200])
+	}
+}
+
+func TestTheme_cookieAndPersistence(t *testing.T) {
+	ts, st := newTestServer(t)
+	// POST a theme switch.
+	resp, err := ts.Client().PostForm(ts.URL+"/preferences/theme",
+		url.Values{"theme": {"dark"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	if resp.Header.Get("HX-Refresh") != "true" {
+		t.Errorf("expected HX-Refresh")
+	}
+	// Cookie set?
+	var ok bool
+	for _, c := range resp.Cookies() {
+		if c.Name == "theme" && c.Value == "dark" {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Errorf("theme cookie not set to dark")
+	}
+	// Persisted in DB?
+	v, _ := st.GetPref(context.Background(), "theme")
+	if v != "dark" {
+		t.Errorf("DB theme = %q", v)
+	}
+	// Following request with the cookie reflects it.
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	req.AddCookie(&http.Cookie{Name: "theme", Value: "dark"})
+	resp2, _ := ts.Client().Do(req)
+	defer resp2.Body.Close()
+	body, _ := io.ReadAll(resp2.Body)
+	if !strings.Contains(string(body), `data-theme="dark"`) {
+		t.Errorf("html missing data-theme=dark")
+	}
+}
+
+func TestTheme_invalidRejected(t *testing.T) {
+	ts, _ := newTestServer(t)
+	resp, err := ts.Client().PostForm(ts.URL+"/preferences/theme",
+		url.Values{"theme": {"neon"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status=%d (want 400)", resp.StatusCode)
+	}
+}
+
 func TestSidebar_listsActiveCollection(t *testing.T) {
 	ts, st := newTestServer(t)
 	st.CreateCollection(context.Background(), "alpha", "Alpha", "")

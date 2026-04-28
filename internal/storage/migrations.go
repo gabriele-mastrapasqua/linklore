@@ -68,6 +68,12 @@ var migrations = []string{
 		created_at  INTEGER NOT NULL
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS preferences (
+		key        TEXT PRIMARY KEY,
+		value      TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`,
+
 	`CREATE INDEX IF NOT EXISTS idx_links_collection ON links(collection_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_links_status     ON links(status)`,
 	`CREATE INDEX IF NOT EXISTS idx_links_read_at    ON links(read_at)`,

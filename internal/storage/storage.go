@@ -284,6 +284,28 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 	return cs, nil
 }
 
+// ---- preferences (theme, etc) ----
+
+// GetPref returns the value for key, or "" + ErrNotFound when missing.
+func (s *Store) GetPref(ctx context.Context, key string) (string, error) {
+	var v string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT value FROM preferences WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return v, err
+}
+
+// SetPref upserts a preference row.
+func (s *Store) SetPref(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO preferences(key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		key, value, time.Now().UTC().Unix())
+	return err
+}
+
 // CountInProgress returns total links across all collections that are still
 // being processed by the worker. Drives the topbar "processing N" badge.
 func (s *Store) CountInProgress(ctx context.Context) (int, error) {
