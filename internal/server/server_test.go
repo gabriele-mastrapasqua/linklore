@@ -559,27 +559,30 @@ func TestChat_e2e_SSE_frameOrderAndCitations(t *testing.T) {
 		events = append(events, struct{ Event, Data string }{ev, da})
 	}
 
-	// Required ordering: session first, then ≥1 source, then ≥1 token, then done.
-	wantSeq := []string{"session", "source", "token"}
+	// Required ordering: session first, then ≥1 source, then ≥1 token,
+	// then a stats event (final), then done.
+	wantSeq := []string{"session", "source", "token", "stats", "done"}
 	posInSeq := 0
-	var sawDone bool
 	var allTokens []string
+	var lastStats string
 	for _, e := range events {
 		if posInSeq < len(wantSeq) && e.Event == wantSeq[posInSeq] {
 			posInSeq++
 		}
-		if e.Event == "token" {
+		switch e.Event {
+		case "token":
 			allTokens = append(allTokens, e.Data)
-		}
-		if e.Event == "done" {
-			sawDone = true
+		case "stats":
+			lastStats = e.Data
 		}
 	}
 	if posInSeq < len(wantSeq) {
 		t.Errorf("missing required event sequence (got through %d/%d): %+v", posInSeq, len(wantSeq), events)
 	}
-	if !sawDone {
-		t.Errorf("no done event in stream:\n%s", body)
+	if lastStats == "" {
+		t.Errorf("no stats event")
+	} else if !strings.Contains(lastStats, "|") {
+		t.Errorf("stats event malformed: %q", lastStats)
 	}
 	answer := strings.Join(allTokens, "")
 	if !strings.Contains(answer, "ownership") {

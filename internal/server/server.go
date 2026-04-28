@@ -594,16 +594,28 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	flush()
 
-	_, streamErr := s.chat.Stream(r.Context(), turn.SessionID, turn.Prompt, func(text string) error {
-		fmt.Fprintf(w, "event: token\ndata: %s\n\n", sseSafe(text))
-		flush()
-		return nil
+	// Emit a "stats" event roughly twice per second while streaming, so
+	// the chat UI can show a live tokens/sec readout without flooding the
+	// browser with one extra event per delta.
+	var lastStats time.Time
+	_, finalStats, streamErr := s.chat.Stream(r.Context(), turn.SessionID, turn.Prompt, chat.StreamCallbacks{
+		OnChunk: func(text string, st chat.StreamStats) error {
+			fmt.Fprintf(w, "event: token\ndata: %s\n\n", sseSafe(text))
+			if time.Since(lastStats) > 500*time.Millisecond {
+				fmt.Fprintf(w, "event: stats\ndata: %d|%.2f\n\n", st.Tokens, st.TPS())
+				lastStats = time.Now()
+			}
+			flush()
+			return nil
+		},
 	})
 	if streamErr != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", sseSafe(streamErr.Error()))
 		flush()
 		return
 	}
+	// Final stats first, then done — so the UI prints the final t/s.
+	fmt.Fprintf(w, "event: stats\ndata: %d|%.2f\n\n", finalStats.Tokens, finalStats.TPS())
 	fmt.Fprint(w, "event: done\ndata: \n\n")
 	flush()
 }

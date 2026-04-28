@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
@@ -110,34 +111,80 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 	}, nil
 }
 
-// Stream runs the LLM and forwards every chunk to onChunk. The accumulated
-// answer is persisted as the assistant message when the stream completes.
-// Returns the final answer text so callers can include it in the SSE close
-// event if they want.
-func (s *Service) Stream(ctx context.Context, sessionID int64, prompt string, onChunk func(text string) error) (string, error) {
+// StreamStats reports on a streaming generation: how many delta chunks were
+// received and how long the stream took. The tokens-per-second indicator
+// in the chat UI is derived from these.
+//
+// "Tokens" here is the count of non-empty delta chunks the backend emitted
+// — that's a tight proxy for the model's real token output (every token
+// produces exactly one delta in vLLM's OpenAI-compatible stream).
+type StreamStats struct {
+	Tokens   int
+	Duration time.Duration
+}
+
+// TPS returns tokens / second, or 0 when the stream lasted < 1 ms (so
+// callers don't have to special-case very short replies).
+func (s StreamStats) TPS() float64 {
+	if s.Duration < time.Millisecond {
+		return 0
+	}
+	return float64(s.Tokens) / s.Duration.Seconds()
+}
+
+// StreamCallbacks gives callers fine-grained hooks into the SSE flow:
+//
+//   - OnChunk fires for every non-empty delta with the running stats so
+//     the handler can emit a periodic "stats" event.
+//   - OnDone fires once when the stream terminates cleanly, with the
+//     final stats — useful for logging.
+//
+// Either may be nil. If both are nil the stream just buffers silently.
+type StreamCallbacks struct {
+	OnChunk func(text string, stats StreamStats) error
+	OnDone  func(stats StreamStats)
+}
+
+// Stream runs the LLM and forwards every chunk via cb.OnChunk. The
+// accumulated answer is persisted as the assistant message when the
+// stream completes; the final stats are returned so the handler can emit
+// a closing SSE event with the t/s.
+func (s *Service) Stream(ctx context.Context, sessionID int64, prompt string, cb StreamCallbacks) (string, StreamStats, error) {
 	ch, err := s.llm.GenerateStream(ctx, prompt, &llm.GenerateOptions{Temperature: 0.3})
 	if err != nil {
-		return "", fmt.Errorf("llm stream: %w", err)
+		return "", StreamStats{}, fmt.Errorf("llm stream: %w", err)
 	}
 	var b strings.Builder
+	var stats StreamStats
+	var firstToken time.Time
 	for c := range ch {
 		if c.Error != nil {
-			return b.String(), c.Error
+			return b.String(), stats, c.Error
 		}
 		if c.Text != "" {
+			if firstToken.IsZero() {
+				firstToken = time.Now()
+			}
 			b.WriteString(c.Text)
-			if err := onChunk(c.Text); err != nil {
-				return b.String(), err
+			stats.Tokens++
+			stats.Duration = time.Since(firstToken)
+			if cb.OnChunk != nil {
+				if err := cb.OnChunk(c.Text, stats); err != nil {
+					return b.String(), stats, err
+				}
 			}
 		}
 		if c.Done {
 			break
 		}
 	}
-	if _, err := s.store.AppendChatMessage(ctx, sessionID, "assistant", b.String()); err != nil {
-		return b.String(), fmt.Errorf("persist assistant msg: %w", err)
+	if cb.OnDone != nil {
+		cb.OnDone(stats)
 	}
-	return b.String(), nil
+	if _, err := s.store.AppendChatMessage(ctx, sessionID, "assistant", b.String()); err != nil {
+		return b.String(), stats, fmt.Errorf("persist assistant msg: %w", err)
+	}
+	return b.String(), stats, nil
 }
 
 // buildPrompt composes the system + sources + history + user-question prompt.

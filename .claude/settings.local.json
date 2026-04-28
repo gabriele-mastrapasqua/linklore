@@ -60,7 +60,8 @@
       "Bash(sqlite3 *)",
       "Bash(curl -s -o /tmp/cai.html -w '%{http_code}' http://127.0.0.1:8080/c/ai)",
       "Bash(echo \"GET /c/ai -> $\\(curl -s -o /tmp/cai.html -w '%{http_code}' http://127.0.0.1:8080/c/ai\\)\")",
-      "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+come+stai&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)"
+      "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+come+stai&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
+      "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+breve&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)"
     ]
   }
 }

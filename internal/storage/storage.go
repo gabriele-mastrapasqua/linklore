@@ -56,7 +56,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 func buildDSN(path string) string {
 	if path == ":memory:" {
-		return "file::memory:?cache=shared&_journal_mode=DELETE&_foreign_keys=on"
+		// Each handle gets its own isolated in-memory db. cache=shared used
+		// to leak state across tests running in parallel and caused
+		// "database is closed" races; per-handle isolation is what we want.
+		return ":memory:?_journal_mode=DELETE&_foreign_keys=on"
 	}
 	q := url.Values{}
 	q.Set("_journal_mode", "WAL")

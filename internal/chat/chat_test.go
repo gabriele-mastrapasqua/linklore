@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/embed"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
@@ -73,15 +74,20 @@ func TestStream_persistsAssistantAndForwardsChunks(t *testing.T) {
 	}
 
 	var captured strings.Builder
-	final, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt, func(t string) error {
-		captured.WriteString(t)
-		return nil
+	final, stats, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt, StreamCallbacks{
+		OnChunk: func(t string, _ StreamStats) error {
+			captured.WriteString(t)
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if final == "" || final != captured.String() {
 		t.Errorf("final %q vs captured %q", final, captured.String())
+	}
+	if stats.Tokens == 0 {
+		t.Errorf("expected tokens > 0, got %+v", stats)
 	}
 
 	// Persisted: user + assistant messages.
@@ -102,7 +108,7 @@ func TestStream_propagatesLLMError(t *testing.T) {
 	// Replace backend with one that errors on stream.
 	svc.llm = &erroringStream{}
 	turn, _ := svc.Prepare(context.Background(), 0, colID, "x")
-	if _, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt, func(string) error { return nil }); err == nil {
+	if _, _, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt, StreamCallbacks{}); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -127,8 +133,11 @@ func TestE2E_PrepareStreamPersist(t *testing.T) {
 	}
 
 	var captured []string
-	final, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt,
-		func(t string) error { captured = append(captured, t); return nil })
+	final, _, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt,
+		StreamCallbacks{OnChunk: func(t string, _ StreamStats) error {
+			captured = append(captured, t)
+			return nil
+		}})
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
@@ -156,7 +165,7 @@ func TestE2E_TwoTurnConversation(t *testing.T) {
 	svc, colID := newChatFixture(t)
 
 	t1, _ := svc.Prepare(context.Background(), 0, colID, "first question")
-	if _, err := svc.Stream(context.Background(), t1.SessionID, t1.Prompt, func(string) error { return nil }); err != nil {
+	if _, _, err := svc.Stream(context.Background(), t1.SessionID, t1.Prompt, StreamCallbacks{}); err != nil {
 		t.Fatal(err)
 	}
 	t2, err := svc.Prepare(context.Background(), t1.SessionID, colID, "follow up")
@@ -166,7 +175,7 @@ func TestE2E_TwoTurnConversation(t *testing.T) {
 	if !strings.Contains(t2.Prompt, "first question") {
 		t.Errorf("history missing in turn 2 prompt")
 	}
-	if _, err := svc.Stream(context.Background(), t2.SessionID, t2.Prompt, func(string) error { return nil }); err != nil {
+	if _, _, err := svc.Stream(context.Background(), t2.SessionID, t2.Prompt, StreamCallbacks{}); err != nil {
 		t.Fatal(err)
 	}
 	msgs, _ := svc.store.RecentChatMessages(context.Background(), t1.SessionID, 10)
@@ -175,11 +184,53 @@ func TestE2E_TwoTurnConversation(t *testing.T) {
 	}
 }
 
+func TestStream_TPS_isMeasuredAndMonotonic(t *testing.T) {
+	svc, colID := newChatFixture(t)
+	turn, err := svc.Prepare(context.Background(), 0, colID, "rust ownership")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var perChunk []StreamStats
+	_, finalStats, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt,
+		StreamCallbacks{OnChunk: func(_ string, s StreamStats) error {
+			perChunk = append(perChunk, s)
+			return nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(perChunk) < 2 {
+		t.Fatalf("expected ≥2 chunks, got %d", len(perChunk))
+	}
+
+	// Token count must be monotonically non-decreasing across callbacks.
+	for i := 1; i < len(perChunk); i++ {
+		if perChunk[i].Tokens < perChunk[i-1].Tokens {
+			t.Errorf("tokens went backwards at i=%d: %+v", i, perChunk)
+		}
+	}
+	if finalStats.Tokens < perChunk[len(perChunk)-1].Tokens {
+		t.Errorf("final tokens < last per-chunk: %d vs %d",
+			finalStats.Tokens, perChunk[len(perChunk)-1].Tokens)
+	}
+}
+
+func TestStreamStats_TPSEdgeCases(t *testing.T) {
+	if got := (StreamStats{Tokens: 5, Duration: 0}).TPS(); got != 0 {
+		t.Errorf("zero duration TPS = %v, want 0", got)
+	}
+	got := (StreamStats{Tokens: 100, Duration: 2 * time.Second}).TPS()
+	if got < 49 || got > 51 {
+		t.Errorf("100 tok / 2s = %v, want ~50", got)
+	}
+}
+
 func TestPrompt_includesHistoryWithoutCurrentDuplicated(t *testing.T) {
 	svc, colID := newChatFixture(t)
 	// First turn.
 	t1, _ := svc.Prepare(context.Background(), 0, colID, "first question")
-	_, _ = svc.Stream(context.Background(), t1.SessionID, t1.Prompt, func(string) error { return nil })
+	_, _, _ = svc.Stream(context.Background(), t1.SessionID, t1.Prompt, StreamCallbacks{})
 	// Second turn — same session.
 	t2, err := svc.Prepare(context.Background(), t1.SessionID, colID, "follow up")
 	if err != nil {

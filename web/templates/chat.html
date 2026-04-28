@@ -28,15 +28,19 @@
 </form>
 
 <script>
-function chatAppend(role, text) {
+function chatAppend(role, text, withStats) {
 	const log = document.getElementById('chat-log');
 	const row = document.createElement('div');
 	row.className = 'chat-row';
-	row.innerHTML = '<strong>' + role + ':</strong> <span></span>';
-	row.querySelector('span').textContent = text;
+	row.innerHTML = '<strong>' + role + ':</strong> <span class="answer"></span>'
+		+ (withStats ? ' <small class="muted stats" style="margin-left:.5rem"></small>' : '');
+	row.querySelector('.answer').textContent = text;
 	log.appendChild(row);
 	log.scrollTop = log.scrollHeight;
-	return row.querySelector('span');
+	return {
+		ans: row.querySelector('.answer'),
+		stats: row.querySelector('.stats'),
+	};
 }
 async function chatSubmit(ev) {
 	ev.preventDefault();
@@ -59,7 +63,9 @@ async function chatSubmit(ev) {
 	sourcesList.innerHTML = '';
 	sourcesEl.hidden = true;
 
-	const ansEl = chatAppend('linklore', '');
+	const cells = chatAppend('linklore', '', true);
+	const ansEl = cells.ans;
+	const statsEl = cells.stats;
 	const resp = await fetch('/chat/stream', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -96,6 +102,10 @@ async function chatSubmit(ev) {
 				li.querySelector('a').textContent = title;
 				sourcesList.appendChild(li);
 				sourcesEl.hidden = false;
+			} else if (event === 'stats') {
+				// "tokens|tps" emitted periodically + once at the end.
+				const [tok, tps] = data.split('|');
+				if (statsEl) statsEl.textContent = tok + ' tok · ' + tps + ' t/s';
 			} else if (event === 'error') ansEl.textContent += ' [error: ' + data + ']';
 		}
 	}
