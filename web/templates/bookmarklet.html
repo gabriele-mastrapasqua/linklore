@@ -1,0 +1,18 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0">Bookmarklet</h2>
+	<p>Drag this link to your bookmarks bar. Clicking it on any page will save its URL into your <code>default</code> collection.</p>
+
+	<p>
+		<a href="javascript:(function(){fetch('http://127.0.0.1:8080/api/links',{method:'POST',body:new URLSearchParams({url:location.href})}).then(r=>r.ok?alert('saved to linklore'):alert('failed: '+r.status)).catch(e=>alert('error: '+e))})();"
+		   class="badge" style="font-size:1rem;padding:.4rem .8rem">+ linklore</a>
+	</p>
+
+	<small class="muted">Uses <code>fetch</code> + form-encoded POST to <code>/api/links</code>. Replace the host above if you serve linklore from a different address.</small>
+</section>
+
+<section class="card">
+	<strong>Plain endpoint</strong>
+	<pre style="font-size:.85rem">curl -X POST -d 'url=https://example.com' http://127.0.0.1:8080/api/links</pre>
+</section>
+{{end}}

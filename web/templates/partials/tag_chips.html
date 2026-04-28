@@ -1,0 +1,15 @@
+{{define "tag_chips"}}
+<div id="tag-chips-{{.LinkID}}" class="badges" style="margin:.4rem 0">
+	{{range .Tags}}
+	<span class="badge">
+		<a href="/tags/{{.Slug}}" style="text-decoration:none;color:inherit">{{.Name}}</a>
+		<button type="button" style="background:none;border:none;padding:0 .2rem;cursor:pointer;color:#999"
+		        hx-delete="/links/{{$.LinkID}}/tags/{{.Slug}}"
+		        hx-target="#tag-chips-{{$.LinkID}}" hx-swap="outerHTML"
+		        title="remove tag">×</button>
+	</span>
+	{{else}}
+	<span class="muted" style="font-size:.85rem">no tags</span>
+	{{end}}
+</div>
+{{end}}

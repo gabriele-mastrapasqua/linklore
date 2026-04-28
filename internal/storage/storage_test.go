@@ -244,6 +244,64 @@ func TestTags_UpsertAttachListTop(t *testing.T) {
 	}
 }
 
+func TestTags_MergeAndCounts(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	l1, _ := s.CreateLink(ctx, c.ID, "https://x/1")
+	l2, _ := s.CreateLink(ctx, c.ID, "https://x/2")
+	a, _ := s.UpsertTag(ctx, "ai", "AI")
+	b, _ := s.UpsertTag(ctx, "ml", "ML")
+	_ = s.AttachTag(ctx, l1.ID, a.ID, TagSourceAuto)
+	_ = s.AttachTag(ctx, l1.ID, b.ID, TagSourceAuto)
+	_ = s.AttachTag(ctx, l2.ID, b.ID, TagSourceAuto)
+
+	counts, err := s.ListTagsWithCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "ml" used twice, "ai" once → ml first.
+	if len(counts) != 2 || counts[0].Slug != "ml" || counts[0].Count != 2 {
+		t.Errorf("counts: %+v", counts)
+	}
+
+	// Merge ai into ml. Both links must end up tagged ml; ai tag gone.
+	if err := s.MergeTag(ctx, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FindTagBySlug(ctx, "ai"); err != ErrNotFound {
+		t.Errorf("ai still present: %v", err)
+	}
+	for _, lid := range []int64{l1.ID, l2.ID} {
+		tags, _ := s.ListTagsByLink(ctx, lid)
+		if len(tags) != 1 || tags[0].Slug != "ml" {
+			t.Errorf("after merge, link %d tags: %v", lid, tags)
+		}
+	}
+	// Self-merge is a no-op.
+	if err := s.MergeTag(ctx, b.ID, b.ID); err != nil {
+		t.Errorf("self-merge errored: %v", err)
+	}
+}
+
+func TestListLinksByTag(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	l, _ := s.CreateLink(ctx, c.ID, "https://x/1")
+	tg, _ := s.UpsertTag(ctx, "go", "Go")
+	_ = s.AttachTag(ctx, l.ID, tg.ID, TagSourceUser)
+
+	got, err := s.ListLinksByTag(ctx, "go", 10)
+	if err != nil || len(got) != 1 || got[0].ID != l.ID {
+		t.Errorf("got %v err=%v", got, err)
+	}
+	none, _ := s.ListLinksByTag(ctx, "missing", 10)
+	if len(none) != 0 {
+		t.Errorf("expected 0, got %v", none)
+	}
+}
+
 func TestFTS_LinksAndChunks(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

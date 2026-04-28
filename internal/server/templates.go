@@ -8,6 +8,28 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/web"
 )
 
+// funcMap holds the template helpers shared across both the page tree and
+// the partials tree. `dict` lets templates pass keyed args to {{template}}
+// invocations without a wrapping struct on the Go side.
+func funcMap() template.FuncMap {
+	return template.FuncMap{
+		"dict": func(values ...any) (map[string]any, error) {
+			if len(values)%2 != 0 {
+				return nil, fmt.Errorf("dict: odd number of args")
+			}
+			out := make(map[string]any, len(values)/2)
+			for i := 0; i < len(values); i += 2 {
+				k, ok := values[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict: non-string key")
+				}
+				out[k] = values[i+1]
+			}
+			return out, nil
+		},
+	}
+}
+
 // renderer holds two template trees:
 //   - pages: full pages (base + content + all partials)
 //   - partials: HTMX fragments returned for partial swaps
@@ -30,7 +52,7 @@ func newRenderer() (*renderer, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.partials, err = template.New("partials").ParseFS(partialsFS, partialFiles...)
+	r.partials, err = template.New("partials").Funcs(funcMap()).ParseFS(partialsFS, partialFiles...)
 	if err != nil {
 		return nil, fmt.Errorf("parse partials: %w", err)
 	}

@@ -197,6 +197,22 @@ func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
 	return err
 }
 
+// GetCollectionBySlugByID looks up a collection by primary key.
+func (s *Store) GetCollectionBySlugByID(ctx context.Context, id int64) (*Collection, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, slug, name, COALESCE(description,''), created_at FROM collections WHERE id = ?`, id)
+	var c Collection
+	var ts int64
+	if err := row.Scan(&c.ID, &c.Slug, &c.Name, &c.Description, &ts); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	c.CreatedAt = time.Unix(ts, 0).UTC()
+	return &c, nil
+}
+
 // ---- Links ----
 
 func (s *Store) CreateLink(ctx context.Context, collectionID int64, urlStr string) (*Link, error) {
@@ -313,6 +329,23 @@ func (s *Store) MarkLinkFailed(ctx context.Context, id int64, errStr string) err
 func (s *Store) MarkLinkRead(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE links SET read_at = ? WHERE id = ?`, time.Now().UTC().Unix(), id)
+	return err
+}
+
+// MarkLinkPending resets a link to pending so the worker re-fetches it.
+// Used by the UI "refetch" button.
+func (s *Store) MarkLinkPending(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET status = ?, fetch_error = '' WHERE id = ?`, StatusPending, id)
+	return err
+}
+
+// MarkLinkFetched resets a link to fetched so the worker re-runs the
+// chunk/embed/summarize index pass without re-fetching upstream.
+// Used by the UI "reindex" button.
+func (s *Store) MarkLinkFetched(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET status = ?, fetch_error = '' WHERE id = ?`, StatusFetched, id)
 	return err
 }
 
@@ -526,6 +559,106 @@ func (s *Store) CountActiveTags(ctx context.Context) (int, error) {
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT tag_id) FROM link_tags`).Scan(&n)
 	return n, err
+}
+
+// TagCount pairs a tag with its current usage count.
+type TagCount struct {
+	Tag
+	Count int
+}
+
+// ListTagsWithCounts returns all tags ordered by usage desc. Used by /tags
+// (cloud) and the per-collection sidebar tag filter.
+func (s *Store) ListTagsWithCounts(ctx context.Context) ([]TagCount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.id, t.slug, t.name, COUNT(lt.link_id) AS n
+		  FROM tags t
+		  LEFT JOIN link_tags lt ON lt.tag_id = t.id
+		 GROUP BY t.id
+		 ORDER BY n DESC, t.slug ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TagCount
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.ID, &tc.Slug, &tc.Name, &tc.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, tc)
+	}
+	return out, rows.Err()
+}
+
+// MergeTag re-attaches every link from src into dst (preserving source) and
+// then deletes the now-orphan src tag. Idempotent: merging a tag into itself
+// is a no-op.
+func (s *Store) MergeTag(ctx context.Context, srcID, dstID int64) error {
+	if srcID == dstID {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO link_tags(link_id, tag_id, source)
+		SELECT link_id, ?, source FROM link_tags WHERE tag_id = ?`, dstID, srcID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM link_tags WHERE tag_id = ?`, srcID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE id = ?`, srcID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// FindTagBySlug is a convenience for handlers that take slugs from URLs.
+func (s *Store) FindTagBySlug(ctx context.Context, slug string) (*Tag, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, slug, name FROM tags WHERE slug = ?`, slug)
+	var t Tag
+	if err := row.Scan(&t.ID, &t.Slug, &t.Name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+// ListLinksByTag is used by the tag-cloud filter. Slug-keyed.
+func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]Link, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT l.id, l.collection_id, l.url,
+		       COALESCE(l.title,''), COALESCE(l.description,''), COALESCE(l.image_url,''),
+		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
+		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
+		       l.fetched_at, l.created_at
+		  FROM links l
+		  JOIN link_tags lt ON lt.link_id = l.id
+		  JOIN tags t       ON t.id = lt.tag_id
+		 WHERE t.slug = ?
+		 ORDER BY l.created_at DESC LIMIT ?`, slug, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		l, err := scanLink(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
 }
 
 // ---- chat ----

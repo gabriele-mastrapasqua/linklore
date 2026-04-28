@@ -18,10 +18,12 @@ import (
 	"log"
 	"time"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/archive"
 	"github.com/gabrielemastrapasqua/linklore/internal/chunking"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/embed"
 	"github.com/gabrielemastrapasqua/linklore/internal/extract"
+	"github.com/gabrielemastrapasqua/linklore/internal/lang"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 	"github.com/gabrielemastrapasqua/linklore/internal/summarize"
@@ -38,6 +40,7 @@ type Worker struct {
 	store   *storage.Store
 	llm     llm.Backend
 	fetch   Fetcher
+	archive *archive.Store
 	cfgWk   config.Worker
 	cfgCh   config.Chunking
 	cfgEx   config.Extract
@@ -53,6 +56,7 @@ type Worker struct {
 type Options struct {
 	PollInterval time.Duration // default 2s
 	Logger       *log.Logger
+	Archive      *archive.Store // nil → archiving disabled regardless of config
 }
 
 func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.Config, opts Options) *Worker {
@@ -62,10 +66,14 @@ func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.
 	if opts.Logger == nil {
 		opts.Logger = log.Default()
 	}
+	if opts.Archive == nil {
+		opts.Archive, _ = archive.New("") // disabled no-op
+	}
 	return &Worker{
 		store:        store,
 		llm:          backend,
 		fetch:        fetcher,
+		archive:      opts.Archive,
 		cfgWk:        cfg.Worker,
 		cfgCh:        cfg.Chunking,
 		cfgEx:        cfg.Extract,
@@ -139,12 +147,17 @@ func (w *Worker) processFetch(ctx context.Context, l storage.Link) {
 		_ = w.store.MarkLinkFailed(ctx, l.ID, truncErr(err))
 		return
 	}
-	// Optional HTML archive (gzipping handled in a sister helper later).
+	// Optional HTML archive (gzipped on disk, path persisted alongside).
 	archivePath := ""
-	if w.cfgEx.ArchiveHTML {
-		archivePath = "" // hook for Phase 7; persisted as "" for now
+	if w.cfgEx.ArchiveHTML && w.archive.Enabled() && a.RawHTML != "" {
+		if p, aerr := w.archive.Save(l.ID, a.RawHTML); aerr == nil {
+			archivePath = p
+		} else {
+			w.logger.Printf("worker: archive %d: %v", l.ID, aerr)
+		}
 	}
-	if err := w.store.UpdateLinkExtraction(ctx, l.ID, a.Title, a.Description, a.ImageURL, a.ContentMD, "", archivePath); err != nil {
+	contentLang := lang.Detect(a.ContentMD)
+	if err := w.store.UpdateLinkExtraction(ctx, l.ID, a.Title, a.Description, a.ImageURL, a.ContentMD, contentLang, archivePath); err != nil {
 		w.logger.Printf("worker: persist extraction %d: %v", l.ID, err)
 		return
 	}

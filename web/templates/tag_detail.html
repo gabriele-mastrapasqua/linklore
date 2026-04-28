@@ -1,0 +1,15 @@
+{{define "content"}}
+<section class="card">
+	<div><a href="/tags">← all tags</a></div>
+	<h2 style="margin:.4rem 0 0">#{{.Tag.Slug}}</h2>
+	<small class="muted">{{len .Links}} link(s)</small>
+</section>
+
+<div>
+{{range .Links}}
+	{{template "link_row" .}}
+{{else}}
+	<div class="empty">No links carry this tag.</div>
+{{end}}
+</div>
+{{end}}

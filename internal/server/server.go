@@ -15,25 +15,45 @@ import (
 
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/feed"
+	"github.com/gabrielemastrapasqua/linklore/internal/reader"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabrielemastrapasqua/linklore/internal/tags"
+	"github.com/gabrielemastrapasqua/linklore/internal/worker"
 	"github.com/gabrielemastrapasqua/linklore/web"
 )
 
 type Server struct {
-	cfg    config.Config
-	store  *storage.Store
-	r      *renderer
-	search *search.Engine    // nil → search routes return empty results
-	chat   *chat.Service     // nil → chat routes return 503
+	cfg     config.Config
+	store   *storage.Store
+	r       *renderer
+	search  *search.Engine // nil → search routes return empty results
+	chat    *chat.Service  // nil → chat routes return 503
+	feed    *feed.Builder
+	worker  *worker.Worker // optional, for refetch/reindex
+	tagsCfg tagsCfg
 }
 
-func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *chat.Service) (*Server, error) {
+// tagsCfg is a tiny local view onto config.Tags so we don't carry the whole
+// config struct into hot handlers.
+type tagsCfg struct {
+	MaxPerLink, ActiveCap, ReuseDistance int
+}
+
+func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *chat.Service, w *worker.Worker) (*Server, error) {
 	r, err := newRenderer()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, r: r, search: eng, chat: chatSvc}, nil
+	return &Server{
+		cfg: cfg, store: store, r: r,
+		search:  eng,
+		chat:    chatSvc,
+		feed:    feed.New(store),
+		worker:  w,
+		tagsCfg: tagsCfg{MaxPerLink: cfg.Tags.MaxPerLink, ActiveCap: cfg.Tags.ActiveCap, ReuseDistance: cfg.Tags.ReuseDistance},
+	}, nil
 }
 
 // Handler returns the configured *http.ServeMux. Kept separate from ListenAndServe
@@ -53,16 +73,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /collections", s.handleCreateCollection)
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
+	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
+	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
+	mux.HandleFunc("GET /links/{id}/read", s.handleReaderMode)
+	mux.HandleFunc("POST /links/{id}/refetch", s.handleRefetch)
+	mux.HandleFunc("POST /links/{id}/reindex", s.handleReindex)
+	mux.HandleFunc("POST /links/{id}/tags", s.handleAddUserTag)
+	mux.HandleFunc("DELETE /links/{id}/tags/{slug}", s.handleRemoveTag)
 
 	mux.HandleFunc("GET /search", s.handleSearchPage)
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 
 	mux.HandleFunc("GET /chat", s.handleChatPage)
 	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
-	mux.HandleFunc("GET /inbox", s.handlePlaceholder("Inbox", "Coming in Phase 7."))
-	mux.HandleFunc("GET /tags", s.handlePlaceholder("Tags", "Coming in Phase 7."))
-	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
+
+	mux.HandleFunc("GET /tags", s.handleTagsPage)
+	mux.HandleFunc("GET /tags/{slug}", s.handleTagDetail)
+	mux.HandleFunc("POST /tags/merge", s.handleMergeTags)
+
+	mux.HandleFunc("GET /bookmarklet", s.handleBookmarkletPage)
+	mux.HandleFunc("POST /api/links", s.handleAPILinks)
+
+	mux.HandleFunc("GET /inbox", s.handlePlaceholder("Inbox", "Inbox is intentionally not implemented for now."))
 
 	return logging(mux)
 }
@@ -168,10 +201,255 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, err)
 		return
 	}
-	// Phase-2: bare placeholder until we have a detail template.
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<a href="/c/">← back</a><h2>%s</h2><p><a href="%s" target="_blank">%s</a></p><pre>%s</pre>`,
-		htmlEscape(link.Title), htmlEscape(link.URL), htmlEscape(link.URL), htmlEscape(link.Summary))
+	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
+	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
+	s.renderPage(w, "link_detail", map[string]any{
+		"Title":      "Link",
+		"Link":       link,
+		"Collection": col,
+		"Tags":       linkTags,
+	})
+}
+
+func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderPage(w, "reader", map[string]any{
+		"Title":   firstNonEmpty(link.Title, link.URL),
+		"Link":    link,
+		"Article": reader.Render(link.ContentMD),
+	})
+}
+
+func (s *Server) handleRefetch(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if s.worker == nil {
+		http.Error(w, "worker disabled", http.StatusServiceUnavailable)
+		return
+	}
+	// Reset to pending so the next worker tick re-fetches; ProcessOne picks
+	// it up immediately too.
+	if err := s.store.MarkLinkPending(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	go func() {
+		_ = s.worker.ProcessOne(context.Background(), id)
+	}()
+	link, _ := s.store.GetLink(r.Context(), id)
+	s.renderFragment(w, "link_row", link)
+}
+
+func (s *Server) handleReindex(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if s.worker == nil {
+		http.Error(w, "worker disabled", http.StatusServiceUnavailable)
+		return
+	}
+	// Drop status back to fetched so the index pass re-runs (chunk + embed
+	// + summarize + tags) without re-fetching the upstream URL.
+	if err := s.store.MarkLinkFetched(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	go func() {
+		_ = s.worker.ProcessOne(context.Background(), id)
+	}()
+	link, _ := s.store.GetLink(r.Context(), id)
+	s.renderFragment(w, "link_row", link)
+}
+
+func (s *Server) handleAddUserTag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	raw := strings.TrimSpace(r.PostForm.Get("tag"))
+	slug := tags.Slugify(raw)
+	if slug == "" {
+		http.Error(w, "tag required", http.StatusBadRequest)
+		return
+	}
+	tag, err := s.store.UpsertTag(r.Context(), slug, raw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.AttachTag(r.Context(), id, tag.ID, storage.TagSourceUser); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
+	s.renderFragment(w, "tag_chips", map[string]any{
+		"LinkID": id,
+		"Tags":   linkTags,
+	})
+}
+
+func (s *Server) handleRemoveTag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	tag, err := s.store.FindTagBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := s.store.DetachTag(r.Context(), id, tag.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
+	s.renderFragment(w, "tag_chips", map[string]any{
+		"LinkID": id,
+		"Tags":   linkTags,
+	})
+}
+
+func (s *Server) handleTagsPage(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.store.ListTagsWithCounts(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	active, _ := s.store.CountActiveTags(r.Context())
+	s.renderPage(w, "tags", map[string]any{
+		"Title":  "Tags",
+		"Tags":   counts,
+		"Active": active,
+		"Cap":    s.tagsCfg.ActiveCap,
+	})
+}
+
+func (s *Server) handleTagDetail(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	tag, err := s.store.FindTagBySlug(r.Context(), slug)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	links, err := s.store.ListLinksByTag(r.Context(), slug, 200)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.renderPage(w, "tag_detail", map[string]any{
+		"Title": "#" + tag.Slug,
+		"Tag":   tag,
+		"Links": links,
+	})
+}
+
+func (s *Server) handleMergeTags(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	src := strings.TrimSpace(r.PostForm.Get("src"))
+	dst := strings.TrimSpace(r.PostForm.Get("dst"))
+	if src == "" || dst == "" {
+		http.Error(w, "src and dst slugs required", http.StatusBadRequest)
+		return
+	}
+	srcT, err := s.store.FindTagBySlug(r.Context(), src)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	dstT, err := s.store.FindTagBySlug(r.Context(), dst)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := s.store.MergeTag(r.Context(), srcT.ID, dstT.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/tags", http.StatusSeeOther)
+}
+
+func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	siteURL := "http://" + r.Host
+	xml, err := s.feed.Atom(r.Context(), slug, siteURL, 50)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
+	_, _ = w.Write([]byte(xml))
+}
+
+func (s *Server) handleBookmarkletPage(w http.ResponseWriter, _ *http.Request) {
+	s.renderPage(w, "bookmarklet", map[string]any{"Title": "Bookmarklet"})
+}
+
+// handleAPILinks accepts {url, collection?} as form-encoded or JSON. It is
+// the endpoint the bookmarklet hits. Always defaults to the "default"
+// collection (auto-creating it) when none is supplied.
+func (s *Server) handleAPILinks(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	url := strings.TrimSpace(r.PostForm.Get("url"))
+	if url == "" {
+		http.Error(w, "url required", http.StatusBadRequest)
+		return
+	}
+	slug := strings.TrimSpace(r.PostForm.Get("collection"))
+	if slug == "" {
+		slug = "default"
+	}
+	col, err := s.store.GetCollectionBySlug(r.Context(), slug)
+	if errors.Is(err, storage.ErrNotFound) {
+		col, err = s.store.CreateCollection(r.Context(), slug, slug, "")
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	link, err := s.store.CreateLink(r.Context(), col.ID, url)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintf(w, `{"id":%d,"url":%q,"collection":%q,"status":%q}`,
+		link.ID, link.URL, col.Slug, link.Status)
+}
+
+func firstNonEmpty(xs ...string) string {
+	for _, x := range xs {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {

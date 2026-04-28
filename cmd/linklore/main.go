@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/archive"
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/extract"
@@ -102,10 +103,16 @@ func runServe(args []string) {
 		eng = search.New(store, nil)
 	}
 
+	var wk *worker.Worker
 	if backend != nil {
-		w := worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second), cfg, worker.Options{})
+		archiveRoot := ""
+		if cfg.Extract.ArchiveHTML {
+			archiveRoot = filepath.Join(filepath.Dir(cfg.Database.Path), "snapshots")
+		}
+		ar, _ := archive.New(archiveRoot)
+		wk = worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second), cfg, worker.Options{Archive: ar})
 		go func() {
-			if err := w.Run(ctx); err != nil && err != context.Canceled {
+			if err := wk.Run(ctx); err != nil && err != context.Canceled {
 				log.Printf("worker exited: %v", err)
 			}
 		}()
@@ -115,7 +122,7 @@ func runServe(args []string) {
 	if backend != nil {
 		chatSvc = chat.New(store, eng, backend)
 	}
-	srv, err := server.New(cfg, store, eng, chatSvc)
+	srv, err := server.New(cfg, store, eng, chatSvc, wk)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

@@ -29,7 +29,7 @@ func newTestServerWithChat(t *testing.T, chatSvc *chat.Service) (*httptest.Serve
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	srv, err := New(config.Default(), st, nil, chatSvc)
+	srv, err := New(config.Default(), st, nil, chatSvc, nil)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -200,6 +200,173 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestReaderMode_renderedFromContentMD(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"Title", "desc", "", "# Heading\n\nbody **bold**\n\n<script>x</script>", "en", "")
+
+	code, body := get(t, ts, "/links/"+i64s(l.ID)+"/read")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	for _, want := range []string{"<h1", "<strong>bold</strong>", "Heading"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in body", want)
+		}
+	}
+	// The article's malicious <script>x</script> must be stripped.
+	// (The base layout still pulls in htmx via <script src=...> which is fine.)
+	if strings.Contains(body, ">x</script>") || strings.Contains(body, "<script>x</script>") {
+		t.Errorf("article script not sanitised: %s", body)
+	}
+}
+
+func TestUserTagAddRemove(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+
+	code, body := postForm(t, ts, "/links/"+i64s(l.ID)+"/tags", url.Values{"tag": {"Go!"}})
+	if code != 200 {
+		t.Fatalf("add tag: %d %s", code, body)
+	}
+	if !strings.Contains(body, "Go!") {
+		t.Errorf("tag chip missing: %s", body)
+	}
+	tags, _ := st.ListTagsByLink(context.Background(), l.ID)
+	if len(tags) != 1 || tags[0].Slug != "go" {
+		t.Errorf("not slugified: %+v", tags)
+	}
+
+	// Remove via DELETE.
+	code = deleteReq(t, ts, "/links/"+i64s(l.ID)+"/tags/go")
+	if code != 200 {
+		t.Errorf("delete status: %d", code)
+	}
+	tags, _ = st.ListTagsByLink(context.Background(), l.ID)
+	if len(tags) != 0 {
+		t.Errorf("tag still attached: %v", tags)
+	}
+}
+
+func TestUserTag_emptyRejected(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	code, _ := postForm(t, ts, "/links/"+i64s(l.ID)+"/tags", url.Values{"tag": {"  !!  "}})
+	if code != http.StatusBadRequest {
+		t.Errorf("status = %d", code)
+	}
+}
+
+func TestTagsPage_listsAndCounts(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	tg, _ := st.UpsertTag(context.Background(), "go", "Go")
+	_ = st.AttachTag(context.Background(), l.ID, tg.ID, storage.TagSourceUser)
+
+	code, body := get(t, ts, "/tags")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if !strings.Contains(body, "Go") || !strings.Contains(body, "·1") {
+		t.Errorf("tag cloud broken: %s", body)
+	}
+}
+
+func TestTagDetail_404OnUnknown(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, _ := get(t, ts, "/tags/nope")
+	if code != http.StatusNotFound {
+		t.Errorf("status = %d", code)
+	}
+}
+
+func TestTagsMerge(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	a, _ := st.UpsertTag(context.Background(), "go", "Go")
+	b, _ := st.UpsertTag(context.Background(), "golang", "Golang")
+	_ = st.AttachTag(context.Background(), l.ID, a.ID, storage.TagSourceUser)
+	_ = st.AttachTag(context.Background(), l.ID, b.ID, storage.TagSourceUser)
+
+	resp, err := ts.Client().PostForm(ts.URL+"/tags/merge", url.Values{"src": {"go"}, "dst": {"golang"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// Redirect → 200 after follow.
+	if resp.StatusCode != 200 {
+		t.Errorf("status: %d", resp.StatusCode)
+	}
+	tags, _ := st.ListTagsByLink(context.Background(), l.ID)
+	if len(tags) != 1 || tags[0].Slug != "golang" {
+		t.Errorf("merge result: %v", tags)
+	}
+}
+
+func TestFeed_atomXMLForCollection(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "reading", "Reading", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID, "Hello", "d", "", "body", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "tldr text")
+
+	code, body := get(t, ts, "/c/reading/feed.xml")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	for _, want := range []string{"<feed", "Hello", "tldr text"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in feed", want)
+		}
+	}
+}
+
+func TestBookmarkletPageAndAPI(t *testing.T) {
+	ts, st := newTestServer(t)
+
+	code, body := get(t, ts, "/bookmarklet")
+	if code != 200 || !strings.Contains(body, "javascript:") {
+		t.Errorf("page broken: %d", code)
+	}
+
+	// API auto-creates the default collection.
+	resp, err := ts.Client().PostForm(ts.URL+"/api/links",
+		url.Values{"url": {"https://news.example/article"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("status: %d", resp.StatusCode)
+	}
+	col, err := st.GetCollectionBySlug(context.Background(), "default")
+	if err != nil {
+		t.Fatalf("default collection not created: %v", err)
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), col.ID, 10, 0)
+	if len(links) != 1 {
+		t.Errorf("link not created: %d", len(links))
+	}
+}
+
+func TestRefetchReindex_503WhenNoWorker(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	for _, path := range []string{"/links/" + i64s(l.ID) + "/refetch", "/links/" + i64s(l.ID) + "/reindex"} {
+		code, _ := postForm(t, ts, path, url.Values{})
+		if code != http.StatusServiceUnavailable {
+			t.Errorf("%s status = %d", path, code)
+		}
+	}
+}
+
 func TestChat_disabled503(t *testing.T) {
 	ts, _ := newTestServer(t)
 	code, _ := get(t, ts, "/chat")
@@ -222,7 +389,7 @@ func TestChat_streamSSE(t *testing.T) {
 	eng := search.New(st, nil) // BM25-only path is fine; collection has no chunks
 	chatSvc := chat.New(st, eng, streamer)
 
-	srv, err := New(config.Default(), st, eng, chatSvc)
+	srv, err := New(config.Default(), st, eng, chatSvc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

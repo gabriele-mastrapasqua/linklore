@@ -1,0 +1,32 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0">Tags</h2>
+	<small class="muted">{{.Active}} active / cap {{.Cap}}</small>
+	{{if gt .Active .Cap}}
+	<div class="badge failed" style="margin-left:.5rem">over cap — please merge near-duplicates</div>
+	{{end}}
+</section>
+
+<section class="card">
+	<strong>Cloud</strong>
+	<div style="margin-top:.4rem">
+		{{range .Tags}}
+		<a href="/tags/{{.Slug}}" class="badge" style="font-size:{{if gt .Count 5}}1rem{{else if gt .Count 1}}.9rem{{else}}.8rem{{end}}">
+			{{.Name}} <small class="muted">·{{.Count}}</small>
+		</a>
+		{{else}}
+		<span class="muted">No tags yet.</span>
+		{{end}}
+	</div>
+</section>
+
+<section class="card">
+	<strong>Merge two tags</strong>
+	<small class="muted">Re-attaches all links from <em>src</em> to <em>dst</em>, then deletes <em>src</em>.</small>
+	<form class="inline" style="margin-top:.5rem" action="/tags/merge" method="post">
+		<input type="text" name="src" placeholder="src slug" required>
+		<input type="text" name="dst" placeholder="dst slug" required>
+		<button type="submit">Merge</button>
+	</form>
+</section>
+{{end}}
