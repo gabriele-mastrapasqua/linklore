@@ -1,5 +1,8 @@
 {{define "link_row"}}
 <div class="card link-row" id="link-{{.ID}}"
+     draggable="true"
+     data-link-id="{{.ID}}"
+     data-collection-id="{{.CollectionID}}"
      {{if and (ne .Status "summarized") (ne .Status "failed")}}
      hx-get="/links/{{.ID}}/row" hx-trigger="every 2s" hx-swap="outerHTML"
      {{end}}>

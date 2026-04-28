@@ -239,6 +239,16 @@ body.previews-off .preview { display: none !important; }
 	align-self: flex-start; /* keep the thumbnail at row top, don't stretch */
 }
 
+/* Drag and drop: row being dragged dims; sidebar collection that
+   would receive the drop gets a soft accent outline. */
+.dnd-dragging { opacity: 0.5; }
+.dnd-drop-target {
+	outline: 2px dashed var(--accent);
+	outline-offset: 2px;
+}
+.link-row { cursor: grab; }
+.link-row.dnd-dragging { cursor: grabbing; }
+
 /* Detail-page preview block: bigger primary image + larger thumb strip.
    Hidden when the user toggled previews off (body.previews-off). */
 .detail-preview-primary {

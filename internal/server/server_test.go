@@ -561,6 +561,33 @@ func TestMoveLink_unknownDest400(t *testing.T) {
 	}
 }
 
+func TestLinkRow_isDraggable(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	st.CreateLink(context.Background(), col.ID, "https://x")
+
+	_, body := get(t, ts, "/c/c")
+	for _, want := range []string{
+		`draggable="true"`,
+		`data-link-id="`,
+		`data-collection-id="`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("link_row missing %q", want)
+		}
+	}
+}
+
+func TestSidebar_isDropTarget(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "alpha", "Alpha", "")
+
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `data-collection-slug="alpha"`) {
+		t.Errorf("sidebar entry missing data-collection-slug for DnD: %s", body[:300])
+	}
+}
+
 func TestTheme_defaultIsAuto(t *testing.T) {
 	ts, _ := newTestServer(t)
 	_, body := get(t, ts, "/")
