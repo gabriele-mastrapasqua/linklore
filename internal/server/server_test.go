@@ -228,6 +228,53 @@ func TestReaderMode_renderedFromContentMD(t *testing.T) {
 	}
 }
 
+func TestSaveNote_renderFragment(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+
+	code, body := postForm(t, ts, "/links/"+i64s(l.ID)+"/note",
+		url.Values{"note": {"my private memo"}})
+	if code != 200 {
+		t.Fatalf("status=%d body=%s", code, body)
+	}
+	if !strings.Contains(body, "saved ✓") {
+		t.Errorf("expected confirmation: %s", body)
+	}
+	if !strings.Contains(body, "my private memo") {
+		t.Errorf("note not echoed back: %s", body)
+	}
+	got, _ := st.GetLink(context.Background(), l.ID)
+	if got.Note != "my private memo" {
+		t.Errorf("DB note = %q", got.Note)
+	}
+
+	// Empty note clears via the same endpoint.
+	code, _ = postForm(t, ts, "/links/"+i64s(l.ID)+"/note", url.Values{"note": {""}})
+	if code != 200 {
+		t.Fatal(code)
+	}
+	got, _ = st.GetLink(context.Background(), l.ID)
+	if got.Note != "" {
+		t.Errorf("note not cleared: %q", got.Note)
+	}
+}
+
+func TestLinkDetail_includesNotePanel(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	_ = st.UpdateLinkNote(context.Background(), l.ID, "my note")
+
+	_, body := get(t, ts, "/links/"+i64s(l.ID))
+	if !strings.Contains(body, "Personal note") {
+		t.Errorf("note panel missing: %s", body[:300])
+	}
+	if !strings.Contains(body, "my note") {
+		t.Errorf("existing note value missing")
+	}
+}
+
 func TestUserTagAddRemove(t *testing.T) {
 	ts, st := newTestServer(t)
 	col, _ := st.CreateCollection(context.Background(), "c", "C", "")

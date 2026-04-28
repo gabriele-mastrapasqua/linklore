@@ -1,0 +1,24 @@
+{{define "link_note"}}
+<section class="card" id="link-note-{{.Link.ID}}">
+	<strong>Personal note</strong>
+	{{if .JustSaved}}<small class="muted" style="margin-left:.5rem">saved ✓</small>{{end}}
+	<form style="margin-top:.5rem"
+	      hx-post="/links/{{.Link.ID}}/note"
+	      hx-target="#link-note-{{.Link.ID}}" hx-swap="outerHTML">
+		<textarea name="note" rows="4"
+		          placeholder="your private note about this link…"
+		          style="width:100%;padding:.5rem;border:1px solid var(--border);
+		                 border-radius:6px;font:inherit;background:var(--card);
+		                 color:var(--text);resize:vertical">{{.Link.Note}}</textarea>
+		<div style="margin-top:.4rem;display:flex;gap:.4rem">
+			<button type="submit">Save</button>
+			{{if .Link.Note}}
+			<button type="button"
+			        hx-post="/links/{{.Link.ID}}/note"
+			        hx-vals='{"note":""}'
+			        hx-target="#link-note-{{.Link.ID}}" hx-swap="outerHTML">Clear</button>
+			{{end}}
+		</div>
+	</form>
+</section>
+{{end}}

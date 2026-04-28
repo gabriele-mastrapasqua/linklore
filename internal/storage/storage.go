@@ -93,6 +93,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			{"favicon_url", "TEXT"},
 			{"extra_images", "TEXT"},
 			{"order_idx", "REAL NOT NULL DEFAULT 0"},
+			{"note", "TEXT"},
 		},
 	}
 	for table, cols := range addColumns {
@@ -136,6 +137,7 @@ type Link struct {
 	FetchError   string
 	ArchivePath  string
 	OrderIdx     float64
+	Note         string // user-authored personal note (free text)
 	FetchedAt    *time.Time
 	CreatedAt    time.Time
 }
@@ -388,7 +390,7 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, fetched_at, created_at
+		        order_idx, COALESCE(note,''), fetched_at, created_at
 		 FROM links WHERE id = ?`, id)
 	return scanLink(row.Scan)
 }
@@ -403,7 +405,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, fetched_at, created_at
+		        order_idx, COALESCE(note,''), fetched_at, created_at
 		 FROM links WHERE collection_id = ?
 		 ORDER BY order_idx DESC, created_at DESC LIMIT ? OFFSET ?`,
 		collectionID, limit, offset)
@@ -433,7 +435,7 @@ func scanLink(scan func(...any) error) (*Link, error) {
 		&l.FaviconURL, &extraJSON,
 		&l.ContentMD, &l.ContentLang, &l.Summary,
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
-		&l.OrderIdx, &fetchedAt, &createdAt)
+		&l.OrderIdx, &l.Note, &fetchedAt, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -505,6 +507,14 @@ func (s *Store) MarkLinkFailed(ctx context.Context, id int64, errStr string) err
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE links SET status = ?, fetch_error = ? WHERE id = ?`,
 		StatusFailed, errStr, id)
+	return err
+}
+
+// UpdateLinkNote stores the user's free-form personal note. Empty
+// string clears the note.
+func (s *Store) UpdateLinkNote(ctx context.Context, id int64, note string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET note = ? WHERE id = ?`, strings.TrimSpace(note), id)
 	return err
 }
 
@@ -653,7 +663,7 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, fetched_at, created_at
+		        order_idx, COALESCE(note,''), fetched_at, created_at
 		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		status, limit)
 	if err != nil {
@@ -962,7 +972,7 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 		       COALESCE(l.favicon_url,''), COALESCE(l.extra_images,''),
 		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
-		       l.order_idx, l.fetched_at, l.created_at
+		       l.order_idx, COALESCE(l.note,''), l.fetched_at, l.created_at
 		  FROM links l
 		  JOIN link_tags lt ON lt.link_id = l.id
 		  JOIN tags t       ON t.id = lt.tag_id

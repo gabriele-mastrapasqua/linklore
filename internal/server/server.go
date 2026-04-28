@@ -87,6 +87,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /links/{id}/read", s.handleReaderMode)
 	mux.HandleFunc("POST /links/{id}/refetch", s.handleRefetch)
 	mux.HandleFunc("POST /links/{id}/reindex", s.handleReindex)
+	mux.HandleFunc("POST /links/{id}/note", s.handleSaveNote)
 	mux.HandleFunc("POST /links/{id}/tags", s.handleAddUserTag)
 	mux.HandleFunc("DELETE /links/{id}/tags/{slug}", s.handleRemoveTag)
 
@@ -538,6 +539,35 @@ func (s *Server) handleReorderLink(w http.ResponseWriter, r *http.Request) {
 	if dst, _ := s.store.GetCollectionBySlugByID(r.Context(), pivot.CollectionID); dst != nil {
 		s.writeCollectionStatsOOB(w, r.Context(), dst)
 	}
+}
+
+// handleSaveNote stores the user's free-form personal note on a link
+// and renders the note panel back as an HTMX fragment so the user
+// gets a "saved" confirmation without losing their place.
+func (s *Server) handleSaveNote(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	note := r.PostForm.Get("note")
+	if err := s.store.UpdateLinkNote(r.Context(), id, note); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderFragment(w, "link_note", map[string]any{
+		"Link":      link,
+		"JustSaved": true,
+	})
 }
 
 func (s *Server) handleAddUserTag(w http.ResponseWriter, r *http.Request) {

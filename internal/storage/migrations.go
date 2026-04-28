@@ -28,6 +28,7 @@ var migrations = []string{
 		read_at       INTEGER,
 		fetch_error   TEXT,
 		archive_path  TEXT,
+		note          TEXT,                   -- user-authored personal note
 		order_idx     REAL NOT NULL DEFAULT 0,  -- sparse, midpoint-insert friendly
 		fetched_at    INTEGER,
 		created_at    INTEGER NOT NULL,

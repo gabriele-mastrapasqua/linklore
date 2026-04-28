@@ -227,14 +227,21 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 	flex-direction: column;
 	gap: 1.1rem;
 	padding: .25rem 0 .75rem;
+	/* Fixed-height log so the conversation scrolls inside the card
+	   instead of pushing the whole page down. The JS auto-scrolls to
+	   the bottom on each append. */
+	height: 60vh;
+	max-height: 70vh;
+	overflow-y: auto;
+	scroll-behavior: smooth;
 }
 .chat-row {
 	display: flex;
 	align-items: flex-end;
 	gap: .55rem;
 }
-.chat-row-user { justify-content: flex-end;  margin-left: 22%; }
-.chat-row-bot  { justify-content: flex-start; margin-right: 22%; }
+.chat-row-user { justify-content: flex-end; }
+.chat-row-bot  { justify-content: flex-start; }
 
 .chat-avatar {
 	flex-shrink: 0;
@@ -254,7 +261,7 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 :root[data-theme="dark"] .chat-row-user .chat-avatar { color: #fff; }
 
 .chat-bubble {
-	max-width: 100%;
+	max-width: 60%;
 	padding: .65rem .95rem;
 	border-radius: 18px;
 	line-height: 1.5;
@@ -299,10 +306,9 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 	:root[data-theme="auto"] .chat-bubble-user { background: #2563eb; }
 }
 
-/* Mobile: tighter indents so bubbles still have room. */
+/* Mobile: bubbles get most of the width back. */
 @media (max-width: 720px) {
-	.chat-row-user { margin-left: 10%; }
-	.chat-row-bot  { margin-right: 10%; }
+	.chat-bubble { max-width: 82%; }
 }
 
 /* Status badges keep light/dark parity by riding off the global

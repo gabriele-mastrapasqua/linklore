@@ -119,7 +119,14 @@ async function chatSubmit(ev) {
 			});
 			data = data.replace(/\\n/g, '\n');
 			if (event === 'session') document.getElementById('chat-session').value = data;
-			else if (event === 'token') ansEl.textContent += data;
+			else if (event === 'token') {
+				ansEl.textContent += data;
+				// Keep the log pinned to the bottom while tokens arrive,
+				// but only when the user hasn't scrolled up to read.
+				const log = document.getElementById('chat-log');
+				const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+				if (nearBottom) log.scrollTop = log.scrollHeight;
+			}
 			else if (event === 'source') {
 				const [id, title, url] = data.split('|');
 				const li = document.createElement('li');

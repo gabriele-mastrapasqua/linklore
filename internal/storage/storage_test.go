@@ -135,6 +135,33 @@ func TestLinks_CRUDAndStatus(t *testing.T) {
 	}
 }
 
+func TestUpdateLinkNote(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	l, _ := s.CreateLink(ctx, c.ID, "https://x")
+
+	got, _ := s.GetLink(ctx, l.ID)
+	if got.Note != "" {
+		t.Errorf("expected empty note, got %q", got.Note)
+	}
+	if err := s.UpdateLinkNote(ctx, l.ID, "  remember to revisit this  "); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetLink(ctx, l.ID)
+	if got.Note != "remember to revisit this" {
+		t.Errorf("note = %q", got.Note)
+	}
+	// Empty string clears.
+	if err := s.UpdateLinkNote(ctx, l.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetLink(ctx, l.ID)
+	if got.Note != "" {
+		t.Errorf("expected note cleared, got %q", got.Note)
+	}
+}
+
 func TestPrefs_Roundtrip(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()
