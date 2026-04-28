@@ -7,7 +7,7 @@
 			{{if .Collection.LastCheckedAt}}· last check: {{.Collection.LastCheckedAt.Format "2006-01-02 15:04"}}{{end}}
 		</small>
 	{{else}}
-		<small class="muted" style="margin-left:.5rem">no feed configured — set one to auto-import</small>
+		<small class="muted" style="margin-left:.5rem">no feed configured — paste a site URL below to auto-detect</small>
 	{{end}}
 
 	{{if .JustRefresh}}
@@ -17,12 +17,32 @@
 			{{if .LastResult.Errors}}· {{len .LastResult.Errors}} error(s){{end}}
 		</div>
 	{{end}}
+	{{if .DiscoverdMsg}}
+		<div class="muted" style="margin-top:.4rem;font-size:.85rem;color:var(--ok)">
+			✓ feed detected → <code>{{.DiscoverdMsg}}</code>
+		</div>
+	{{end}}
+	{{if .DiscoverErr}}
+		<div class="muted" style="margin-top:.4rem;font-size:.85rem;color:var(--danger)">
+			couldn't detect feed for <code>{{.DiscoverFrom}}</code> ({{.DiscoverErr}}) — paste it manually below
+		</div>
+	{{end}}
 
 	<form class="inline" style="margin-top:.5rem"
+	      hx-post="/c/{{.Collection.Slug}}/feed/discover"
+	      hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
+	      hx-disabled-elt="find button"
+	      hx-on::after-request="this.reset()">
+		<input type="url" name="page_url" required
+		       placeholder="https://example.com  (homepage or article URL)">
+		<button type="submit" title="auto-detect feed link from the page">🔍 Detect feed</button>
+	</form>
+
+	<form class="inline" style="margin-top:.4rem"
 	      hx-post="/c/{{.Collection.Slug}}/feed"
 	      hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML">
 		<input type="url" name="feed_url" value="{{.Collection.FeedURL}}"
-		       placeholder="https://example.com/feed.xml">
+		       placeholder="https://example.com/feed.xml (or leave blank to clear)">
 		<button type="submit">Save</button>
 		{{if .Collection.FeedURL}}
 		<button type="button"

@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)
+	mux.HandleFunc("POST /c/{slug}/feed/discover", s.handleDiscoverFeed)
 	mux.HandleFunc("POST /c/{slug}/feed/refresh", s.handleRefreshFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
@@ -725,6 +726,47 @@ func (s *Server) handleSetFeed(w http.ResponseWriter, r *http.Request) {
 	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
 	s.renderFragment(w, "collection_feed", map[string]any{
 		"Collection": updated,
+	})
+}
+
+// handleDiscoverFeed takes a free-form site URL ("page_url") and tries
+// to detect the canonical RSS / Atom feed for it. On success the
+// feed is saved on the collection and we re-render the feed card so
+// the user sees the auto-detected URL pre-filled. On failure the
+// card carries an inline "couldn't detect" message.
+func (s *Server) handleDiscoverFeed(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pageURL := strings.TrimSpace(r.PostForm.Get("page_url"))
+	if pageURL == "" {
+		http.Error(w, "page_url required", http.StatusBadRequest)
+		return
+	}
+	feedURL, err := s.feedImport.Discover(r.Context(), pageURL)
+	if err != nil {
+		updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+		s.renderFragment(w, "collection_feed", map[string]any{
+			"Collection":   updated,
+			"DiscoverErr":  err.Error(),
+			"DiscoverFrom": pageURL,
+		})
+		return
+	}
+	if err := s.store.SetCollectionFeed(r.Context(), col.ID, feedURL); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+	s.renderFragment(w, "collection_feed", map[string]any{
+		"Collection":     updated,
+		"DiscoverdMsg":   feedURL,
 	})
 }
 

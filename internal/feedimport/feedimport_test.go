@@ -135,6 +135,84 @@ func TestPollAll_skipsRecentlyCheckedFeeds(t *testing.T) {
 	}
 }
 
+func TestDiscover_findsAlternateLinkInHead(t *testing.T) {
+	st := openMem(t)
+	imp := New(st)
+
+	// Two-server setup: one serves the homepage HTML pointing to the
+	// other, which serves the actual feed.
+	feedHits := 0
+	feedSrv := newFeedServer(atomFixture, &feedHits)
+	defer feedSrv.Close()
+	htmlSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<html><head>
+<title>Demo</title>
+<link rel="alternate" type="application/rss+xml" title="Demo feed" href="%s">
+</head><body>hello</body></html>`, feedSrv.URL)
+	}))
+	defer htmlSrv.Close()
+
+	got, err := imp.Discover(context.Background(), htmlSrv.URL)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if got != feedSrv.URL {
+		t.Errorf("got %q, want %q", got, feedSrv.URL)
+	}
+}
+
+func TestDiscover_passthroughWhenURLAlreadyFeed(t *testing.T) {
+	st := openMem(t)
+	imp := New(st)
+	srv := newFeedServer(atomFixture, nil)
+	defer srv.Close()
+	got, err := imp.Discover(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != srv.URL {
+		t.Errorf("expected URL passthrough, got %q", got)
+	}
+}
+
+func TestDiscover_wellKnownFallbackFeedXML(t *testing.T) {
+	st := openMem(t)
+	imp := New(st)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		// Plain page, no <link rel="alternate">.
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<html><head><title>Plain</title></head><body>nothing</body></html>`)
+	})
+	mux.HandleFunc("/feed", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/atom+xml")
+		fmt.Fprint(w, atomFixture)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	got, err := imp.Discover(context.Background(), srv.URL+"/")
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if got != srv.URL+"/feed" {
+		t.Errorf("got %q, want %q", got, srv.URL+"/feed")
+	}
+}
+
+func TestDiscover_returnsErrWhenNothingMatches(t *testing.T) {
+	st := openMem(t)
+	imp := New(st)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<html><body>nothing here</body></html>`)
+	}))
+	defer srv.Close()
+	if _, err := imp.Discover(context.Background(), srv.URL); err == nil {
+		t.Error("expected ErrNoFeedFound")
+	}
+}
+
 func TestRefreshOne_badFeedReturnsError(t *testing.T) {
 	st := openMem(t)
 	col, _ := st.CreateCollection(context.Background(), "broken", "Broken", "")
