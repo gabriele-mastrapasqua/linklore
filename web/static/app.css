@@ -311,7 +311,8 @@ body.previews-off .preview { display: none !important; }
 
 /* The insertion bar is a fixed-position element so it can sit between
    two cards without disturbing layout. dnd.js sets top/left/width on
-   the fly and toggles display. */
+   the fly and toggles display. Transition makes the bar slide between
+   row gaps instead of jumping when the cursor crosses a boundary. */
 .dnd-insertion-bar {
 	position: absolute;
 	height: 4px;
@@ -321,6 +322,7 @@ body.previews-off .preview { display: none !important; }
 	z-index: 50;
 	box-shadow: 0 0 6px rgba(37, 99, 235, 0.6);
 	display: none;
+	transition: top 0.08s linear, left 0.08s linear, width 0.08s linear;
 }
 
 /* Detail-page preview block: bigger primary image + larger thumb strip.

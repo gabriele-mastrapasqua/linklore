@@ -34,10 +34,16 @@
 		if (el) el.style.display = 'none';
 	}
 
-	function clearDropHints() {
-		document.querySelectorAll('.dnd-drop-target').forEach(function (el) {
+	// clearSidebarHints: only sidebar drop-target highlights — used when
+	// the cursor leaves a sidebar entry but is still over the layout.
+	function clearSidebarHints() {
+		document.querySelectorAll('.sidebar-link.dnd-drop-target').forEach(function (el) {
 			el.classList.remove('dnd-drop-target');
 		});
+	}
+
+	function clearDropHints() {
+		clearSidebarHints();
 		hideIndicator();
 	}
 
@@ -95,6 +101,8 @@
 			row._dndChip = null;
 		}
 		clearDropHints();
+		lastTargetRowId = null;
+		lastSide = null;
 	}
 
 	function onDragEnter(ev) {
@@ -109,41 +117,102 @@
 		}
 	}
 
+	// onDragOver fires at 60Hz; doing layout reads + DOM writes every
+	// time was the source of the flicker. We throttle the visual side
+	// to one paint frame via requestAnimationFrame, and only touch the
+	// indicator when the target row or the above/below side actually
+	// changes. The default-prevent (which keeps drop alive) still runs
+	// on every event because the browser needs it to be synchronous.
+	var rafScheduled = false;
+	var lastTargetRowId = null;
+	var lastSide = null;
+
 	function onDragOver(ev) {
 		var sourceId = dragSourceID(ev);
 
-		// Sidebar collection target: highlight whole row.
+		// Sidebar collection: highlight whole row. Cheap; do it inline.
 		var sidebarTarget = ev.target.closest('[data-collection-slug]');
 		if (sidebarTarget) {
 			ev.preventDefault();
 			if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
-			clearDropHints();
-			sidebarTarget.classList.add('dnd-drop-target');
+			if (!sidebarTarget.classList.contains('dnd-drop-target')) {
+				clearSidebarHints();
+				sidebarTarget.classList.add('dnd-drop-target');
+			}
+			// The user crossed from a row to the sidebar: drop the bar.
+			hideIndicator();
+			lastTargetRowId = null;
 			return;
 		}
 
-		// In-list reorder target: another link row.
+		// In-list reorder target: another link row. Use the cursor's Y
+		// position to map onto a row even when the cursor sits in the
+		// gap between two cards (closest() would miss it). The
+		// "snap zone" extends 12px above and below each row so users
+		// don't have to hit the strict rectangle.
 		var rowTarget = ev.target.closest('[data-link-id]');
-		if (rowTarget && rowTarget.dataset.linkId !== sourceId) {
+		if (!rowTarget || rowTarget.dataset.linkId === sourceId) {
+			rowTarget = pickRowByY(ev.clientY, sourceId);
+		}
+		if (!rowTarget) {
+			// Outside any row — but we don't immediately hide the bar:
+			// the user is probably between two cards, the next dragover
+			// will land on one. If we hid every time, the bar would
+			// flicker on every Y delta.
 			ev.preventDefault();
-			if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
-			clearDropHints();
-			showInsertionBar(rowTarget, ev.clientY);
 			return;
 		}
+		ev.preventDefault();
+		if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+		clearSidebarHints();
+
+		var rect = rowTarget.getBoundingClientRect();
+		var side = (ev.clientY < rect.top + rect.height / 2) ? 'before' : 'after';
+		var targetId = rowTarget.dataset.linkId;
+
+		// Skip the DOM write when nothing changed visually — the main
+		// flicker fix.
+		if (targetId === lastTargetRowId && side === lastSide) return;
+		lastTargetRowId = targetId;
+		lastSide = side;
+
+		if (rafScheduled) return;
+		rafScheduled = true;
+		requestAnimationFrame(function () {
+			rafScheduled = false;
+			placeInsertionBar(rowTarget, side);
+		});
 	}
 
-	function showInsertionBar(rowEl, clientY) {
+	// pickRowByY snaps the cursor to the nearest link row when the
+	// pointer is in the gap between two cards. We accept any row whose
+	// rect (extended by 12 px above and below) contains clientY.
+	function pickRowByY(clientY, sourceId) {
+		var rows = document.querySelectorAll('[data-link-id]');
+		for (var i = 0; i < rows.length; i++) {
+			var r = rows[i];
+			if (r.dataset.linkId === sourceId) continue;
+			var rect = r.getBoundingClientRect();
+			if (clientY >= rect.top - 12 && clientY <= rect.bottom + 12) {
+				return r;
+			}
+		}
+		return null;
+	}
+
+	// placeInsertionBar positions the indicator at the top or bottom
+	// edge of the target row. No reads here — caller already computed
+	// "side" from the rect, and we keep the rect in scope by calling
+	// getBoundingClientRect() once again (cheap, single read).
+	function placeInsertionBar(rowEl, side) {
 		var rect = rowEl.getBoundingClientRect();
-		var midpoint = rect.top + rect.height / 2;
-		var above = clientY < midpoint;
 		var ind = ensureIndicator();
 		ind.style.display = 'block';
 		ind.style.left = rect.left + 'px';
 		ind.style.width = rect.width + 'px';
-		ind.style.top = (above ? rect.top : rect.bottom) + window.scrollY - 1 + 'px';
+		ind.style.top = (side === 'before' ? rect.top : rect.bottom) + window.scrollY - 2 + 'px';
 		ind.dataset.targetId = rowEl.dataset.linkId;
-		ind.dataset.position = above ? 'before' : 'after';
+		ind.dataset.position = side;
 	}
 
 	function applyOOBHTML(html) {
