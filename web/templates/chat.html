@@ -10,6 +10,8 @@
 		{{end}}
 		{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
 		{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
+		<span class="badge" style="background:#eef2ff;color:#3730a3"
+		      title="active LLM ({{.Backend}})">{{.Model}}</span>
 	</div>
 </section>
 
@@ -28,6 +30,7 @@
 </form>
 
 <script>
+const chatModel = {{.Model | printf "%q"}};
 function chatAppend(role, text, withStats) {
 	const log = document.getElementById('chat-log');
 	const row = document.createElement('div');
@@ -105,7 +108,7 @@ async function chatSubmit(ev) {
 			} else if (event === 'stats') {
 				// "tokens|tps" emitted periodically + once at the end.
 				const [tok, tps] = data.split('|');
-				if (statsEl) statsEl.textContent = tok + ' tok · ' + tps + ' t/s';
+				if (statsEl) statsEl.textContent = tok + ' tok · ' + tps + ' t/s · ' + chatModel;
 			} else if (event === 'error') ansEl.textContent += ' [error: ' + data + ']';
 		}
 	}

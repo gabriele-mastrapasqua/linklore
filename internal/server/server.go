@@ -548,7 +548,23 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 		"Ready":      counts.Ready,
 		"InProgress": counts.InProgress,
 		"Failed":     counts.Failed,
+		"Backend":    s.cfg.LLM.Backend,
+		"Model":      s.activeModelName(),
 	})
+}
+
+// activeModelName returns the user-facing name of whichever LLM model the
+// chat is currently calling. Useful in the UI so the user knows what's
+// generating the answer (qwen36-chat vs qwen3.6:35b vs whatever).
+func (s *Server) activeModelName() string {
+	switch s.cfg.LLM.Backend {
+	case "litellm":
+		return s.cfg.LLM.LiteLLM.Model
+	case "ollama":
+		return s.cfg.LLM.Ollama.Model
+	default:
+		return s.cfg.LLM.Backend
+	}
 }
 
 // handleChatStream POST {message, session_id?, collection_id?} — server-sent
