@@ -26,7 +26,65 @@ header.topbar input[type="search"] {
 header.topbar nav a { color: var(--muted); text-decoration: none; margin-right: 0.75rem; }
 header.topbar nav a:hover { color: #111; }
 
-main { max-width: 980px; margin: 0 auto; padding: var(--gap); }
+main { max-width: 980px; margin: 0 auto; padding: var(--gap); flex: 1; min-width: 0; }
+
+.layout {
+	display: flex;
+	gap: var(--gap);
+	max-width: 1280px;
+	margin: 0 auto;
+	align-items: flex-start;
+}
+.sidebar {
+	flex-shrink: 0;
+	width: 220px;
+	padding: var(--gap) 0 var(--gap) var(--gap);
+	position: sticky;
+	top: 56px; /* below the topbar */
+	max-height: calc(100vh - 56px);
+	overflow-y: auto;
+}
+.sidebar-section { margin-bottom: 1rem; }
+.sidebar-title {
+	font-size: .75rem;
+	text-transform: uppercase;
+	color: var(--muted);
+	letter-spacing: .05em;
+	margin: 0 .6rem .4rem;
+}
+.sidebar nav { display: flex; flex-direction: column; }
+.sidebar-link {
+	display: flex; align-items: center; gap: .4rem;
+	padding: .4rem .6rem;
+	border-radius: 6px;
+	color: #333;
+	text-decoration: none;
+	font-size: .92rem;
+}
+.sidebar-link:hover { background: #eef; }
+.sidebar-link.active { background: #2563eb; color: #fff; }
+.sidebar-link.active .sidebar-count,
+.sidebar-link.active .muted { color: rgba(255,255,255,.85); }
+.sidebar-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-count {
+	font-size: .75rem;
+	color: var(--muted);
+	background: rgba(0,0,0,.05);
+	padding: .05rem .35rem;
+	border-radius: 999px;
+}
+.sidebar-link.active .sidebar-count { background: rgba(255,255,255,.2); color: #fff; }
+.sidebar-pip {
+	width: 6px; height: 6px; border-radius: 50%;
+	display: inline-block;
+}
+.sidebar-pip.pending { background: var(--warn); }
+.sidebar-pip.failed  { background: var(--danger); }
+
+@media (max-width: 720px) {
+	.layout { flex-direction: column; }
+	.sidebar { width: auto; position: static; max-height: none; padding: 0 var(--gap); }
+}
 
 .card {
 	background: #fff; border: 1px solid var(--border); border-radius: 8px;

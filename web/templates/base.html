@@ -25,9 +25,12 @@
 		</button>
 	</nav>
 </header>
-<main>
-	<div id="search-results"></div>
-	{{template "content" .}}
-</main>
+<div class="layout">
+	{{if not .HideSidebar}}{{template "sidebar" .}}{{end}}
+	<main>
+		<div id="search-results"></div>
+		{{template "content" .}}
+	</main>
+</div>
 </body>
 </html>{{end}}

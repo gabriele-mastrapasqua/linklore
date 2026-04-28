@@ -336,9 +336,10 @@ func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderPageRq(w, r, "reader", map[string]any{
-		"Title":   firstNonEmpty(link.Title, link.URL),
-		"Link":    link,
-		"Article": reader.Render(link.ContentMD),
+		"Title":       firstNonEmpty(link.Title, link.URL),
+		"Link":        link,
+		"Article":     reader.Render(link.ContentMD),
+		"HideSidebar": true,
 	})
 }
 
@@ -808,14 +809,40 @@ func (s *Server) renderPage(w http.ResponseWriter, name string, data any) {
 }
 
 // renderPageRq is a thin wrapper that injects per-request layout state
-// (currently: the user's preview-toggle preference) into the page data
-// so base.html can pick the right body class.
+// (preview toggle, sidebar collections, theme, active route) into the
+// page data so base.html can pick the right body class.
 func (s *Server) renderPageRq(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
 	if data == nil {
 		data = map[string]any{}
 	}
 	data["Previews"] = previewsEnabled(r)
+
+	// Sidebar list. Cheap query + we want it on every page; renderer
+	// suppresses it by setting HideSidebar=true (e.g. reader mode).
+	if _, hide := data["HideSidebar"]; !hide {
+		if cols, err := s.store.ListCollectionsWithStats(r.Context()); err == nil {
+			data["Sidebar"] = cols
+		}
+	}
+	if _, has := data["ActiveSlug"]; !has {
+		data["ActiveSlug"] = activeSlug(r.URL.Path)
+	}
 	s.renderPage(w, name, data)
+}
+
+// activeSlug picks the collection slug out of the request URL when we're
+// inside /c/{slug}/.... Empty string for everything else so the sidebar's
+// "All" entry highlights on the home page.
+func activeSlug(path string) string {
+	const prefix = "/c/"
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	rest := path[len(prefix):]
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i]
+	}
+	return rest
 }
 
 func (s *Server) renderFragment(w http.ResponseWriter, name string, data any) {

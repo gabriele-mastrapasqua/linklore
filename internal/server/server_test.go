@@ -502,6 +502,45 @@ func TestLinkDetail_noBannerWhenAlreadySummarized(t *testing.T) {
 	}
 }
 
+func TestSidebar_listsActiveCollection(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "alpha", "Alpha", "")
+	st.CreateCollection(context.Background(), "bravo", "Bravo", "")
+
+	// Home → "All" must be active, neither collection slug.
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `class="sidebar-link active"`) {
+		t.Errorf("home should have an active sidebar link")
+	}
+	if !strings.Contains(body, ">All<") {
+		t.Errorf("All entry missing from sidebar")
+	}
+
+	// Inside /c/alpha → that link gets the active class.
+	_, body = get(t, ts, "/c/alpha")
+	// Look for a sidebar-link with the alpha href that's active.
+	if !strings.Contains(body, `href="/c/alpha" class="sidebar-link active`) {
+		t.Errorf("active class not applied to /c/alpha sidebar link: %s", body[:300])
+	}
+	// Bravo is present but not active.
+	if !strings.Contains(body, `href="/c/bravo"`) {
+		t.Errorf("bravo missing from sidebar")
+	}
+}
+
+func TestSidebar_hiddenInReaderMode(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"T", "d", "", "# h\n\nbody", "en", "")
+
+	_, body := get(t, ts, "/links/"+i64s(l.ID)+"/read")
+	if strings.Contains(body, `class="sidebar"`) {
+		t.Errorf("reader mode should hide the sidebar")
+	}
+}
+
 func TestAddLink_OOB_updatesCountersAndEmptyState(t *testing.T) {
 	ts, st := newTestServer(t)
 	if _, err := st.CreateCollection(context.Background(), "default", "Default", ""); err != nil {
