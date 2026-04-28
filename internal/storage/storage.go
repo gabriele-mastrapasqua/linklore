@@ -466,3 +466,138 @@ func (s *Store) CountActiveTags(ctx context.Context) (int, error) {
 		`SELECT COUNT(DISTINCT tag_id) FROM link_tags`).Scan(&n)
 	return n, err
 }
+
+// ---- search helpers ----
+
+// FTSHit is a candidate produced by an FTS5 MATCH; bm25 is lower=better.
+type FTSHit struct {
+	LinkID  int64
+	ChunkID int64 // 0 when the hit is link-level (links_fts)
+	BM25    float64
+	Snippet string
+}
+
+// SearchLinksFTS runs an FTS5 MATCH over links_fts and returns the top-N hits.
+// query is passed to FTS5 verbatim — callers should sanitise.
+func (s *Store) SearchLinksFTS(ctx context.Context, query string, limit int) ([]FTSHit, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT links.id, bm25(links_fts), snippet(links_fts, 2, '[', ']', '…', 16)
+		  FROM links_fts
+		  JOIN links ON links.id = links_fts.rowid
+		 WHERE links_fts MATCH ?
+		 ORDER BY bm25(links_fts) ASC
+		 LIMIT ?`, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FTSHit
+	for rows.Next() {
+		var h FTSHit
+		if err := rows.Scan(&h.LinkID, &h.BM25, &h.Snippet); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// SearchChunksFTS runs an FTS5 MATCH over chunks_fts. Optionally narrows the
+// hit set to a single collection when collectionID > 0.
+func (s *Store) SearchChunksFTS(ctx context.Context, query string, collectionID int64, limit int) ([]FTSHit, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if collectionID > 0 {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT chunks.link_id, chunks.id, bm25(chunks_fts), snippet(chunks_fts, 0, '[', ']', '…', 16)
+			  FROM chunks_fts
+			  JOIN chunks ON chunks.id = chunks_fts.rowid
+			  JOIN links  ON links.id = chunks.link_id
+			 WHERE chunks_fts MATCH ? AND links.collection_id = ?
+			 ORDER BY bm25(chunks_fts) ASC
+			 LIMIT ?`, query, collectionID, limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT chunks.link_id, chunks.id, bm25(chunks_fts), snippet(chunks_fts, 0, '[', ']', '…', 16)
+			  FROM chunks_fts
+			  JOIN chunks ON chunks.id = chunks_fts.rowid
+			 WHERE chunks_fts MATCH ?
+			 ORDER BY bm25(chunks_fts) ASC
+			 LIMIT ?`, query, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FTSHit
+	for rows.Next() {
+		var h FTSHit
+		if err := rows.Scan(&h.LinkID, &h.ChunkID, &h.BM25, &h.Snippet); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ListChunksByCollection returns every embedded chunk in a collection, used
+// by the vector re-rank step. It only returns rows that already have a
+// non-empty embedding — chunks still pending embed are skipped.
+func (s *Store) ListChunksByCollection(ctx context.Context, collectionID int64) ([]Chunk, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.link_id, c.ord, c.text, c.embedding
+		  FROM chunks c
+		  JOIN links  l ON l.id = c.link_id
+		 WHERE l.collection_id = ? AND c.embedding IS NOT NULL`, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Chunk
+	for rows.Next() {
+		var c Chunk
+		if err := rows.Scan(&c.ID, &c.LinkID, &c.Ord, &c.Text, &c.Embedding); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// GetChunksByIDs fetches chunks by ID in arbitrary order. Helper for the
+// search pipeline once it has narrowed the candidate set.
+func (s *Store) GetChunksByIDs(ctx context.Context, ids []int64) ([]Chunk, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, link_id, ord, text, embedding
+		  FROM chunks WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Chunk
+	for rows.Next() {
+		var c Chunk
+		if err := rows.Scan(&c.ID, &c.LinkID, &c.Ord, &c.Text, &c.Embedding); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
