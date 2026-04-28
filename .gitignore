@@ -1,0 +1,10 @@
+/bin/
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+/data/snapshots/
+*.test
+*.out
+coverage.html
+.DS_Store
+.env

@@ -1,0 +1,22 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0">{{.Collection.Name}}</h2>
+	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}</div>
+	<form class="inline" style="margin-top:.75rem"
+	      hx-post="/c/{{.Collection.Slug}}/links"
+	      hx-target="#links-list" hx-swap="afterbegin"
+	      hx-on::after-request="this.reset()">
+		<input type="url" name="url" placeholder="https://…" required>
+		<button type="submit">Add link</button>
+	</form>
+</section>
+
+<div id="links-list">
+{{if not .Links}}
+	<div class="empty">No links yet.</div>
+{{end}}
+{{range .Links}}
+	{{template "link_row" .}}
+{{end}}
+</div>
+{{end}}

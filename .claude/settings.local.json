@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep \"\\\\.go$\")",
+      "Bash(go version *)",
+      "Bash(go mod *)",
+      "Bash(go get *)",
+      "Bash(go build *)",
+      "Bash(go test *)",
+      "Bash(make build *)",
+      "Bash(go vet *)",
+      "Bash(./bin/linklore add *)",
+      "Bash(sqlite3 ./data/linklore.db \"SELECT id, slug, name FROM collections; SELECT id, url, status FROM links;\")",
+      "Bash(curl -s -o /tmp/home.html -w '%{http_code}' http://127.0.0.1:8080/)",
+      "Bash(echo \"GET / -> $\\(curl -s -o /tmp/home.html -w '%{http_code}' http://127.0.0.1:8080/\\)\")",
+      "Bash(curl -s -o /tmp/c.html -w '%{http_code}' -X POST -d 'slug=reading&name=Reading' http://127.0.0.1:8080/collections)",
+      "Bash(echo \"POST /collections -> $\\(curl -s -o /tmp/c.html -w '%{http_code}' -X POST -d 'slug=reading&name=Reading' http://127.0.0.1:8080/collections\\)\")",
+      "Bash(curl -s -o /tmp/l.html -w '%{http_code}' -X POST -d 'url=https://example.com/x' http://127.0.0.1:8080/c/reading/links)",
+      "Bash(git add *)"
+    ]
+  }
+}

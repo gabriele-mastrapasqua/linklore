@@ -1,0 +1,45 @@
+server:
+  addr: "127.0.0.1:8080"
+
+database:
+  path: "./data/linklore.db"
+
+llm:
+  backend: "ollama"           # ollama | litellm
+  ollama:
+    host: "http://192.168.1.93:11434"
+    model: "qwen3:4b"
+    embed_model: "nomic-embed-text"
+    num_ctx: 8192
+    timeout_seconds: 120
+  litellm:
+    base_url: "http://192.168.1.93:4000/v1"
+    model: "qwen3-4b"
+    embed_model: "nomic-embed-text"
+    api_key: "$LITELLM_API_KEY"
+    timeout_seconds: 120
+
+worker:
+  concurrency: 4
+  embed_batch_size: 32
+  fetch_timeout_seconds: 15
+
+extract:
+  headless_fallback: false
+  archive_html: false
+  min_readable_chars: 200
+
+chunking:
+  target_tokens: 800
+  overlap_tokens: 100
+  min_tokens: 40
+
+tags:
+  max_per_link: 5
+  active_cap: 200
+  reuse_distance: 1
+
+ui:
+  show_images_default: false
+  reader_font: "serif"
+  reader_width: "narrow"

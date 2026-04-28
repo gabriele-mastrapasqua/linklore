@@ -1,0 +1,22 @@
+{{define "link_row"}}
+<div class="card link-row" id="link-{{.ID}}">
+	<div class="meta">
+		<div class="title">
+			{{if .Title}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a>
+			{{else}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a>{{end}}
+		</div>
+		<div class="url">{{.URL}}</div>
+		{{if .Summary}}<div class="summary">{{.Summary}}</div>{{end}}
+		<div class="badges">
+			<span class="badge {{.Status}}">{{.Status}}</span>
+			{{if .ContentLang}}<span class="badge">{{.ContentLang}}</span>{{end}}
+			{{if .FetchError}}<span class="badge failed" title="{{.FetchError}}">error</span>{{end}}
+		</div>
+	</div>
+	<div class="actions">
+		<a href="/links/{{.ID}}">open</a>
+		<button hx-delete="/links/{{.ID}}" hx-target="#link-{{.ID}}" hx-swap="outerHTML"
+		        hx-confirm="Delete this link?" class="danger">delete</button>
+	</div>
+</div>
+{{end}}

@@ -1,0 +1,27 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>{{.Title}} · linklore</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="/static/app.css">
+	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+<header class="topbar">
+	<h1><a href="/">linklore</a></h1>
+	<input type="search" name="q" placeholder="search…"
+	       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
+	<nav>
+		<a href="/">collections</a>
+		<a href="/inbox">inbox</a>
+		<a href="/chat">chat</a>
+		<a href="/tags">tags</a>
+	</nav>
+</header>
+<main>
+	<div id="search-results"></div>
+	{{template "content" .}}
+</main>
+</body>
+</html>{{end}}
