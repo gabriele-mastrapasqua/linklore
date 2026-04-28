@@ -7,7 +7,7 @@
 	<link rel="stylesheet" href="/static/app.css">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
-<body>
+<body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
 	<h1><a href="/">linklore</a></h1>
 	<input type="search" name="q" placeholder="search…"
@@ -18,6 +18,10 @@
 		<a href="/chat">chat</a>
 		<a href="/tags">tags</a>
 		<a href="/bookmarklet">+</a>
+		<button hx-post="/preferences/previews" hx-swap="none" title="toggle image previews"
+		        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
+			previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
+		</button>
 	</nav>
 </header>
 <main>

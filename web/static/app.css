@@ -94,3 +94,36 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
 
 img.thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; }
+
+/* Link preview block: favicon + primary thumbnail + extra image strip.
+   Toggled globally with body.previews-off. We never download these —
+   the <img src> points straight to the upstream host, so the browser
+   handles caching and we keep storage tiny. */
+.body.previews-off .preview,
+body.previews-off .preview { display: none !important; }
+
+.preview-favicon {
+	width: 16px; height: 16px;
+	vertical-align: middle;
+	margin-right: .35rem;
+	border-radius: 3px;
+	background: #fff;
+	flex-shrink: 0;
+}
+.preview-primary {
+	width: 110px; height: 75px; object-fit: cover;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: #fafafa;
+}
+.preview-strip {
+	display: flex; flex-wrap: wrap; gap: .35rem;
+	margin-top: .4rem;
+}
+.preview-strip img {
+	width: 56px; height: 40px; object-fit: cover;
+	border-radius: 4px; border: 1px solid var(--border);
+	background: #fafafa;
+}
+.link-row { align-items: stretch; }
+.link-row .preview-col { flex-shrink: 0; }

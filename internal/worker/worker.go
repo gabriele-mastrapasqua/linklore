@@ -158,7 +158,9 @@ func (w *Worker) processFetch(ctx context.Context, l storage.Link) {
 		}
 	}
 	contentLang := lang.Detect(a.ContentMD)
-	if err := w.store.UpdateLinkExtraction(ctx, l.ID, a.Title, a.Description, a.ImageURL, a.ContentMD, contentLang, archivePath); err != nil {
+	if err := w.store.UpdateLinkExtractionFull(ctx, l.ID,
+		a.Title, a.Description, a.ImageURL, a.FaviconURL, a.ExtraImages,
+		a.ContentMD, contentLang, archivePath); err != nil {
 		w.logger.Printf("worker: persist extraction %d: %v", l.ID, err)
 		return
 	}

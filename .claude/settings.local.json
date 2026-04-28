@@ -66,7 +66,12 @@
       "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+veloce&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
       "Bash(make test *)",
       "Bash(echo \"GET /chat -> $\\(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/chat\\)\")",
-      "Bash(curl -sS --max-time 30 -X POST -d 'message=spiegami+bitnet&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)"
+      "Bash(curl -sS --max-time 30 -X POST -d 'message=spiegami+bitnet&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
+      "Bash(perl -i -pe 's/s\\\\.renderPage\\\\\\(w, \"\\(collections|links|link_detail|reader|tags|tag_detail|bookmarklet|search|chat\\)\"/s.renderPageRq\\(w, r, \"$1\"/g' internal/server/server.go)",
+      "Bash(curl -s -o /tmp/h.html -w '%{http_code}' http://127.0.0.1:8080/)",
+      "Bash(echo \"GET / -> $\\(curl -s -o /tmp/h.html -w '%{http_code}' http://127.0.0.1:8080/\\)\")",
+      "Bash(curl -sS -i -X POST http://127.0.0.1:8080/preferences/previews)",
+      "Bash(curl -s -b 'show_previews=0' -o /tmp/h2.html -w '%{http_code}\\\\n' http://127.0.0.1:8080/)"
     ]
   }
 }

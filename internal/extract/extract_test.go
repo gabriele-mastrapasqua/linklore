@@ -82,6 +82,84 @@ func TestExtract_spa_fallsBackToBody(t *testing.T) {
 	}
 }
 
+func TestExtract_faviconAndExtraImages(t *testing.T) {
+	html := `<!doctype html><html><head>
+<title>News</title>
+<link rel="icon" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple.png">
+<meta property="og:image" content="https://cdn.example.com/cover.jpg">
+<meta property="og:image" content="https://cdn.example.com/cover-2.jpg">
+<meta name="twitter:image" content="https://cdn.example.com/tw.png">
+<meta name="description" content="d">
+</head><body>
+<article>
+<p>This article has more than enough body text to satisfy readability — at least a couple of paragraphs of substantive content so the extraction path runs through the full readability primary branch instead of the SPA fallback. Lorem ipsum dolor sit amet consectetur.</p>
+<img src="/article/inline-1.jpg" width="600" height="400">
+<img src="https://cdn.example.com/inline-2.jpg">
+<img src="data:image/png;base64,xxx">
+<img src="/tracking.gif" width="1" height="1">
+</article>
+</body></html>`
+
+	a, err := Extract(html, "https://news.example.com/post/42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Apple-touch-icon wins over <link rel="icon"> in our priority list.
+	if a.FaviconURL != "https://news.example.com/apple.png" {
+		t.Errorf("favicon = %q", a.FaviconURL)
+	}
+	// readability may pick either of the two og:image declarations as the
+	// primary. Whichever wins, all four expected images must be visible
+	// across primary + extras, the primary must not appear in extras, and
+	// data:/tracker images must never show up.
+	all := append([]string{a.ImageURL}, a.ExtraImages...)
+	want := []string{
+		"https://cdn.example.com/cover.jpg",
+		"https://cdn.example.com/cover-2.jpg",
+		"https://cdn.example.com/tw.png",
+		"https://news.example.com/article/inline-1.jpg",
+		"https://cdn.example.com/inline-2.jpg",
+	}
+	for _, w := range want {
+		found := false
+		for _, g := range all {
+			if g == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing image %q in primary+extras: primary=%q extras=%v",
+				w, a.ImageURL, a.ExtraImages)
+		}
+	}
+	// Primary must not appear among extras.
+	for _, g := range a.ExtraImages {
+		if g == a.ImageURL {
+			t.Errorf("primary leaked into extras: %v", a.ExtraImages)
+		}
+	}
+	// data: URIs and 1×1 trackers must be filtered out.
+	for _, g := range a.ExtraImages {
+		if strings.HasPrefix(g, "data:") {
+			t.Errorf("data: URI leaked: %v", a.ExtraImages)
+		}
+		if strings.Contains(g, "tracking.gif") {
+			t.Errorf("tracker leaked: %v", a.ExtraImages)
+		}
+	}
+}
+
+func TestExtract_faviconFallbackToRoot(t *testing.T) {
+	html := `<html><head><title>X</title></head><body>` +
+		strings.Repeat("hello world ", 50) + `</body></html>`
+	a, _ := Extract(html, "https://news.example.com/post")
+	if a.FaviconURL != "https://news.example.com/favicon.ico" {
+		t.Errorf("favicon fallback = %q", a.FaviconURL)
+	}
+}
+
 func TestExtract_emptyHTML(t *testing.T) {
 	if _, err := Extract("", ""); err == nil {
 		t.Fatal("expected error on empty input")

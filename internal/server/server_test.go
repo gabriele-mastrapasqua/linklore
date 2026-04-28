@@ -398,6 +398,55 @@ func TestChatPage_emptyLibraryHint(t *testing.T) {
 	}
 }
 
+func TestPreviewsToggle_defaultOnAndCookieFlips(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	// Default: home page should have body class previews-on.
+	code, body := get(t, ts, "/")
+	if code != 200 {
+		t.Fatalf("home: %d", code)
+	}
+	if !strings.Contains(body, `class="previews-on"`) {
+		t.Errorf("expected previews-on on body by default")
+	}
+
+	// POST /preferences/previews → should set show_previews=0 cookie + HX-Refresh.
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/preferences/previews", nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("toggle: %d", resp.StatusCode)
+	}
+	if resp.Header.Get("HX-Refresh") != "true" {
+		t.Errorf("missing HX-Refresh header")
+	}
+	var seenCookie bool
+	for _, c := range resp.Cookies() {
+		if c.Name == "show_previews" && c.Value == "0" {
+			seenCookie = true
+		}
+	}
+	if !seenCookie {
+		t.Errorf("show_previews cookie not set to 0")
+	}
+
+	// Now request home with the cookie present → body class flips.
+	req2, _ := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	req2.AddCookie(&http.Cookie{Name: "show_previews", Value: "0"})
+	resp2, err := ts.Client().Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	body2, _ := io.ReadAll(resp2.Body)
+	if !strings.Contains(string(body2), `class="previews-off"`) {
+		t.Errorf("expected previews-off after toggle, got: %s", string(body2)[:200])
+	}
+}
+
 func TestRefetchReindex_returnsFragmentWithQueuedBadge(t *testing.T) {
 	st, err := storage.Open(context.Background(), ":memory:")
 	if err != nil {

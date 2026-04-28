@@ -19,6 +19,8 @@ var migrations = []string{
 		title         TEXT,
 		description   TEXT,
 		image_url     TEXT,
+		favicon_url   TEXT,
+		extra_images  TEXT,                  -- JSON-encoded []string of extra image URLs
 		content_md    TEXT,
 		content_lang  TEXT,
 		summary       TEXT,

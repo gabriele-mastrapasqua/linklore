@@ -41,7 +41,9 @@ type Article struct {
 	URL         string
 	Title       string
 	Description string
-	ImageURL    string
+	ImageURL    string   // primary image (og:image / twitter:image)
+	ExtraImages []string // additional images found in the article body / page
+	FaviconURL  string   // resolved favicon URL (icon, shortcut icon, apple-touch-icon)
 	ContentMD   string
 	RawHTML     string // kept around for optional gzip archiving by the worker
 }
@@ -114,6 +116,8 @@ func Extract(html, sourceURL string) (*Article, error) {
 	// Always inspect <meta> tags — readability sometimes drops the OG image.
 	if doc, derr := goquery.NewDocumentFromReader(strings.NewReader(html)); derr == nil {
 		applyMetaFallbacks(doc, a)
+		a.FaviconURL = extractFavicon(doc, parsed)
+		a.ExtraImages = extractImages(doc, parsed, a.ImageURL)
 	}
 
 	// Fallback if readability bailed out or produced too little.
@@ -161,6 +165,107 @@ func applyMetaFallbacks(doc *goquery.Document, a *Article) {
 func metaContent(doc *goquery.Document, sel string) string {
 	v, _ := doc.Find(sel).First().Attr("content")
 	return strings.TrimSpace(v)
+}
+
+// extractFavicon walks the typical <link rel="..."> declarations in the
+// document head and returns an absolute URL, or "" if nothing usable.
+// We don't download — the caller stores only the URL and renders it
+// straight from the upstream host.
+func extractFavicon(doc *goquery.Document, base *url.URL) string {
+	// Selectors in priority order. The first match wins.
+	selectors := []string{
+		`link[rel="apple-touch-icon"]`,
+		`link[rel="icon"]`,
+		`link[rel="shortcut icon"]`,
+		`link[rel="mask-icon"]`,
+	}
+	for _, sel := range selectors {
+		if href, ok := doc.Find(sel).First().Attr("href"); ok {
+			if abs := absoluteURL(base, strings.TrimSpace(href)); abs != "" {
+				return abs
+			}
+		}
+	}
+	// Last-resort: /favicon.ico at the site root.
+	if base != nil && base.Host != "" {
+		return base.Scheme + "://" + base.Host + "/favicon.ico"
+	}
+	return ""
+}
+
+// extractImages returns up to ~6 distinct image URLs from the page body,
+// excluding the primary one (already in Article.ImageURL). Sources:
+// inline <img>, og:image:additional, twitter:image:src duplicates skipped.
+// Tiny tracking pixels (1×1) and data: URIs are filtered out.
+func extractImages(doc *goquery.Document, base *url.URL, primary string) []string {
+	const maxImages = 6
+	seen := map[string]struct{}{}
+	if primary != "" {
+		seen[primary] = struct{}{}
+	}
+	out := make([]string, 0, maxImages)
+
+	add := func(raw string) bool {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || strings.HasPrefix(raw, "data:") {
+			return false
+		}
+		abs := absoluteURL(base, raw)
+		if abs == "" {
+			return false
+		}
+		if _, dup := seen[abs]; dup {
+			return false
+		}
+		seen[abs] = struct{}{}
+		out = append(out, abs)
+		return len(out) >= maxImages
+	}
+
+	// Additional og:image declarations (some pages emit several).
+	doc.Find(`meta[property="og:image"], meta[property="og:image:url"], meta[name="twitter:image"]`).
+		EachWithBreak(func(_ int, sel *goquery.Selection) bool {
+			v, _ := sel.Attr("content")
+			return !add(v)
+		})
+	if len(out) >= maxImages {
+		return out
+	}
+
+	// Inline article images. We crudely filter by size attribute when the
+	// page bothers to set one — that catches most tracking pixels.
+	doc.Find("article img, main img, .post img, .entry img, body img").
+		EachWithBreak(func(_ int, sel *goquery.Selection) bool {
+			if w, ok := sel.Attr("width"); ok {
+				if w == "1" || w == "0" {
+					return true
+				}
+			}
+			if src, ok := sel.Attr("src"); ok {
+				return !add(src)
+			}
+			return true
+		})
+	return out
+}
+
+// absoluteURL resolves possibly-relative href against base. Returns "" when
+// the href is empty or unparseable.
+func absoluteURL(base *url.URL, href string) string {
+	if href == "" {
+		return ""
+	}
+	u, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+	if u.IsAbs() {
+		return u.String()
+	}
+	if base == nil {
+		return ""
+	}
+	return base.ResolveReference(u).String()
 }
 
 // stripAndConvertBody drops navs/scripts/styles from <body> and converts the

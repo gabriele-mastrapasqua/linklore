@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -84,6 +85,26 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migration %d: %w\n--SQL--\n%s", i, err, stmt)
 		}
 	}
+	// Idempotent ADD COLUMNs for fields introduced after a deployment may
+	// already exist. SQLite's ALTER TABLE ADD COLUMN errors out on a
+	// duplicate, so we swallow that exact error and keep going.
+	addColumns := map[string][]struct{ name, ddl string }{
+		"links": {
+			{"favicon_url", "TEXT"},
+			{"extra_images", "TEXT"},
+		},
+	}
+	for table, cols := range addColumns {
+		for _, c := range cols {
+			q := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, c.name, c.ddl)
+			if _, err := s.db.ExecContext(ctx, q); err != nil {
+				// "duplicate column name" is the harmless case.
+				if !strings.Contains(err.Error(), "duplicate column") {
+					return fmt.Errorf("alter %s.%s: %w", table, c.name, err)
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -103,7 +124,9 @@ type Link struct {
 	URL          string
 	Title        string
 	Description  string
-	ImageURL     string
+	ImageURL     string   // primary preview image (og:image / twitter:image)
+	FaviconURL   string   // site icon URL — never downloaded, just rendered
+	ExtraImages  []string // additional images found on the page
 	ContentMD    string
 	ContentLang  string
 	Summary      string
@@ -333,6 +356,7 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, collection_id, url,
 		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        fetched_at, created_at
@@ -347,6 +371,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, collection_id, url,
 		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        fetched_at, created_at
@@ -372,8 +397,10 @@ func scanLink(scan func(...any) error) (*Link, error) {
 	var l Link
 	var readAt, fetchedAt sql.NullInt64
 	var createdAt int64
+	var extraJSON string
 	err := scan(&l.ID, &l.CollectionID, &l.URL,
 		&l.Title, &l.Description, &l.ImageURL,
+		&l.FaviconURL, &extraJSON,
 		&l.ContentMD, &l.ContentLang, &l.Summary,
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
 		&fetchedAt, &createdAt)
@@ -382,6 +409,12 @@ func scanLink(scan func(...any) error) (*Link, error) {
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	if extraJSON != "" {
+		// Tolerate legacy rows that may carry junk: a malformed list just
+		// degrades gracefully to "no extra images" instead of poisoning
+		// the read path.
+		_ = json.Unmarshal([]byte(extraJSON), &l.ExtraImages)
 	}
 	if readAt.Valid {
 		t := time.Unix(readAt.Int64, 0).UTC()
@@ -397,13 +430,35 @@ func scanLink(scan func(...any) error) (*Link, error) {
 
 // UpdateLinkExtraction persists the extraction outputs and bumps status.
 func (s *Store) UpdateLinkExtraction(ctx context.Context, id int64, title, desc, imageURL, contentMD, lang, archivePath string) error {
+	return s.UpdateLinkExtractionFull(ctx, id, title, desc, imageURL, "", nil, contentMD, lang, archivePath)
+}
+
+// UpdateLinkExtractionFull is the richer variant that also persists the
+// favicon URL and extra images. Worker code uses this. Old call sites
+// (mostly tests) still hit UpdateLinkExtraction which is a thin wrapper.
+func (s *Store) UpdateLinkExtractionFull(ctx context.Context, id int64,
+	title, desc, imageURL, faviconURL string, extraImages []string,
+	contentMD, lang, archivePath string) error {
+
+	var extraJSON string
+	if len(extraImages) > 0 {
+		b, err := json.Marshal(extraImages)
+		if err != nil {
+			return fmt.Errorf("marshal extra images: %w", err)
+		}
+		extraJSON = string(b)
+	}
 	now := time.Now().UTC().Unix()
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE links
-		   SET title = ?, description = ?, image_url = ?, content_md = ?,
-		       content_lang = ?, archive_path = ?, status = ?, fetched_at = ?, fetch_error = ''
+		   SET title = ?, description = ?, image_url = ?,
+		       favicon_url = ?, extra_images = ?,
+		       content_md = ?, content_lang = ?, archive_path = ?,
+		       status = ?, fetched_at = ?, fetch_error = ''
 		 WHERE id = ?`,
-		title, desc, imageURL, contentMD, lang, archivePath, StatusFetched, now, id)
+		title, desc, imageURL, faviconURL, extraJSON,
+		contentMD, lang, archivePath,
+		StatusFetched, now, id)
 	return err
 }
 
@@ -461,6 +516,7 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, collection_id, url,
 		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        fetched_at, created_at
@@ -769,6 +825,7 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT l.id, l.collection_id, l.url,
 		       COALESCE(l.title,''), COALESCE(l.description,''), COALESCE(l.image_url,''),
+		       COALESCE(l.favicon_url,''), COALESCE(l.extra_images,''),
 		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
 		       l.fetched_at, l.created_at

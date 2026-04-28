@@ -5,6 +5,7 @@
      {{end}}>
 	<div class="meta">
 		<div class="title">
+			{{if .FaviconURL}}<img src="{{.FaviconURL}}" alt="" class="preview preview-favicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">{{end}}
 			<a href="/links/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
 		</div>
 		<div class="url">{{.URL}}</div>
@@ -14,7 +15,19 @@
 			{{if .ContentLang}}<span class="badge">{{.ContentLang}}</span>{{end}}
 			{{if .FetchError}}<span class="badge failed" title="{{.FetchError}}">error</span>{{end}}
 		</div>
+		{{if .ExtraImages}}
+		<div class="preview preview-strip">
+			{{range .ExtraImages}}
+			<img src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">
+			{{end}}
+		</div>
+		{{end}}
 	</div>
+	{{if .ImageURL}}
+	<div class="preview-col preview">
+		<img src="{{.ImageURL}}" alt="" class="preview-primary" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">
+	</div>
+	{{end}}
 	<div class="actions">
 		<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">open link ↗</a>
 		<button hx-delete="/links/{{.ID}}" hx-target="#link-{{.ID}}" hx-swap="outerHTML"

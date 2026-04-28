@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 
 	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
+	mux.HandleFunc("POST /preferences/previews", s.handleTogglePreviews)
 
 	mux.HandleFunc("GET /chat", s.handleChatPage)
 	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
@@ -112,7 +113,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.renderPage(w, "collections", map[string]any{
+	s.renderPageRq(w, r, "collections", map[string]any{
 		"Title":       "Collections",
 		"Collections": cols,
 	})
@@ -151,7 +152,7 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
-	s.renderPage(w, "links", map[string]any{
+	s.renderPageRq(w, r, "links", map[string]any{
 		"Title":      col.Name,
 		"Collection": col,
 		"Links":      links,
@@ -210,7 +211,7 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
 	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
-	s.renderPage(w, "link_detail", map[string]any{
+	s.renderPageRq(w, r, "link_detail", map[string]any{
 		"Title":      "Link",
 		"Link":       link,
 		"Collection": col,
@@ -246,7 +247,7 @@ func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, err)
 		return
 	}
-	s.renderPage(w, "reader", map[string]any{
+	s.renderPageRq(w, r, "reader", map[string]any{
 		"Title":   firstNonEmpty(link.Title, link.URL),
 		"Link":    link,
 		"Article": reader.Render(link.ContentMD),
@@ -373,7 +374,7 @@ func (s *Server) handleTagsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	active, _ := s.store.CountActiveTags(r.Context())
-	s.renderPage(w, "tags", map[string]any{
+	s.renderPageRq(w, r, "tags", map[string]any{
 		"Title":  "Tags",
 		"Tags":   counts,
 		"Active": active,
@@ -393,7 +394,7 @@ func (s *Server) handleTagDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.renderPage(w, "tag_detail", map[string]any{
+	s.renderPageRq(w, r, "tag_detail", map[string]any{
 		"Title": "#" + tag.Slug,
 		"Tag":   tag,
 		"Links": links,
@@ -440,8 +441,8 @@ func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(xml))
 }
 
-func (s *Server) handleBookmarkletPage(w http.ResponseWriter, _ *http.Request) {
-	s.renderPage(w, "bookmarklet", map[string]any{"Title": "Bookmarklet"})
+func (s *Server) handleBookmarkletPage(w http.ResponseWriter, r *http.Request) {
+	s.renderPageRq(w, r, "bookmarklet", map[string]any{"Title": "Bookmarklet"})
 }
 
 // handleAPILinks accepts {url, collection?} as form-encoded or JSON. It is
@@ -489,6 +490,38 @@ func firstNonEmpty(xs ...string) string {
 	return ""
 }
 
+// previewsEnabled reads the show_previews cookie. Default ON: only an
+// explicit "0" disables image/favicon previews so people who actively
+// turned them off keep their choice across requests.
+func previewsEnabled(r *http.Request) bool {
+	if c, err := r.Cookie("show_previews"); err == nil {
+		return c.Value != "0"
+	}
+	return true
+}
+
+// handleTogglePreviews flips the show_previews cookie and reloads the
+// caller (HTMX-friendly: returns the new label fragment + sets the
+// HX-Refresh header so the page picks up the new state immediately).
+func (s *Server) handleTogglePreviews(w http.ResponseWriter, r *http.Request) {
+	on := previewsEnabled(r)
+	newVal := "1"
+	if on {
+		newVal = "0"
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: "show_previews", Value: newVal, Path: "/", MaxAge: 60 * 60 * 24 * 365,
+		HttpOnly: false, SameSite: http.SameSiteLaxMode,
+	})
+	w.Header().Set("HX-Refresh", "true")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if newVal == "1" {
+		_, _ = w.Write([]byte(`previews: <strong>on</strong>`))
+	} else {
+		_, _ = w.Write([]byte(`previews: <strong>off</strong>`))
+	}
+}
+
 func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 	n, err := s.store.CountInProgress(r.Context())
 	if err != nil {
@@ -506,7 +539,7 @@ func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	results := s.runSearch(r.Context(), q, 0, 20)
-	s.renderPage(w, "search", map[string]any{
+	s.renderPageRq(w, r, "search", map[string]any{
 		"Title":   "Search",
 		"Query":   q,
 		"Results": results,
@@ -543,7 +576,7 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	counts, _ := s.store.LinkStatusCounts(r.Context())
-	s.renderPage(w, "chat", map[string]any{
+	s.renderPageRq(w, r, "chat", map[string]any{
 		"Title":      "Chat",
 		"Ready":      counts.Ready,
 		"InProgress": counts.InProgress,
@@ -661,6 +694,17 @@ func (s *Server) renderPage(w http.ResponseWriter, name string, data any) {
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("render %s: %v", name, err)
 	}
+}
+
+// renderPageRq is a thin wrapper that injects per-request layout state
+// (currently: the user's preview-toggle preference) into the page data
+// so base.html can pick the right body class.
+func (s *Server) renderPageRq(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["Previews"] = previewsEnabled(r)
+	s.renderPage(w, name, data)
 }
 
 func (s *Server) renderFragment(w http.ResponseWriter, name string, data any) {
