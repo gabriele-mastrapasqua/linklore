@@ -63,18 +63,22 @@ header.topbar input[type="search"] {
 header.topbar nav a { color: var(--muted); text-decoration: none; margin-right: 0.75rem; }
 header.topbar nav a:hover { color: #111; }
 
-main { max-width: 980px; margin: 0 auto; padding: var(--gap); flex: 1; min-width: 0; }
+main {
+	flex: 1;
+	min-width: 0;
+	padding: var(--gap);
+	padding-right: calc(var(--gap) * 2);
+}
 
 .layout {
 	display: flex;
 	gap: var(--gap);
-	max-width: 1280px;
-	margin: 0 auto;
+	width: 100%;
 	align-items: flex-start;
 }
 .sidebar {
 	flex-shrink: 0;
-	width: 220px;
+	width: 260px;
 	padding: var(--gap) 0 var(--gap) var(--gap);
 	position: sticky;
 	top: 56px; /* below the topbar */

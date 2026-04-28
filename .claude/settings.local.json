@@ -76,7 +76,11 @@
       "Bash(curl -s -o /tmp/d.html -w '%{http_code}' http://127.0.0.1:8080/links/2)",
       "Bash(echo \"GET /links/2 -> $\\(curl -s -o /tmp/d.html -w '%{http_code}' http://127.0.0.1:8080/links/2\\)\")",
       "Bash(curl -s -o /tmp/s.html -w '%{http_code}' 'http://127.0.0.1:8080/search?q=bit')",
-      "Bash(echo \"GET /search?q=bit -> $\\(curl -s -o /tmp/s.html -w '%{http_code}' 'http://127.0.0.1:8080/search?q=bit'\\)\")"
+      "Bash(echo \"GET /search?q=bit -> $\\(curl -s -o /tmp/s.html -w '%{http_code}' 'http://127.0.0.1:8080/search?q=bit'\\)\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/static/dnd.js)",
+      "Bash(echo \"GET /static/dnd.js -> $\\(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/static/dnd.js\\)\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz/llm)",
+      "Bash(echo \"GET /healthz/llm -> $\\(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz/llm\\)\")"
     ]
   }
 }
