@@ -147,11 +147,43 @@
 	}
 
 	function applyOOBHTML(html) {
-		// Reuse htmx so OOB swaps in the response (stats card + empty state)
-		// take effect on the current page without reloading.
-		if (window.htmx && html) {
-			window.htmx.swap(document.body, html, { swapStyle: 'beforeend' });
-		}
+		// HTMX only processes hx-swap-oob attributes during real HX
+		// responses — not when we feed it a fragment via htmx.swap.
+		// We do the OOB pass ourselves: parse the fragment, walk every
+		// element carrying hx-swap-oob (or being a known OOB root),
+		// look up the existing element by id, and replace it.
+		if (!html) return;
+		var tpl = document.createElement('template');
+		tpl.innerHTML = html.trim();
+		// Two forms supported:
+		//   1) the element itself has hx-swap-oob (preferred — the
+		//      standard HTMX form, e.g. our sidebar entry).
+		//   2) a wrapping <div id="X" hx-swap-oob="outerHTML"> contains
+		//      the new content (the stats card uses this pattern).
+		var nodes = Array.prototype.slice.call(tpl.content.children);
+		nodes.forEach(function (node) {
+			if (!node || node.nodeType !== 1) return;
+			var oob = node.getAttribute('hx-swap-oob');
+			if (!oob) return;
+			var id = node.id;
+			if (!id) {
+				// Wrapper form: replace its id-bearing first-child.
+				var inner = node.firstElementChild;
+				if (!inner || !inner.id) return;
+				id = inner.id;
+			}
+			var existing = document.getElementById(id);
+			if (!existing) return;
+			// outerHTML replace. If the source was the wrapper form
+			// (<wrapper hx-swap-oob><inner id="…">…</inner></wrapper>),
+			// we replace the existing element with the inner — that's
+			// what the wrapper means.
+			var replacement = node;
+			if (node.id !== id) replacement = node.firstElementChild;
+			if (!replacement) return;
+			replacement.removeAttribute('hx-swap-oob');
+			existing.replaceWith(replacement);
+		});
 	}
 
 	function postForm(url, params) {

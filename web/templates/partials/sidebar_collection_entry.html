@@ -1,0 +1,13 @@
+{{define "sidebar_collection_entry"}}
+{{$cs := .Cs}}
+{{$active := .ActiveSlug}}
+<a id="sidebar-collection-{{$cs.ID}}"
+   href="/c/{{$cs.Slug}}"
+   class="sidebar-link {{if eq $active $cs.Slug}}active{{end}}"
+   data-collection-id="{{$cs.ID}}" data-collection-slug="{{$cs.Slug}}">
+	<span class="sidebar-name">{{$cs.Name}}</span>
+	<span class="sidebar-count">{{$cs.Total}}</span>
+	{{if gt $cs.InProgress 0}}<span class="sidebar-pip pending" title="{{$cs.InProgress}} processing"></span>{{end}}
+	{{if gt $cs.Failed 0}}<span class="sidebar-pip failed" title="{{$cs.Failed}} failed"></span>{{end}}
+</a>
+{{end}}

@@ -5,13 +5,7 @@
 		<nav>
 			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">All</a>
 			{{range .Sidebar}}
-			<a href="/c/{{.Slug}}" class="sidebar-link {{if eq $.ActiveSlug .Slug}}active{{end}}"
-			   data-collection-id="{{.ID}}" data-collection-slug="{{.Slug}}">
-				<span class="sidebar-name">{{.Name}}</span>
-				<span class="sidebar-count">{{.Total}}</span>
-				{{if gt .InProgress 0}}<span class="sidebar-pip pending" title="{{.InProgress}} processing"></span>{{end}}
-				{{if gt .Failed 0}}<span class="sidebar-pip failed" title="{{.Failed}} failed"></span>{{end}}
-			</a>
+			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}
 			{{else}}
 			<div class="muted" style="padding:.4rem .6rem">none yet</div>
 			{{end}}

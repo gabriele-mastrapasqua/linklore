@@ -87,7 +87,11 @@
       "Bash(pkill -9 -f 'bin/linklore')",
       "Bash(curl -s http://127.0.0.1:8080/static/dnd.js)",
       "Bash(echo \"Has onDragEnter? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)",
-      "Bash(echo \"Has buildDragImage in served dnd.js? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)"
+      "Bash(echo \"Has buildDragImage in served dnd.js? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)",
+      "Bash(curl -s http://127.0.0.1:8080/)",
+      "Bash(curl -s -X POST -d 'collection_slug=ai' http://127.0.0.1:8080/links/4/move)",
+      "Bash(curl -s -X POST -d 'collection_slug=dgx' http://127.0.0.1:8080/links/1/move)",
+      "Bash(echo \"Has applyOOBHTML manual parser? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)"
     ]
   }
 }

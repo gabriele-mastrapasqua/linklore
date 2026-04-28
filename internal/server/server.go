@@ -194,8 +194,9 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeCollectionStatsOOB appends an out-of-band swap that re-renders
-// the collection's stats card with up-to-date counters. HTMX picks it up
-// because of the `hx-swap-oob` attribute on the wrapper.
+// the collection's stats card with up-to-date counters AND the matching
+// sidebar entry (so its count badge reflects the change too). HTMX picks
+// both up because of the hx-swap-oob attribute.
 func (s *Server) writeCollectionStatsOOB(w http.ResponseWriter, ctx context.Context, col *storage.Collection) {
 	stats, err := s.store.CollectionStatsByID(ctx, col.ID)
 	if err != nil {
@@ -207,6 +208,19 @@ func (s *Server) writeCollectionStatsOOB(w http.ResponseWriter, ctx context.Cont
 		"Stats":      stats,
 	})
 	fmt.Fprint(w, "</div>")
+
+	// Sidebar entry refresh: render the partial, then inject the
+	// hx-swap-oob attribute so HTMX picks the new <a> up by id and
+	// replaces the existing sidebar item in place.
+	var sb strings.Builder
+	if err := s.r.partials.ExecuteTemplate(&sb, "sidebar_collection_entry", map[string]any{
+		"Cs":         stats,
+		"ActiveSlug": "",
+	}); err == nil {
+		// Inject hx-swap-oob on the rendered <a> tag.
+		out := strings.Replace(sb.String(), "<a ", `<a hx-swap-oob="outerHTML" `, 1)
+		fmt.Fprint(w, "\n", out)
+	}
 }
 
 // writeEmptyStateOOB shows or hides the "No links yet" placeholder.
