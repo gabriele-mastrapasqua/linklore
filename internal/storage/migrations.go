@@ -28,6 +28,7 @@ var migrations = []string{
 		read_at       INTEGER,
 		fetch_error   TEXT,
 		archive_path  TEXT,
+		order_idx     REAL NOT NULL DEFAULT 0,  -- sparse, midpoint-insert friendly
 		fetched_at    INTEGER,
 		created_at    INTEGER NOT NULL,
 		UNIQUE(collection_id, url)
@@ -73,6 +74,10 @@ var migrations = []string{
 		value      TEXT NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`,
+
+	// Idempotent: noop on a fresh DB (links is created with order_idx
+	// inline, see the alter step in storage.migrate). Kept here so the
+	// schema-creation order is documented in one place.
 
 	`CREATE INDEX IF NOT EXISTS idx_links_collection ON links(collection_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_links_status     ON links(status)`,

@@ -92,6 +92,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		"links": {
 			{"favicon_url", "TEXT"},
 			{"extra_images", "TEXT"},
+			{"order_idx", "REAL NOT NULL DEFAULT 0"},
 		},
 	}
 	for table, cols := range addColumns {
@@ -134,6 +135,7 @@ type Link struct {
 	ReadAt       *time.Time
 	FetchError   string
 	ArchivePath  string
+	OrderIdx     float64
 	FetchedAt    *time.Time
 	CreatedAt    time.Time
 }
@@ -364,14 +366,16 @@ func (s *Store) CreateLink(ctx context.Context, collectionID int64, urlStr strin
 		return nil, fmt.Errorf("url required")
 	}
 	now := time.Now().UTC()
+	top, _ := s.maxOrderIdx(ctx, collectionID)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO links(collection_id, url, status, created_at) VALUES (?, ?, ?, ?)`,
-		collectionID, urlStr, StatusPending, now.Unix())
+		`INSERT INTO links(collection_id, url, status, order_idx, created_at) VALUES (?, ?, ?, ?, ?)`,
+		collectionID, urlStr, StatusPending, top+1.0, now.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("insert link: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return &Link{ID: id, CollectionID: collectionID, URL: urlStr, Status: StatusPending, CreatedAt: now}, nil
+	return &Link{ID: id, CollectionID: collectionID, URL: urlStr,
+		Status: StatusPending, OrderIdx: top + 1.0, CreatedAt: now}, nil
 }
 
 func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
@@ -381,7 +385,7 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        fetched_at, created_at
+		        order_idx, fetched_at, created_at
 		 FROM links WHERE id = ?`, id)
 	return scanLink(row.Scan)
 }
@@ -396,8 +400,9 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        fetched_at, created_at
-		 FROM links WHERE collection_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+		        order_idx, fetched_at, created_at
+		 FROM links WHERE collection_id = ?
+		 ORDER BY order_idx DESC, created_at DESC LIMIT ? OFFSET ?`,
 		collectionID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -425,7 +430,7 @@ func scanLink(scan func(...any) error) (*Link, error) {
 		&l.FaviconURL, &extraJSON,
 		&l.ContentMD, &l.ContentLang, &l.Summary,
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
-		&fetchedAt, &createdAt)
+		&l.OrderIdx, &fetchedAt, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -531,19 +536,105 @@ func (s *Store) DeleteLink(ctx context.Context, id int64) error {
 
 // MoveLink reassigns a link to a different collection. Refuses to move
 // to an unknown collection (returns ErrNotFound). Order within the
-// destination is appended (highest order_idx + 1).
+// destination is the new top (max(order_idx)+1) so it lands on top.
 func (s *Store) MoveLink(ctx context.Context, linkID, dstCollectionID int64) error {
 	if _, err := s.GetCollectionBySlugByID(ctx, dstCollectionID); err != nil {
 		return err
 	}
+	top, _ := s.maxOrderIdx(ctx, dstCollectionID)
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE links SET collection_id = ? WHERE id = ?`, dstCollectionID, linkID)
+		`UPDATE links SET collection_id = ?, order_idx = ? WHERE id = ?`,
+		dstCollectionID, top+1.0, linkID)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	return nil
+}
+
+// maxOrderIdx returns the highest order_idx in a collection (0 when empty).
+func (s *Store) maxOrderIdx(ctx context.Context, collectionID int64) (float64, error) {
+	var v sql.NullFloat64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(order_idx) FROM links WHERE collection_id = ?`,
+		collectionID).Scan(&v)
+	if err != nil {
+		return 0, err
+	}
+	if !v.Valid {
+		return 0, nil
+	}
+	return v.Float64, nil
+}
+
+// ReorderLink positions linkID inside its current (or new) collection
+// either before or after pivotID. Sparse REAL ordering — we pick a
+// midpoint between the pivot and its neighbour so we don't have to
+// renumber the whole list. Cross-collection moves are supported by
+// passing dstCollectionID > 0 (use 0 to keep the link in place).
+//
+// "after" = drop AFTER the pivot (visually below); "before" = drop
+// BEFORE (visually above). With ORDER BY order_idx DESC, "above" has
+// a HIGHER order_idx than the pivot.
+func (s *Store) ReorderLink(ctx context.Context, linkID, pivotID, dstCollectionID int64, after bool) error {
+	link, err := s.GetLink(ctx, linkID)
+	if err != nil {
+		return err
+	}
+	pivot, err := s.GetLink(ctx, pivotID)
+	if err != nil {
+		return err
+	}
+	colID := pivot.CollectionID
+	if dstCollectionID > 0 {
+		// Caller forced a destination; pivot must live there.
+		if pivot.CollectionID != dstCollectionID {
+			return fmt.Errorf("pivot %d not in collection %d", pivotID, dstCollectionID)
+		}
+		colID = dstCollectionID
+	}
+
+	// Find the neighbour on the side we're inserting on.
+	// With ORDER BY order_idx DESC: "before" = neighbour with bigger
+	// order_idx; "after" = neighbour with smaller order_idx.
+	var neighbour sql.NullFloat64
+	var q string
+	if after {
+		// Smallest order_idx STRICTLY LESS than pivot.
+		q = `SELECT MAX(order_idx) FROM links
+		      WHERE collection_id = ? AND order_idx < ? AND id != ?`
+	} else {
+		// Smallest order_idx STRICTLY GREATER than pivot.
+		q = `SELECT MIN(order_idx) FROM links
+		      WHERE collection_id = ? AND order_idx > ? AND id != ?`
+	}
+	if err := s.db.QueryRowContext(ctx, q, colID, pivot.OrderIdx, linkID).Scan(&neighbour); err != nil {
+		return err
+	}
+
+	var newIdx float64
+	switch {
+	case after && !neighbour.Valid:
+		// Pivot is the last → just go below it.
+		newIdx = pivot.OrderIdx - 1.0
+	case !after && !neighbour.Valid:
+		// Pivot is the first → go above.
+		newIdx = pivot.OrderIdx + 1.0
+	case after:
+		newIdx = (pivot.OrderIdx + neighbour.Float64) / 2.0
+	default:
+		newIdx = (pivot.OrderIdx + neighbour.Float64) / 2.0
+	}
+
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE links SET collection_id = ?, order_idx = ? WHERE id = ?`,
+		colID, newIdx, linkID)
+	if err != nil {
+		return err
+	}
+	_ = link // keep the reference for error context if we ever expand it
 	return nil
 }
 
@@ -559,7 +650,7 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        fetched_at, created_at
+		        order_idx, fetched_at, created_at
 		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		status, limit)
 	if err != nil {
@@ -868,7 +959,7 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 		       COALESCE(l.favicon_url,''), COALESCE(l.extra_images,''),
 		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
-		       l.fetched_at, l.created_at
+		       l.order_idx, l.fetched_at, l.created_at
 		  FROM links l
 		  JOIN link_tags lt ON lt.link_id = l.id
 		  JOIN tags t       ON t.id = lt.tag_id

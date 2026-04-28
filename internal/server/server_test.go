@@ -503,6 +503,39 @@ func TestLinkDetail_noBannerWhenAlreadySummarized(t *testing.T) {
 	}
 }
 
+func TestReorderLink_handler(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	a, _ := st.CreateLink(context.Background(), col.ID, "https://x/a")
+	b, _ := st.CreateLink(context.Background(), col.ID, "https://x/b")
+	d, _ := st.CreateLink(context.Background(), col.ID, "https://x/c")
+
+	// Move a above d.
+	code, _ := postForm(t, ts, "/links/"+i64s(a.ID)+"/reorder",
+		url.Values{"pivot_id": {i64s(d.ID)}, "position": {"before"}})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	got, _ := st.ListLinksByCollection(context.Background(), col.ID, 100, 0)
+	want := []int64{a.ID, d.ID, b.ID}
+	for i, l := range got {
+		if l.ID != want[i] {
+			t.Errorf("got[%d]=%d want %d", i, l.ID, want[i])
+		}
+	}
+}
+
+func TestReorderLink_rejectsSelf(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	code, _ := postForm(t, ts, "/links/"+i64s(l.ID)+"/reorder",
+		url.Values{"pivot_id": {i64s(l.ID)}, "position": {"after"}})
+	if code != http.StatusBadRequest {
+		t.Errorf("status=%d (want 400)", code)
+	}
+}
+
 func TestMoveLink_handler(t *testing.T) {
 	ts, st := newTestServer(t)
 	src, _ := st.CreateCollection(context.Background(), "src", "Src", "")

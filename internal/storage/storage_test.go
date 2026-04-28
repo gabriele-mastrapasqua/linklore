@@ -158,6 +158,79 @@ func TestPrefs_Roundtrip(t *testing.T) {
 	}
 }
 
+func TestReorderLink_withinSameCollection(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	a, _ := s.CreateLink(ctx, c.ID, "https://x/a") // order_idx 1
+	b, _ := s.CreateLink(ctx, c.ID, "https://x/b") // order_idx 2
+	d, _ := s.CreateLink(ctx, c.ID, "https://x/c") // order_idx 3
+
+	// Initial order top→bottom is d, b, a (highest order_idx first).
+	got, _ := s.ListLinksByCollection(ctx, c.ID, 100, 0)
+	wantOrder := []int64{d.ID, b.ID, a.ID}
+	for i, l := range got {
+		if l.ID != wantOrder[i] {
+			t.Errorf("initial[%d] = %d, want %d", i, l.ID, wantOrder[i])
+		}
+	}
+
+	// Move "a" before "d" → list becomes a, d, b.
+	if err := s.ReorderLink(ctx, a.ID, d.ID, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListLinksByCollection(ctx, c.ID, 100, 0)
+	wantOrder = []int64{a.ID, d.ID, b.ID}
+	for i, l := range got {
+		if l.ID != wantOrder[i] {
+			t.Errorf("after before: got[%d]=%d want %d", i, l.ID, wantOrder[i])
+		}
+	}
+
+	// Move "d" after "b" → list becomes a, b, d.
+	if err := s.ReorderLink(ctx, d.ID, b.ID, 0, true); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListLinksByCollection(ctx, c.ID, 100, 0)
+	wantOrder = []int64{a.ID, b.ID, d.ID}
+	for i, l := range got {
+		if l.ID != wantOrder[i] {
+			t.Errorf("after after: got[%d]=%d want %d", i, l.ID, wantOrder[i])
+		}
+	}
+}
+
+func TestReorderLink_acrossCollections(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	a, _ := s.CreateCollection(ctx, "a", "A", "")
+	b, _ := s.CreateCollection(ctx, "b", "B", "")
+	src, _ := s.CreateLink(ctx, a.ID, "https://x/1")
+	pivot, _ := s.CreateLink(ctx, b.ID, "https://x/2")
+
+	if err := s.ReorderLink(ctx, src.ID, pivot.ID, b.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetLink(ctx, src.ID)
+	if got.CollectionID != b.ID {
+		t.Errorf("collection_id = %d (want %d)", got.CollectionID, b.ID)
+	}
+	if got.OrderIdx <= pivot.OrderIdx {
+		t.Errorf("expected new order_idx ABOVE pivot: %v vs %v", got.OrderIdx, pivot.OrderIdx)
+	}
+}
+
+func TestCreateLink_orderIdxAppendsOnTop(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	a, _ := s.CreateLink(ctx, c.ID, "https://x/a")
+	b, _ := s.CreateLink(ctx, c.ID, "https://x/b")
+	if b.OrderIdx <= a.OrderIdx {
+		t.Errorf("new link should sit above the previous one: %v vs %v", b.OrderIdx, a.OrderIdx)
+	}
+}
+
 func TestMoveLink(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

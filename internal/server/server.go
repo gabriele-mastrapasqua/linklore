@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
+	mux.HandleFunc("POST /links/{id}/reorder", s.handleReorderLink)
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
 	mux.HandleFunc("GET /links/{id}/row", s.handleLinkRow)
 	mux.HandleFunc("GET /links/{id}/header", s.handleLinkHeader)
@@ -467,6 +468,56 @@ func (s *Server) handleMoveLink(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if dst != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), dst)
+	}
+}
+
+// handleReorderLink reorders a link relative to a pivot, optionally
+// across collections. Form params: pivot_id (required), position
+// ("before"|"after", default "after"). Empty body responds 200 — the
+// browser already updated optimistically; OOB stats refresh covers
+// any cross-collection cases.
+func (s *Server) handleReorderLink(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	pivotID, err := strconv.ParseInt(strings.TrimSpace(r.PostForm.Get("pivot_id")), 10, 64)
+	if err != nil || pivotID == id {
+		http.Error(w, "pivot_id required and != link id", http.StatusBadRequest)
+		return
+	}
+	after := strings.TrimSpace(r.PostForm.Get("position")) != "before"
+
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	pivot, err := s.store.GetLink(r.Context(), pivotID)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	srcID := link.CollectionID
+	if err := s.store.ReorderLink(r.Context(), id, pivotID, pivot.CollectionID, after); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Cross-collection reorder: refresh both source and destination stats.
+	if srcID != pivot.CollectionID {
+		if src, _ := s.store.GetCollectionBySlugByID(r.Context(), srcID); src != nil {
+			s.writeCollectionStatsOOB(w, r.Context(), src)
+		}
+	}
+	if dst, _ := s.store.GetCollectionBySlugByID(r.Context(), pivot.CollectionID); dst != nil {
 		s.writeCollectionStatsOOB(w, r.Context(), dst)
 	}
 }
