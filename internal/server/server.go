@@ -74,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
+	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
 	mux.HandleFunc("GET /links/{id}/row", s.handleLinkRow)
@@ -183,7 +184,53 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	s.renderFragment(w, "link_row", link)
+	s.writeCollectionStatsOOB(w, r.Context(), col)
+	s.writeEmptyStateOOB(w, true) // hide "No links yet" since we just added one
+}
+
+// writeCollectionStatsOOB appends an out-of-band swap that re-renders
+// the collection's stats card with up-to-date counters. HTMX picks it up
+// because of the `hx-swap-oob` attribute on the wrapper.
+func (s *Server) writeCollectionStatsOOB(w http.ResponseWriter, ctx context.Context, col *storage.Collection) {
+	stats, err := s.store.CollectionStatsByID(ctx, col.ID)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(w, "\n<div id=\"collection-stats-%d\" hx-swap-oob=\"outerHTML\">", col.ID)
+	s.renderFragment(w, "collection_stats", map[string]any{
+		"Collection": col,
+		"Stats":      stats,
+	})
+	fmt.Fprint(w, "</div>")
+}
+
+// writeEmptyStateOOB shows or hides the "No links yet" placeholder.
+func (s *Server) writeEmptyStateOOB(w http.ResponseWriter, hide bool) {
+	if hide {
+		fmt.Fprint(w, `<div id="links-empty" hx-swap-oob="outerHTML" hidden></div>`)
+	} else {
+		fmt.Fprint(w, `<div id="links-empty" hx-swap-oob="outerHTML"><div class="empty">No links yet.</div></div>`)
+	}
+}
+
+func (s *Server) handleCollectionStats(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	col, err := s.store.GetCollectionBySlug(r.Context(), slug)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	stats, err := s.store.CollectionStatsByID(r.Context(), col.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.renderFragment(w, "collection_stats", map[string]any{
+		"Collection": col,
+		"Stats":      stats,
+	})
 }
 
 func (s *Server) handleDeleteLink(w http.ResponseWriter, r *http.Request) {
@@ -192,12 +239,27 @@ func (s *Server) handleDeleteLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
+	// Look up the link first to know which collection to refresh stats for.
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
 	if err := s.store.DeleteLink(r.Context(), id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
 	// HTMX swaps outerHTML with empty body → row disappears.
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if col != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), col)
+		// If the collection is now empty, show the "No links yet" hint.
+		stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
+		if stats.Total == 0 {
+			s.writeEmptyStateOOB(w, false)
+		}
+	}
 }
 
 func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {

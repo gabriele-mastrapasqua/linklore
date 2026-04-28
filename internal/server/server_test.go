@@ -502,6 +502,74 @@ func TestLinkDetail_noBannerWhenAlreadySummarized(t *testing.T) {
 	}
 }
 
+func TestAddLink_OOB_updatesCountersAndEmptyState(t *testing.T) {
+	ts, st := newTestServer(t)
+	if _, err := st.CreateCollection(context.Background(), "default", "Default", ""); err != nil {
+		t.Fatal(err)
+	}
+	code, body := postForm(t, ts, "/c/default/links",
+		url.Values{"url": {"https://example.com/x"}})
+	if code != 200 {
+		t.Fatalf("status=%d body=%s", code, body)
+	}
+	for _, want := range []string{
+		`id="link-`,                              // the freshly inserted row
+		`id="collection-stats-`,                  // OOB stats wrapper
+		`hx-swap-oob="outerHTML"`,                // OOB attribute
+		`1 link`,                                 // updated counter
+		`id="links-empty"`,                       // empty-state OOB
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in OOB response: %s", want, body)
+		}
+	}
+}
+
+func TestDeleteLink_OOB_recountsAndShowsEmptyState(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+
+	code := deleteReq(t, ts, "/links/"+i64s(l.ID))
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+}
+
+func TestAddLink_hidesNoLinksYet(t *testing.T) {
+	ts, st := newTestServer(t)
+	if _, err := st.CreateCollection(context.Background(), "x", "X", ""); err != nil {
+		t.Fatal(err)
+	}
+	// Empty-state visible on first load.
+	_, body := get(t, ts, "/c/x")
+	if !strings.Contains(body, "No links yet") {
+		t.Fatalf("expected empty-state on freshly-created collection")
+	}
+	// After add, the OOB swap hides the empty-state placeholder.
+	_, body = postForm(t, ts, "/c/x/links", url.Values{"url": {"https://x"}})
+	if !strings.Contains(body, `id="links-empty" hx-swap-oob="outerHTML" hidden`) {
+		t.Errorf("OOB hidden empty-state missing: %s", body)
+	}
+}
+
+func TestCollectionStats_endpoint_returnsFragment(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "ai", "AI", "")
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://x")
+
+	code, body := get(t, ts, "/c/ai/stats")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(body, "1 link") {
+		t.Errorf("counter missing in fragment: %s", body)
+	}
+	if strings.Contains(body, "<html") {
+		t.Errorf("expected fragment, got page")
+	}
+}
+
 func TestLLMHealth_endpoint(t *testing.T) {
 	ts, _ := newTestServer(t)
 	code, body := get(t, ts, "/healthz/llm")
