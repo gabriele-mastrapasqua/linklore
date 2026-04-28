@@ -24,30 +24,38 @@
 @media (prefers-color-scheme: dark) {
 	:root[data-theme="auto"] {
 		--border: #2a2f37;
-		--muted: #94a3b8;
+		--muted: #b1bcca;
 		--bg: #0f1115;
 		--card: #1a1d23;
-		--text: #e7eaef;
-		--accent: #6ea8ff;
+		--text: #ecf0f6;
+		--accent: #7bb3ff;
 		--code-bg: #1f2329;
-		--badge-bg: #232b3d;
-		--badge-fg: #c5d0e6;
+		--badge-bg: #2a3450;
+		--badge-fg: #d6def0;
 	}
 }
 :root[data-theme="dark"] {
 	--border: #2a2f37;
-	--muted: #94a3b8;
+	--muted: #b1bcca;          /* was #94a3b8 — too gray, hard to read on dark */
 	--bg: #0f1115;
 	--card: #1a1d23;
-	--text: #e7eaef;
-	--accent: #6ea8ff;
+	--text: #ecf0f6;
+	--accent: #7bb3ff;          /* slightly lighter for link contrast */
 	--code-bg: #1f2329;
-	--badge-bg: #232b3d;
-	--badge-fg: #c5d0e6;
+	--badge-bg: #2a3450;        /* nudged toward blue so text reads cleanly */
+	--badge-fg: #d6def0;
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+
+/* All anchors derive from the active palette so dark mode doesn't fall
+   back to the browser's default deep-blue (unreadable on a near-black
+   background). Cards and titles already override this for their
+   specific look; this is the safety net for any markup that doesn't. */
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { filter: brightness(1.15); }
+a:visited { color: var(--accent); }
 
 header.topbar {
 	display: flex; gap: var(--gap); align-items: center;
@@ -55,13 +63,14 @@ header.topbar {
 	position: sticky; top: 0; z-index: 10;
 }
 header.topbar h1 { font-size: 1.1rem; margin: 0; }
-header.topbar h1 a { color: inherit; text-decoration: none; }
+header.topbar h1 a { color: var(--text); text-decoration: none; }
 header.topbar input[type="search"] {
 	flex: 1; max-width: 480px; padding: 0.4rem 0.6rem;
 	border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem;
+	background: var(--card); color: var(--text);
 }
 header.topbar nav a { color: var(--muted); text-decoration: none; margin-right: 0.75rem; }
-header.topbar nav a:hover { color: #111; }
+header.topbar nav a:hover { color: var(--text); }
 
 main {
 	flex: 1;
@@ -205,6 +214,39 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 
 .muted { color: var(--muted); }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
+
+/* Status badges keep light/dark parity by riding off the global
+   palette. Re-styled here so the dark mode hue is readable. */
+:root[data-theme="dark"] .badge.summarized,
+:root[data-theme="auto"] .badge.summarized,
+.badge.summarized { background: #ecfdf5; color: #166534; }
+:root[data-theme="dark"] .badge.summarized,
+:root[data-theme="auto"][data-prefers-dark] .badge.summarized {
+	background: #14361f; color: #a7f3d0;
+}
+@media (prefers-color-scheme: dark) {
+	:root[data-theme="auto"] .badge.summarized {
+		background: #14361f; color: #a7f3d0;
+	}
+}
+:root[data-theme="dark"] .badge.pending,
+.badge.pending { background: #fff7ed; color: #b45309; }
+@media (prefers-color-scheme: dark) {
+	:root[data-theme="auto"] .badge.pending { background: #3a2406; color: #fed7aa; }
+}
+:root[data-theme="dark"] .badge.pending { background: #3a2406; color: #fed7aa; }
+:root[data-theme="dark"] .badge.failed,
+.badge.failed { background: #fef2f2; color: #991b1b; }
+@media (prefers-color-scheme: dark) {
+	:root[data-theme="auto"] .badge.failed { background: #3a1212; color: #fecaca; }
+}
+:root[data-theme="dark"] .badge.failed { background: #3a1212; color: #fecaca; }
+:root[data-theme="dark"] .badge.fetched,
+.badge.fetched { background: #ecfeff; color: #155e75; }
+@media (prefers-color-scheme: dark) {
+	:root[data-theme="auto"] .badge.fetched { background: #082f36; color: #a5f3fc; }
+}
+:root[data-theme="dark"] .badge.fetched { background: #082f36; color: #a5f3fc; }
 
 img.thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; }
 
