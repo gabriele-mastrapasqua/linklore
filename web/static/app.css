@@ -251,10 +251,20 @@ body.previews-off .preview { display: none !important; }
      row boundary where the link will land
    - "just moved" rows pulse briefly so the eye tracks the result */
 .dnd-dragging { opacity: 0.4; }
+/* Sidebar collection that would receive the drop: subtle background tint
+   + 3px left bar, no outline so the layout doesn't shift around. */
 .dnd-drop-target {
-	outline: 2px dashed var(--accent);
-	outline-offset: 2px;
-	background: rgba(37, 99, 235, 0.08);
+	background: rgba(37, 99, 235, 0.18) !important;
+	box-shadow: inset 3px 0 0 var(--accent);
+}
+.dnd-drop-target.active {
+	box-shadow: inset 3px 0 0 #fff;
+}
+.dnd-leaving {
+	opacity: 0;
+	transform: translateX(60px);
+	transition: opacity 0.2s ease, transform 0.2s ease;
+	pointer-events: none;
 }
 .link-row { cursor: grab; transition: transform 0.18s ease, background 0.18s ease; }
 .link-row.dnd-dragging { cursor: grabbing; }

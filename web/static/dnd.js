@@ -65,6 +65,18 @@
 		clearDropHints();
 	}
 
+	function onDragEnter(ev) {
+		// Browsers treat <a href> as "open this URL" drop targets unless
+		// the entered handler also calls preventDefault, which is the
+		// only way to flip them into programmable drop zones. Calling
+		// it on every enter is cheap and idempotent.
+		var sidebarTarget = ev.target.closest('[data-collection-slug]');
+		var rowTarget = ev.target.closest('[data-link-id]');
+		if (sidebarTarget || rowTarget) {
+			ev.preventDefault();
+		}
+	}
+
 	function onDragOver(ev) {
 		var sourceId = dragSourceID(ev);
 
@@ -72,7 +84,7 @@
 		var sidebarTarget = ev.target.closest('[data-collection-slug]');
 		if (sidebarTarget) {
 			ev.preventDefault();
-			ev.dataTransfer.dropEffect = 'move';
+			if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
 			clearDropHints();
 			sidebarTarget.classList.add('dnd-drop-target');
 			return;
@@ -82,7 +94,7 @@
 		var rowTarget = ev.target.closest('[data-link-id]');
 		if (rowTarget && rowTarget.dataset.linkId !== sourceId) {
 			ev.preventDefault();
-			ev.dataTransfer.dropEffect = 'move';
+			if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
 			clearDropHints();
 			showInsertionBar(rowTarget, ev.clientY);
 			return;
@@ -124,12 +136,24 @@
 	function onDrop(ev) {
 		var linkId = dragSourceID(ev);
 		if (!linkId) return;
+		// Always prevent the browser's default "navigate to dropped URL"
+		// behaviour the moment we know it's our DnD.
+		ev.preventDefault();
+		ev.stopPropagation();
 
-		// Sidebar drop → cross-collection move.
+		// Sidebar drop → cross-collection move. Visual: row disappears
+		// from current page (OOB), the sidebar count refreshes, and we
+		// also fade out the source row immediately so the user sees it.
 		var sidebarTarget = ev.target.closest('[data-collection-slug]');
 		if (sidebarTarget) {
-			ev.preventDefault();
 			clearDropHints();
+			var sourceRow = document.getElementById('link-' + linkId);
+			if (sourceRow) {
+				sourceRow.classList.add('dnd-leaving');
+				setTimeout(function () {
+					if (sourceRow.parentNode) sourceRow.parentNode.removeChild(sourceRow);
+				}, 220);
+			}
 			postForm('/links/' + encodeURIComponent(linkId) + '/move',
 				{ collection_slug: sidebarTarget.dataset.collectionSlug });
 			return;
@@ -141,7 +165,6 @@
 			clearDropHints();
 			return;
 		}
-		ev.preventDefault();
 
 		// Use the indicator's last computed position so dropping just
 		// "outside" the row's strict midpoint still does the right thing.
@@ -169,6 +192,7 @@
 
 	document.addEventListener('dragstart', onDragStart);
 	document.addEventListener('dragend', onDragEnd);
+	document.addEventListener('dragenter', onDragEnter);
 	document.addEventListener('dragover', onDragOver);
 	document.addEventListener('drop', onDrop);
 	document.addEventListener('dragleave', function (ev) {

@@ -82,7 +82,11 @@
       "Bash(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz/llm)",
       "Bash(echo \"GET /healthz/llm -> $\\(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz/llm\\)\")",
       "Bash(curl -s -o /dev/null -w '%{http_code}' -X POST -d 'pivot_id=99&position=after' http://127.0.0.1:8080/links/1/reorder)",
-      "Bash(echo \"POST /links/.../reorder -> $\\(curl -s -o /dev/null -w '%{http_code}' -X POST -d 'pivot_id=99&position=after' http://127.0.0.1:8080/links/1/reorder\\)\")"
+      "Bash(echo \"POST /links/.../reorder -> $\\(curl -s -o /dev/null -w '%{http_code}' -X POST -d 'pivot_id=99&position=after' http://127.0.0.1:8080/links/1/reorder\\)\")",
+      "Bash(curl -s -i -X POST -d 'collection_slug=dgx' http://127.0.0.1:8080/links/1/move)",
+      "Bash(pkill -9 -f 'bin/linklore')",
+      "Bash(curl -s http://127.0.0.1:8080/static/dnd.js)",
+      "Bash(echo \"Has onDragEnter? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)"
     ]
   }
 }
