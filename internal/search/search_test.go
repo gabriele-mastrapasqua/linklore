@@ -64,19 +64,38 @@ func newStoreWithFixtures(t *testing.T) (*storage.Store, int64) {
 
 func TestSanitizeMatchQuery(t *testing.T) {
 	cases := map[string]string{
-		`hello world`:  "hello OR world",
-		`go "channel"`: "go OR channel",
-		`c++`:          "c",
-		`(rust)`:       "rust",
-		`a-b`:          "a OR b",
-		`who? what!`:   "who OR what",
-		`a, b. c`:      "a OR b OR c",
+		`hello world`:  "hello* OR world*",
+		`go "channel"`: "go* OR channel*",
+		`c++`:          "c*",
+		`(rust)`:       "rust*",
+		`a-b`:          "a* OR b*",
+		`who? what!`:   "who* OR what*",
+		`a, b. c`:      "a* OR b* OR c*",
 		`   `:          "",
 	}
 	for in, want := range cases {
 		if got := sanitizeMatchQuery(in); got != want {
 			t.Errorf("sanitize(%q) = %q want %q", in, got, want)
 		}
+	}
+}
+
+func TestSearchLinks_prefixMatch(t *testing.T) {
+	// A short prefix the user types into the search bar must surface
+	// every chunk that starts with that prefix — regression test for
+	// the "bit" not finding "bitnet" bug.
+	st, _ := newStoreWithFixtures(t)
+	eng := New(st, nil) // BM25-only path
+
+	hits, err := eng.SearchLinks(context.Background(), "rus", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("expected 'rus' prefix to match 'rust' chunk")
+	}
+	if !strings.Contains(strings.ToLower(hits[0].Link.Title), "rust") {
+		t.Errorf("top hit not rust: %v", hits[0].Link.Title)
 	}
 }
 

@@ -329,18 +329,21 @@ func (e *Engine) cosineRerank(ctx context.Context, query string, linkIDs []int64
 }
 
 // sanitizeMatchQuery converts a free-form user query into a safe FTS5
-// MATCH expression. Two things matter:
+// MATCH expression. Three things matter:
 //
 //  1. Strip every FTS5 syntax character so a stray quote/paren/dash
 //     can't blow up the parser. Same dumb-but-safe approach as before.
-//  2. Join the remaining tokens with OR. FTS5's default operator
-//     between terms is AND, which is the wrong default for natural
-//     questions ("bitnet spiega", "what is rust ownership") — the
-//     user's intent is "any of these", not "all of these". Without OR
-//     a single rare word in the question torpedoes the whole match.
+//  2. Append "*" to every token for prefix matching: "bit" must hit
+//     a chunk containing "bitnet". FTS5 only does prefix search when
+//     the query says so explicitly, otherwise it's exact-token-only.
+//  3. Join the prefix terms with OR. FTS5's default operator between
+//     terms is AND, which is the wrong default for natural questions
+//     ("bitnet spiega", "what is rust ownership") — a single rare word
+//     in the question torpedoes the whole match.
 //
 // Common words ("a", "the", "che", …) aren't a problem in practice
-// because BM25 ranks the rarer term high anyway.
+// because BM25 ranks the rarer term high anyway. Tokens of length 1
+// keep the "*" too — that's expected when a user types a single letter.
 func sanitizeMatchQuery(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -350,12 +353,15 @@ func sanitizeMatchQuery(s string) string {
 	for _, ch := range bad {
 		s = strings.ReplaceAll(s, ch, " ")
 	}
-	// Tokenise on whitespace, drop empties, then OR-join.
 	var toks []string
 	for _, t := range strings.Fields(s) {
-		if t != "" {
-			toks = append(toks, t)
+		if t == "" {
+			continue
 		}
+		// Prefix-match every term so "bit" matches "bitnet" / "bitcoin"
+		// the same way LIKE 'bit%' would. The user's mental model is
+		// "search-as-you-type", not "exact whole-word match".
+		toks = append(toks, t+"*")
 	}
 	if len(toks) == 0 {
 		return ""
