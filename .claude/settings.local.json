@@ -63,7 +63,8 @@
       "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+come+stai&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
       "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+breve&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
       "Bash(curl -sS http://127.0.0.1:8080/chat)",
-      "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+veloce&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)"
+      "Bash(curl -sS --max-time 25 -X POST -d 'message=ciao+veloce&collection_id=0' -H 'Content-Type: application/x-www-form-urlencoded' http://127.0.0.1:8080/chat/stream)",
+      "Bash(make test *)"
     ]
   }
 }

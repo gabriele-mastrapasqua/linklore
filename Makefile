@@ -1,5 +1,5 @@
 .PHONY: build run dev install uninstall \
-        test test-race test-pkg test-cover bench \
+        test test-fast test-race test-pkg test-cover bench \
         fmt vet lint tidy check \
         smoke smoke-up smoke-down clean reset-db env-template \
         help
@@ -48,11 +48,14 @@ uninstall: ## remove $(INSTALL_DIR)/linklore
 
 # ---- tests ----
 
-test: ## run all tests (no race, faster)
-	go test -tags=$(TAGS) $(PKG)
-
-test-race: ## run all tests with -race (use this in CI)
+test: ## run all tests (with -race, fts5 tag, count=1) — the canonical CI command
 	go test -race -tags=$(TAGS) -count=1 $(PKG)
+
+test-fast: ## same as test but without -race (quicker iteration)
+	go test -tags=$(TAGS) -count=1 $(PKG)
+
+# Kept as an alias for muscle memory; identical to `test`.
+test-race: test ## alias for `test` (already runs with -race)
 
 # Run a single package: make test-pkg PKG=./internal/search
 test-pkg: ## run one package (PKG=./internal/foo, optional NAME=TestX)
