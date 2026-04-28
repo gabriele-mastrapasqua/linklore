@@ -1,10 +1,33 @@
 {{define "content"}}
 <section class="card">
 	<div><a href="/c/{{.Collection.Slug}}">← {{.Collection.Name}}</a></div>
-	<h2 style="margin:.4rem 0 0">{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</h2>
+	<h2 style="margin:.4rem 0 0">
+		{{if .Link.FaviconURL}}<img src="{{.Link.FaviconURL}}" alt="" class="preview preview-favicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'" style="width:22px;height:22px">{{end}}
+		{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}
+	</h2>
 	<div class="url"><a href="{{.Link.URL}}" target="_blank" rel="noopener">{{.Link.URL}}</a></div>
 	{{template "link_header" (dict "Link" .Link)}}
 </section>
+
+{{if or .Link.ImageURL .Link.ExtraImages}}
+<section class="card preview detail-preview">
+	{{if .Link.ImageURL}}
+	<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer">
+		<img src="{{.Link.ImageURL}}" alt="" class="detail-preview-primary"
+		     loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">
+	</a>
+	{{end}}
+	{{if .Link.ExtraImages}}
+	<div class="detail-preview-strip">
+		{{range .Link.ExtraImages}}
+		<a href="{{.}}" target="_blank" rel="noopener noreferrer">
+			<img src="{{.}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">
+		</a>
+		{{end}}
+	</div>
+	{{end}}
+</section>
+{{end}}
 
 <section class="card">
 	<strong>Tags</strong>

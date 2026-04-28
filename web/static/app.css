@@ -143,3 +143,32 @@ body.previews-off .preview { display: none !important; }
 	flex-shrink: 0;
 	align-self: flex-start; /* keep the thumbnail at row top, don't stretch */
 }
+
+/* Detail-page preview block: bigger primary image + larger thumb strip.
+   Hidden when the user toggled previews off (body.previews-off). */
+.detail-preview-primary {
+	width: 100%;
+	max-width: 720px;
+	max-height: 420px;
+	display: block;
+	margin: 0 auto;
+	object-fit: contain;
+	background: #fafafa;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+}
+.detail-preview-strip {
+	display: flex; flex-wrap: wrap; gap: .5rem;
+	margin-top: .8rem;
+	justify-content: center;
+}
+.detail-preview-strip img {
+	width: 140px; height: 100px;
+	object-fit: cover;
+	border-radius: 6px;
+	border: 1px solid var(--border);
+	background: #fafafa;
+	transition: transform .12s ease;
+}
+.detail-preview-strip img:hover { transform: scale(1.04); }
+.detail-preview-strip a { line-height: 0; }

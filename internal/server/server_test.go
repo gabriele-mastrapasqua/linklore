@@ -398,6 +398,74 @@ func TestChatPage_emptyLibraryHint(t *testing.T) {
 	}
 }
 
+func TestLinkDetail_showsBigPreviewWhenAvailable(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "ai", "AI", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	// Persist favicon + extra images via the full extraction setter so we
+	// don't have to hit the network in this test.
+	if err := st.UpdateLinkExtractionFull(context.Background(), l.ID,
+		"Title", "desc",
+		"https://example.com/cover.jpg",
+		"https://example.com/favicon.ico",
+		[]string{"https://example.com/extra-1.jpg", "https://example.com/extra-2.jpg"},
+		"# heading\n\nbody", "en", ""); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "tldr")
+
+	code, body := get(t, ts, "/links/"+i64s(l.ID))
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	for _, want := range []string{
+		`detail-preview-primary`,
+		`https://example.com/cover.jpg`,
+		`https://example.com/extra-1.jpg`,
+		`https://example.com/extra-2.jpg`,
+		`https://example.com/favicon.ico`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q on detail page", want)
+		}
+	}
+	// previews-on by default.
+	if !strings.Contains(body, `class="previews-on"`) {
+		t.Errorf("body class wrong on detail page")
+	}
+
+	// With cookie show_previews=0 the body class flips → CSS hides .preview.
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/links/"+i64s(l.ID), nil)
+	req.AddCookie(&http.Cookie{Name: "show_previews", Value: "0"})
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body2, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body2), `class="previews-off"`) {
+		t.Errorf("expected previews-off class on detail with cookie")
+	}
+}
+
+func TestLinkDetail_noPreviewSectionWhenNoImages(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/y")
+	// No images at all.
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"T", "d", "", "body", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "tldr")
+
+	code, body := get(t, ts, "/links/"+i64s(l.ID))
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if strings.Contains(body, "detail-preview-primary") {
+		t.Errorf("preview section rendered with no images")
+	}
+}
+
 func TestPreviewsToggle_defaultOnAndCookieFlips(t *testing.T) {
 	ts, _ := newTestServer(t)
 
