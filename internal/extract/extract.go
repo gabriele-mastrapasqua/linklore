@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -200,12 +201,22 @@ func extractFavicon(doc *goquery.Document, base *url.URL) string {
 	return ""
 }
 
-// extractImages returns up to ~6 distinct image URLs from the page body,
-// excluding the primary one (already in Article.ImageURL). Sources:
-// inline <img>, og:image:additional, twitter:image:src duplicates skipped.
-// Tiny tracking pixels (1×1) and data: URIs are filtered out.
+// extractImages returns up to maxImages distinct image URLs from the
+// page body, excluding the primary one (already in Article.ImageURL).
+// Sources:
+//   - secondary og:image / twitter:image declarations,
+//   - inline <img src>, including lazy-load fallbacks (data-src,
+//     data-original, data-lazy-src),
+//   - the highest-resolution candidate from <img srcset> when the
+//     plain src is missing or smaller,
+//   - <picture><source srcset> children,
+//   - <figure> images.
+//
+// Tiny tracking pixels (width or height = 1) and data: URIs are
+// filtered out. The tracker heuristic also drops obvious analytics
+// hosts (segment.io, bat.bing.com, …) when the URL pattern matches.
 func extractImages(doc *goquery.Document, base *url.URL, primary string) []string {
-	const maxImages = 6
+	const maxImages = 12
 	seen := map[string]struct{}{}
 	if primary != "" {
 		seen[primary] = struct{}{}
@@ -215,6 +226,9 @@ func extractImages(doc *goquery.Document, base *url.URL, primary string) []strin
 	add := func(raw string) bool {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.HasPrefix(raw, "data:") {
+			return false
+		}
+		if isTrackerURL(raw) {
 			return false
 		}
 		abs := absoluteURL(base, raw)
@@ -239,21 +253,112 @@ func extractImages(doc *goquery.Document, base *url.URL, primary string) []strin
 		return out
 	}
 
-	// Inline article images. We crudely filter by size attribute when the
-	// page bothers to set one — that catches most tracking pixels.
-	doc.Find("article img, main img, .post img, .entry img, body img").
+	// Inline images, plus a few lazy-loading patterns. We walk the DOM
+	// once and pull whichever attribute carries the URL — many CMS
+	// frameworks set src="" + data-src="real-url" for above-the-fold
+	// lazy loading, and our previous code missed all of those.
+	picks := func(sel *goquery.Selection) string {
+		// width=1 / height=1 → tracker.
+		if w, ok := sel.Attr("width"); ok {
+			if w == "1" || w == "0" {
+				return ""
+			}
+		}
+		if h, ok := sel.Attr("height"); ok {
+			if h == "1" || h == "0" {
+				return ""
+			}
+		}
+		// Lazy-load attrs win over a placeholder src (data:,…).
+		for _, attr := range []string{"data-src", "data-original", "data-lazy-src", "data-lazy", "data-image"} {
+			if v, ok := sel.Attr(attr); ok && strings.TrimSpace(v) != "" {
+				return v
+			}
+		}
+		// srcset: pick the largest candidate (last one tends to be the
+		// biggest, but we sort defensively by width descriptor).
+		if v, ok := sel.Attr("srcset"); ok && strings.TrimSpace(v) != "" {
+			if best := pickFromSrcset(v); best != "" {
+				return best
+			}
+		}
+		// Plain src as the final fallback.
+		if v, ok := sel.Attr("src"); ok {
+			return v
+		}
+		return ""
+	}
+
+	doc.Find("article img, main img, .post img, .entry img, figure img, picture img, body img").
 		EachWithBreak(func(_ int, sel *goquery.Selection) bool {
-			if w, ok := sel.Attr("width"); ok {
-				if w == "1" || w == "0" {
-					return true
+			return !add(picks(sel))
+		})
+	if len(out) >= maxImages {
+		return out
+	}
+
+	// <picture><source srcset> sometimes carries a higher-res URL than
+	// the wrapped <img>. Walk those after the plain images so the
+	// hi-res variants come into the list when there's still room.
+	doc.Find("picture source").EachWithBreak(func(_ int, sel *goquery.Selection) bool {
+		if v, ok := sel.Attr("srcset"); ok && strings.TrimSpace(v) != "" {
+			if best := pickFromSrcset(v); best != "" {
+				return !add(best)
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// pickFromSrcset parses an srcset value and returns the URL of the
+// candidate with the largest width descriptor (or the last one when
+// no widths are given). Empty string when nothing usable.
+func pickFromSrcset(s string) string {
+	bestURL := ""
+	bestW := 0
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		fields := strings.Fields(part)
+		u := fields[0]
+		w := 0
+		if len(fields) > 1 {
+			d := fields[1]
+			if strings.HasSuffix(d, "w") {
+				if v, err := strconv.Atoi(strings.TrimSuffix(d, "w")); err == nil {
+					w = v
 				}
 			}
-			if src, ok := sel.Attr("src"); ok {
-				return !add(src)
-			}
+		}
+		if u == "" {
+			continue
+		}
+		// Last-wins when no width descriptors are provided.
+		if w > bestW || (w == 0 && bestW == 0) {
+			bestURL = u
+			bestW = w
+		}
+	}
+	return bestURL
+}
+
+// isTrackerURL is a cheap pattern check for analytics / pixel hosts.
+// Returns true for URLs that are almost certainly not content images.
+func isTrackerURL(raw string) bool {
+	low := strings.ToLower(raw)
+	for _, pat := range []string{
+		"/pixel/", "tracking.gif", "/track?", "/beacon",
+		"google-analytics.com", "googletagmanager.com",
+		"facebook.com/tr", "bat.bing.com", "segment.io",
+	} {
+		if strings.Contains(low, pat) {
 			return true
-		})
-	return out
+		}
+	}
+	return false
 }
 
 // absoluteURL resolves possibly-relative href against base. Returns "" when

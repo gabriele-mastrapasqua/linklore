@@ -151,6 +151,91 @@ func TestExtract_faviconAndExtraImages(t *testing.T) {
 	}
 }
 
+func TestExtract_picksLazyLoadAndSrcsetImages(t *testing.T) {
+	html := `<!doctype html><html><head>
+<title>Lazy</title>
+<meta property="og:image" content="https://cdn.example.com/cover.jpg">
+</head><body>
+<article>
+<p>Body text long enough for readability — lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+<img src="data:image/gif;base64,xxx" data-src="https://cdn.example.com/lazy.jpg" alt="">
+<picture>
+  <source srcset="https://cdn.example.com/hero-2x.jpg 2400w, https://cdn.example.com/hero-1x.jpg 1200w">
+  <img src="https://cdn.example.com/hero-fallback.jpg" alt="">
+</picture>
+<figure>
+  <img src="/article/inline.jpg" srcset="/article/inline-720.jpg 720w, /article/inline-1440.jpg 1440w">
+</figure>
+</article>
+</body></html>`
+
+	a, err := Extract(html, "https://news.example.com/post")
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := append([]string{a.ImageURL}, a.ExtraImages...)
+
+	for _, want := range []string{
+		"https://cdn.example.com/lazy.jpg",            // data-src wins over data: src
+		"https://cdn.example.com/hero-2x.jpg",         // <picture><source srcset> highest width
+		"https://news.example.com/article/inline-1440.jpg", // <img srcset> resolved + highest width
+	} {
+		found := false
+		for _, g := range all {
+			if g == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing %q in primary+extras: %v", want, all)
+		}
+	}
+	// data: placeholder must NOT show up.
+	for _, g := range all {
+		if strings.HasPrefix(g, "data:") {
+			t.Errorf("data: placeholder leaked: %v", a.ExtraImages)
+		}
+	}
+}
+
+func TestExtract_filtersTrackerURLs(t *testing.T) {
+	html := `<!doctype html><html><head><title>x</title>
+<meta property="og:image" content="https://cdn.example.com/cover.jpg">
+</head><body>
+<article>
+<p>Body text long enough for readability — lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor.</p>
+<img src="https://www.facebook.com/tr?id=123&ev=PageView">
+<img src="https://www.google-analytics.com/collect?v=1">
+<img src="https://cdn.example.com/legit.jpg">
+</article>
+</body></html>`
+	a, _ := Extract(html, "https://news.example.com/post")
+	for _, g := range a.ExtraImages {
+		low := strings.ToLower(g)
+		if strings.Contains(low, "facebook.com/tr") ||
+			strings.Contains(low, "google-analytics.com") {
+			t.Errorf("tracker URL leaked: %v", a.ExtraImages)
+		}
+	}
+}
+
+func TestPickFromSrcset(t *testing.T) {
+	cases := map[string]string{
+		"":                              "",
+		"a.jpg":                         "a.jpg",
+		"a.jpg 100w, b.jpg 300w":        "b.jpg",
+		"b.jpg 800w, a.jpg 200w":        "b.jpg",
+		"a.jpg 1x, b.jpg 2x":            "b.jpg", // no width descriptors → last-wins (matches browser)
+		"a.jpg 120w, c.jpg, b.jpg 600w": "b.jpg",
+	}
+	for in, want := range cases {
+		if got := pickFromSrcset(in); got != want {
+			t.Errorf("pickFromSrcset(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestExtract_faviconFallbackToRoot(t *testing.T) {
 	html := `<html><head><title>X</title></head><body>` +
 		strings.Repeat("hello world ", 50) + `</body></html>`
