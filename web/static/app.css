@@ -276,6 +276,39 @@ body.previews-off .preview { display: none !important; }
 	100% { background: var(--card); transform: translateY(0); }
 }
 
+/* Tiny chip used as the drag image so the user moves a label around the
+   layout instead of an entire card. Built off-screen by dnd.js then
+   handed to dataTransfer.setDragImage; never displayed inline. */
+.dnd-drag-image {
+	display: inline-flex;
+	align-items: center;
+	gap: .35rem;
+	max-width: 280px;
+	padding: .35rem .6rem;
+	background: var(--accent);
+	color: #fff;
+	border-radius: 999px;
+	font-size: .85rem;
+	font-weight: 500;
+	box-shadow: 0 6px 14px rgba(0,0,0,.25);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	pointer-events: none;
+}
+.dnd-drag-icon {
+	display: inline-block;
+	width: 14px;
+	text-align: center;
+	font-size: .9rem;
+	opacity: .9;
+}
+.dnd-drag-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 240px;
+}
+
 /* The insertion bar is a fixed-position element so it can sit between
    two cards without disturbing layout. dnd.js sets top/left/width on
    the fly and toggles display. */

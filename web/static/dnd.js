@@ -45,23 +45,55 @@
 		return ev.dataTransfer ? ev.dataTransfer.getData('text/plain') : null;
 	}
 
+	// Build (once) a tiny custom drag image — a chip showing the link's
+	// title or URL prefixed with a "↕" icon. Way less visually heavy
+	// than dragging the entire card.
+	function buildDragImage(row) {
+		var chip = document.createElement('div');
+		chip.className = 'dnd-drag-image';
+		var label = '';
+		var titleEl = row.querySelector('.title a, .title');
+		if (titleEl) label = (titleEl.textContent || '').trim();
+		if (label.length > 60) label = label.slice(0, 57) + '…';
+		if (!label) label = 'link #' + row.dataset.linkId;
+		chip.innerHTML = '<span class="dnd-drag-icon">↕</span><span class="dnd-drag-label"></span>';
+		chip.querySelector('.dnd-drag-label').textContent = label;
+		// Must be on-screen for setDragImage to render it; we pull it
+		// off-screen with negative top while the drag is in flight, then
+		// remove it on dragend.
+		chip.style.position = 'absolute';
+		chip.style.top = '-9999px';
+		chip.style.left = '-9999px';
+		document.body.appendChild(chip);
+		return chip;
+	}
+
 	function onDragStart(ev) {
 		var row = ev.target.closest('[data-link-id]');
 		if (!row) return;
 		ev.dataTransfer.effectAllowed = 'move';
 		ev.dataTransfer.setData('text/plain', row.dataset.linkId);
-		// Bind the drag image to the actual row at the user's pointer offset
-		// so the cursor stays where the click started — no detachment.
-		var rect = row.getBoundingClientRect();
+		// Tiny drag chip — doesn't carry the full row, leaves the
+		// cursor visually free over the layout while dragging.
+		var chip = buildDragImage(row);
+		row._dndChip = chip;
 		try {
-			ev.dataTransfer.setDragImage(row, ev.clientX - rect.left, ev.clientY - rect.top);
-		} catch (_) { /* not all browsers honour this; ignore */ }
+			// Offset so the chip sits to the lower-right of the cursor,
+			// not under it (so the user can still see what's underneath).
+			ev.dataTransfer.setDragImage(chip, -8, -8);
+		} catch (_) { /* ignore — fallback is the browser default */ }
 		row.classList.add('dnd-dragging');
 	}
 
 	function onDragEnd(ev) {
 		var row = ev.target.closest('[data-link-id]');
-		if (row) row.classList.remove('dnd-dragging');
+		if (row) {
+			row.classList.remove('dnd-dragging');
+			if (row._dndChip && row._dndChip.parentNode) {
+				row._dndChip.parentNode.removeChild(row._dndChip);
+			}
+			row._dndChip = null;
+		}
 		clearDropHints();
 	}
 
@@ -141,11 +173,15 @@
 		ev.preventDefault();
 		ev.stopPropagation();
 
-		// Sidebar drop → cross-collection move. Visual: row disappears
-		// from current page (OOB), the sidebar count refreshes, and we
-		// also fade out the source row immediately so the user sees it.
-		var sidebarTarget = ev.target.closest('[data-collection-slug]');
-		if (sidebarTarget) {
+		// Drop is ACCEPTED only when our UI is showing a highlight:
+		//   - sidebar entry has .dnd-drop-target  → cross-collection move
+		//   - insertion bar is visible            → in-list reorder
+		// Anywhere else (background, header, etc) is treated as cancel.
+		// Use the highlighted element rather than ev.target because the
+		// user often releases just outside the strict target rectangle.
+		var highlightedSidebar = document.querySelector(
+			'.sidebar-link.dnd-drop-target[data-collection-slug]');
+		if (highlightedSidebar) {
 			clearDropHints();
 			var sourceRow = document.getElementById('link-' + linkId);
 			if (sourceRow) {
@@ -155,21 +191,25 @@
 				}, 220);
 			}
 			postForm('/links/' + encodeURIComponent(linkId) + '/move',
-				{ collection_slug: sidebarTarget.dataset.collectionSlug });
+				{ collection_slug: highlightedSidebar.dataset.collectionSlug });
 			return;
 		}
 
-		// Row drop → reorder.
-		var rowTarget = ev.target.closest('[data-link-id]');
-		if (!rowTarget || rowTarget.dataset.linkId === linkId) {
+		// Reorder is accepted only when the insertion bar is visible AND
+		// has a target id. That means the cursor was over a real row.
+		var ind = document.getElementById(INDICATOR_ID);
+		var hasIndicator = ind && ind.style.display === 'block' && ind.dataset.targetId;
+		if (!hasIndicator || ind.dataset.targetId === linkId) {
+			clearDropHints();
+			return;
+		}
+		var rowTarget = document.getElementById('link-' + ind.dataset.targetId);
+		if (!rowTarget) {
 			clearDropHints();
 			return;
 		}
 
-		// Use the indicator's last computed position so dropping just
-		// "outside" the row's strict midpoint still does the right thing.
-		var ind = document.getElementById(INDICATOR_ID);
-		var position = (ind && ind.dataset.position) || 'after';
+		var position = ind.dataset.position || 'after';
 		var pivotId = rowTarget.dataset.linkId;
 
 		// Optimistic DOM move so the user sees the result immediately;
