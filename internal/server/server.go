@@ -143,12 +143,14 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	slug := strings.TrimSpace(r.PostForm.Get("slug"))
 	name := strings.TrimSpace(r.PostForm.Get("name"))
-	if slug == "" || name == "" {
-		http.Error(w, "slug and name required", http.StatusBadRequest)
+	if name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
+	// Slug is derived from the name. Falls back to a numeric suffix
+	// when the chosen slug already exists (rather than 4xx-ing the user).
+	slug := s.uniqueSlugFromName(r.Context(), name)
 	col, err := s.store.CreateCollection(r.Context(), slug, name, "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -156,6 +158,24 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 	}
 	// Wrap in a stat with zero counts so the card template renders correctly.
 	s.renderFragment(w, "collection_card", storage.CollectionStat{Collection: *col})
+}
+
+// uniqueSlugFromName turns a free-form name into a valid slug and
+// resolves clashes by appending -2, -3, … until the slug is unused.
+func (s *Server) uniqueSlugFromName(ctx context.Context, name string) string {
+	base := tags.Slugify(name)
+	if base == "" {
+		base = "collection"
+	}
+	candidate := base
+	for n := 2; n < 100; n++ {
+		if _, err := s.store.GetCollectionBySlug(ctx, candidate); err == storage.ErrNotFound {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s-%d", base, n)
+	}
+	// Pathological: 99 collisions. Just return the last candidate.
+	return candidate
 }
 
 func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
@@ -707,10 +727,9 @@ func (s *Server) handleMergeTags(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tags", http.StatusSeeOther)
 }
 
-// handleRenameCollection updates the collection's slug and/or name.
-// On a slug change we redirect to the new URL so the user's browser
-// reflects the move; on a name-only change we just re-render the
-// header card.
+// handleRenameCollection updates the collection's name. The slug is
+// re-derived from the new name (with a numeric suffix when there's a
+// clash). On a slug change we redirect to the new URL.
 func (s *Server) handleRenameCollection(w http.ResponseWriter, r *http.Request) {
 	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
@@ -721,30 +740,39 @@ func (s *Server) handleRenameCollection(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	newSlug := strings.TrimSpace(r.PostForm.Get("slug"))
 	newName := strings.TrimSpace(r.PostForm.Get("name"))
-	if newSlug == "" && newName == "" {
-		http.Error(w, "slug or name required", http.StatusBadRequest)
+	if newName == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.RenameCollection(r.Context(), col.ID, newSlug, newName); err != nil {
-		switch err {
-		case storage.ErrSlugTaken:
-			http.Error(w, "slug already taken", http.StatusConflict)
-			return
-		default:
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+
+	// Re-derive slug. If it lands on the SAME slug we already have, no
+	// rename of the slug column happens; if it differs, find a free one.
+	derived := tags.Slugify(newName)
+	if derived == "" {
+		derived = "collection"
+	}
+	finalSlug := derived
+	if derived != col.Slug {
+		// Clash with another collection? Try -2, -3, …
+		for n := 2; n < 100; n++ {
+			existing, err := s.store.GetCollectionBySlug(r.Context(), finalSlug)
+			if err == storage.ErrNotFound {
+				break
+			}
+			if existing != nil && existing.ID == col.ID {
+				break // matches us, fine
+			}
+			finalSlug = fmt.Sprintf("%s-%d", derived, n)
 		}
 	}
-	// Redirect to the (possibly new) collection URL — works for both
-	// htmx and plain form posts because htmx follows HX-Redirect.
-	final := col.Slug
-	if newSlug != "" {
-		final = newSlug
+
+	if err := s.store.RenameCollection(r.Context(), col.ID, finalSlug, newName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	w.Header().Set("HX-Redirect", "/c/"+final)
-	http.Redirect(w, r, "/c/"+final, http.StatusSeeOther)
+	w.Header().Set("HX-Redirect", "/c/"+finalSlug)
+	http.Redirect(w, r, "/c/"+finalSlug, http.StatusSeeOther)
 }
 
 // handleSetFeed assigns or clears collection.feed_url. Empty value

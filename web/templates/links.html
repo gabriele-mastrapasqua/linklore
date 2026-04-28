@@ -9,16 +9,14 @@
 	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
 
 	<form id="rename-{{.Collection.ID}}" class="inline" hidden style="margin-top:.5rem"
-	      hx-post="/c/{{.Collection.Slug}}/rename"
-	      hx-on::after-request="if (event.detail.successful) location.href='/c/'+(this.querySelector('[name=slug]').value||'{{.Collection.Slug}}')">
+	      hx-post="/c/{{.Collection.Slug}}/rename">
 		<input type="text" name="name" value="{{.Collection.Name}}"
-		       placeholder="new name" required>
-		<input type="text" name="slug" value="{{.Collection.Slug}}"
-		       placeholder="new slug" pattern="[a-z0-9\-]+">
+		       placeholder="new collection name" required>
 		<button type="submit">Save</button>
 		<button type="button"
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
 	</form>
+	<small class="muted" id="rename-hint-{{.Collection.ID}}" hidden>URL slug is derived from the name; if the new slug is taken, a numeric suffix is appended.</small>
 
 	{{template "collection_stats" .}}
 	<form class="inline" style="margin-top:.75rem"

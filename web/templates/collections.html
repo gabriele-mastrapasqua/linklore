@@ -3,10 +3,10 @@
 	<h2>Collections</h2>
 	<form class="inline" hx-post="/collections" hx-target="#collections-list" hx-swap="beforeend"
 	      hx-on::after-request="this.reset()">
-		<input type="text" name="slug" placeholder="slug" required pattern="[a-z0-9\-]+">
-		<input type="text" name="name" placeholder="Name" required>
+		<input type="text" name="name" placeholder="Collection name" required>
 		<button type="submit">Create</button>
 	</form>
+	<small class="muted">URL slug is derived automatically from the name (e.g. “My news” → /c/my-news).</small>
 </section>
 
 <div id="collections-list">

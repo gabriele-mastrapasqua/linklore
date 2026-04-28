@@ -50,6 +50,31 @@ func openMem(t *testing.T) *storage.Store {
 	return st
 }
 
+func TestRefreshOne_newestEntryEndsAtTop(t *testing.T) {
+	// atomFixture has "First" listed before "Second" with a more
+	// recent <updated>; the imported list should put "First" on top.
+	st := openMem(t)
+	col, _ := st.CreateCollection(context.Background(), "feed", "Feed", "")
+	srv := newFeedServer(atomFixture, nil)
+	defer srv.Close()
+	st.SetCollectionFeed(context.Background(), col.ID, srv.URL)
+
+	imp := New(st)
+	if _, err := imp.RefreshOne(context.Background(), col.ID); err != nil {
+		t.Fatal(err)
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), col.ID, 100, 0)
+	if len(links) != 2 {
+		t.Fatalf("links = %d", len(links))
+	}
+	if links[0].URL != "https://example.com/post-1" {
+		t.Errorf("expected post-1 on top, got %q", links[0].URL)
+	}
+	if links[1].URL != "https://example.com/post-2" {
+		t.Errorf("expected post-2 below, got %q", links[1].URL)
+	}
+}
+
 func TestRefreshOne_addsNewEntriesAndDedupes(t *testing.T) {
 	st := openMem(t)
 	col, _ := st.CreateCollection(context.Background(), "feed", "Feed", "")

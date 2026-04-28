@@ -228,7 +228,12 @@ func (i *Importer) refresh(ctx context.Context, col *storage.Collection) (*Resul
 		return nil, fmt.Errorf("parse feed %s: %w", col.FeedURL, err)
 	}
 	r := &Result{CollectionID: col.ID}
-	for _, item := range feed.Items {
+	// gofeed returns items newest-first. We insert from oldest to
+	// newest so the newest entry ends up with the highest order_idx
+	// — and thus appears at the top of the collection page (which
+	// orders by order_idx DESC, created_at DESC).
+	for idx := len(feed.Items) - 1; idx >= 0; idx-- {
+		item := feed.Items[idx]
 		if item == nil || strings.TrimSpace(item.Link) == "" {
 			continue
 		}
