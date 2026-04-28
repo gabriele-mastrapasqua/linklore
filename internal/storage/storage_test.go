@@ -135,6 +135,31 @@ func TestLinks_CRUDAndStatus(t *testing.T) {
 	}
 }
 
+func TestMoveLink(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	a, _ := s.CreateCollection(ctx, "a", "A", "")
+	b, _ := s.CreateCollection(ctx, "b", "B", "")
+	l, _ := s.CreateLink(ctx, a.ID, "https://x")
+
+	if err := s.MoveLink(ctx, l.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetLink(ctx, l.ID)
+	if got.CollectionID != b.ID {
+		t.Errorf("collection_id = %d, want %d", got.CollectionID, b.ID)
+	}
+
+	// Unknown destination → ErrNotFound, link untouched.
+	if err := s.MoveLink(ctx, l.ID, 9999); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound on unknown dst, got %v", err)
+	}
+	// Unknown link → ErrNotFound.
+	if err := s.MoveLink(ctx, 9999, b.ID); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound on unknown link, got %v", err)
+	}
+}
+
 func TestLinks_FK_CascadeOnCollectionDelete(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

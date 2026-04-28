@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -499,6 +500,64 @@ func TestLinkDetail_noBannerWhenAlreadySummarized(t *testing.T) {
 	}
 	if strings.Contains(body, "No summary yet.") {
 		t.Errorf("banner shown on a summarized link")
+	}
+}
+
+func TestMoveLink_handler(t *testing.T) {
+	ts, st := newTestServer(t)
+	src, _ := st.CreateCollection(context.Background(), "src", "Src", "")
+	dst, _ := st.CreateCollection(context.Background(), "dst", "Dst", "")
+	l, _ := st.CreateLink(context.Background(), src.ID, "https://x")
+
+	code, body := postForm(t, ts, "/links/"+i64s(l.ID)+"/move",
+		url.Values{"collection_id": {i64s(dst.ID)}})
+	if code != 200 {
+		t.Fatalf("status=%d body=%s", code, body)
+	}
+	got, _ := st.GetLink(context.Background(), l.ID)
+	if got.CollectionID != dst.ID {
+		t.Errorf("link not moved: %d", got.CollectionID)
+	}
+	// Response should OOB-remove the row.
+	if !strings.Contains(body, fmt.Sprintf(`id="link-%d" hx-swap-oob="outerHTML"`, l.ID)) {
+		t.Errorf("missing OOB row removal: %s", body)
+	}
+	// Both source + destination stats must be in the OOB payload.
+	for _, want := range []string{
+		fmt.Sprintf(`id="collection-stats-%d"`, src.ID),
+		fmt.Sprintf(`id="collection-stats-%d"`, dst.ID),
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in move response", want)
+		}
+	}
+}
+
+func TestMoveLink_bySlug(t *testing.T) {
+	ts, st := newTestServer(t)
+	a, _ := st.CreateCollection(context.Background(), "alpha", "Alpha", "")
+	b, _ := st.CreateCollection(context.Background(), "bravo", "Bravo", "")
+	l, _ := st.CreateLink(context.Background(), a.ID, "https://x")
+
+	code, _ := postForm(t, ts, "/links/"+i64s(l.ID)+"/move",
+		url.Values{"collection_slug": {"bravo"}})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	got, _ := st.GetLink(context.Background(), l.ID)
+	if got.CollectionID != b.ID {
+		t.Errorf("link not moved by slug: %d (want %d)", got.CollectionID, b.ID)
+	}
+}
+
+func TestMoveLink_unknownDest400(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "x", "X", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	code, _ := postForm(t, ts, "/links/"+i64s(l.ID)+"/move",
+		url.Values{"collection_id": {"9999"}})
+	if code < 400 {
+		t.Errorf("expected 4xx on unknown collection, got %d", code)
 	}
 }
 

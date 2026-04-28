@@ -507,6 +507,24 @@ func (s *Store) DeleteLink(ctx context.Context, id int64) error {
 	return err
 }
 
+// MoveLink reassigns a link to a different collection. Refuses to move
+// to an unknown collection (returns ErrNotFound). Order within the
+// destination is appended (highest order_idx + 1).
+func (s *Store) MoveLink(ctx context.Context, linkID, dstCollectionID int64) error {
+	if _, err := s.GetCollectionBySlugByID(ctx, dstCollectionID); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE links SET collection_id = ? WHERE id = ?`, dstCollectionID, linkID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListLinksByStatus is the worker's inbox: oldest-first so older links don't
 // starve when a burst of new pending rows arrives.
 func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int) ([]Link, error) {

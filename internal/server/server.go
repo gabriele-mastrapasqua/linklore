@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
+	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
 	mux.HandleFunc("GET /links/{id}/row", s.handleLinkRow)
 	mux.HandleFunc("GET /links/{id}/header", s.handleLinkHeader)
@@ -276,17 +277,19 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
 	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
 	llmHealthy, llmErr := s.llmHealthSnapshot()
+	allCollections, _ := s.store.ListCollections(r.Context())
 	s.renderPageRq(w, r, "link_detail", map[string]any{
-		"Title":      "Link",
-		"Link":       link,
-		"Collection": col,
-		"Tags":       linkTags,
+		"Title":          "Link",
+		"Link":           link,
+		"Collection":     col,
+		"Tags":           linkTags,
+		"AllCollections": allCollections,
 		// Banner data: only show "no summary yet, configure LLM" when
 		// status=fetched (extraction OK, summary missing) AND the LLM is
 		// either unhealthy or unconfigured.
-		"NeedsSummary":  link.Status == storage.StatusFetched,
-		"LLMHealthy":    llmHealthy,
-		"LLMError":      llmErr,
+		"NeedsSummary": link.Status == storage.StatusFetched,
+		"LLMHealthy":   llmHealthy,
+		"LLMError":     llmErr,
 	})
 }
 
@@ -400,6 +403,71 @@ func (s *Server) handleLinkHeader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderFragment(w, "link_header", map[string]any{"Link": link})
+}
+
+// handleMoveLink reassigns a link to a different collection. Triggered
+// either by the "Move to…" select on link_detail or by the future DnD
+// flow on the row itself. Always responds with the OOB stats refresh
+// for both the source and destination collections, and removes the row
+// out-of-band when the request comes from the source collection page.
+func (s *Server) handleMoveLink(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	dstID, err := strconv.ParseInt(strings.TrimSpace(r.PostForm.Get("collection_id")), 10, 64)
+	if err != nil || dstID <= 0 {
+		// Allow specifying by slug too.
+		if slug := strings.TrimSpace(r.PostForm.Get("collection_slug")); slug != "" {
+			col, sErr := s.store.GetCollectionBySlug(r.Context(), slug)
+			if sErr != nil {
+				s.notFound(w, sErr)
+				return
+			}
+			dstID = col.ID
+		} else {
+			http.Error(w, "collection_id or collection_slug required", http.StatusBadRequest)
+			return
+		}
+	}
+
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	srcID := link.CollectionID
+	if srcID == dstID {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if err := s.store.MoveLink(r.Context(), id, dstID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	src, _ := s.store.GetCollectionBySlugByID(r.Context(), srcID)
+	dst, _ := s.store.GetCollectionBySlugByID(r.Context(), dstID)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Remove the row from the source page out-of-band; the destination
+	// stats also update so a sidebar/page refresh isn't needed.
+	fmt.Fprintf(w, `<div id="link-%d" hx-swap-oob="outerHTML"></div>`, id)
+	if src != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), src)
+		stats, _ := s.store.CollectionStatsByID(r.Context(), src.ID)
+		if stats.Total == 0 {
+			s.writeEmptyStateOOB(w, false)
+		}
+	}
+	if dst != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), dst)
+	}
 }
 
 func (s *Server) handleAddUserTag(w http.ResponseWriter, r *http.Request) {

@@ -46,6 +46,20 @@
 {{end}}
 
 <section class="card">
+	<strong>Move to collection</strong>
+	<form class="inline" style="margin-top:.4rem"
+	      hx-post="/links/{{.Link.ID}}/move"
+	      hx-on::after-request="window.location='/c/'+this.querySelector('select').selectedOptions[0].dataset.slug">
+		<select name="collection_id" required style="padding:.4rem;border:1px solid var(--border);border-radius:6px;font-size:.9rem">
+			{{range .AllCollections}}
+			<option value="{{.ID}}" data-slug="{{.Slug}}" {{if eq .ID $.Collection.ID}}selected{{end}}>{{.Name}}</option>
+			{{end}}
+		</select>
+		<button type="submit">Move</button>
+	</form>
+</section>
+
+<section class="card">
 	<strong>Tags</strong>
 	{{template "tag_chips" (dict "LinkID" .Link.ID "Tags" .Tags)}}
 	<form class="inline" style="margin-top:.5rem"
