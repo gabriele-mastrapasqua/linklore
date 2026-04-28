@@ -71,7 +71,8 @@
       "Bash(curl -s -o /tmp/h.html -w '%{http_code}' http://127.0.0.1:8080/)",
       "Bash(echo \"GET / -> $\\(curl -s -o /tmp/h.html -w '%{http_code}' http://127.0.0.1:8080/\\)\")",
       "Bash(curl -sS -i -X POST http://127.0.0.1:8080/preferences/previews)",
-      "Bash(curl -s -b 'show_previews=0' -o /tmp/h2.html -w '%{http_code}\\\\n' http://127.0.0.1:8080/)"
+      "Bash(curl -s -b 'show_previews=0' -o /tmp/h2.html -w '%{http_code}\\\\n' http://127.0.0.1:8080/)",
+      "Bash(curl -s http://127.0.0.1:8080/static/app.css)"
     ]
   }
 }
