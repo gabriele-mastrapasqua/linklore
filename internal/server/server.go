@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,22 +14,24 @@ import (
 	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 	"github.com/gabrielemastrapasqua/linklore/web"
 )
 
 type Server struct {
-	cfg   config.Config
-	store *storage.Store
-	r     *renderer
+	cfg    config.Config
+	store  *storage.Store
+	r      *renderer
+	search *search.Engine // nil → search routes return empty results
 }
 
-func New(cfg config.Config, store *storage.Store) (*Server, error) {
+func New(cfg config.Config, store *storage.Store, eng *search.Engine) (*Server, error) {
 	r, err := newRenderer()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, r: r}, nil
+	return &Server{cfg: cfg, store: store, r: r, search: eng}, nil
 }
 
 // Handler returns the configured *http.ServeMux. Kept separate from ListenAndServe
@@ -50,8 +53,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 
-	// Phase-2 stubs (return 200 + a hint so HTMX targets exist).
-	mux.HandleFunc("GET /search/live", func(w http.ResponseWriter, _ *http.Request) { w.Write(nil) })
+	mux.HandleFunc("GET /search", s.handleSearchPage)
+	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 	mux.HandleFunc("GET /inbox", s.handlePlaceholder("Inbox", "Coming in Phase 7."))
 	mux.HandleFunc("GET /chat", s.handlePlaceholder("Chat", "Coming in Phase 6."))
 	mux.HandleFunc("GET /tags", s.handlePlaceholder("Tags", "Coming in Phase 4/7."))
@@ -165,6 +168,40 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<a href="/c/">← back</a><h2>%s</h2><p><a href="%s" target="_blank">%s</a></p><pre>%s</pre>`,
 		htmlEscape(link.Title), htmlEscape(link.URL), htmlEscape(link.URL), htmlEscape(link.Summary))
+}
+
+func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	results := s.runSearch(r.Context(), q, 0, 20)
+	s.renderPage(w, "search", map[string]any{
+		"Title":   "Search",
+		"Query":   q,
+		"Results": results,
+	})
+}
+
+// handleSearchLive returns just the result fragment for HTMX live-search
+// driven by the top-bar input.
+func (s *Server) handleSearchLive(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	results := s.runSearch(r.Context(), q, 0, 8)
+	s.renderFragment(w, "search_results", map[string]any{
+		"Query":   q,
+		"Results": results,
+	})
+}
+
+// runSearch is a small adapter so the two search handlers share error logging.
+func (s *Server) runSearch(ctx context.Context, q string, collectionID int64, limit int) []search.LinkResult {
+	if s.search == nil || q == "" {
+		return nil
+	}
+	res, err := s.search.SearchLinks(ctx, q, collectionID, limit)
+	if err != nil {
+		log.Printf("search %q: %v", q, err)
+		return nil
+	}
+	return res
 }
 
 func (s *Server) handlePlaceholder(title, msg string) http.HandlerFunc {

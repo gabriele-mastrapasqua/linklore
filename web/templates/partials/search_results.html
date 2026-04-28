@@ -1,0 +1,23 @@
+{{define "search_results"}}
+{{if not .Query}}
+{{else if not .Results}}
+	<div class="empty">No matches.</div>
+{{else}}
+<div class="card">
+	<small class="muted">{{len .Results}} result(s) for <em>{{.Query}}</em></small>
+</div>
+{{range .Results}}
+<div class="card link-row">
+	<div class="meta">
+		<div class="title"><a href="/links/{{.Link.ID}}">{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</a></div>
+		<div class="url">{{.Link.URL}}</div>
+		{{if .Snippet}}<div class="summary">{{.Snippet}}</div>{{end}}
+		<div class="badges">
+			<span class="badge {{.Link.Status}}">{{.Link.Status}}</span>
+			<span class="badge">score {{printf "%.2f" .Score}}</span>
+		</div>
+	</div>
+</div>
+{{end}}
+{{end}}
+{{end}}

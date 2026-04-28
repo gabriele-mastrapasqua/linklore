@@ -20,7 +20,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *storage.Store) {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	srv, err := New(config.Default(), st)
+	srv, err := New(config.Default(), st, nil)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}

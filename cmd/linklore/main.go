@@ -13,8 +13,14 @@ import (
 	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/extract"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm/litellm"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm/ollama"
+	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/server"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabrielemastrapasqua/linklore/internal/worker"
 )
 
 const usage = `linklore - local-first link manager
@@ -83,7 +89,28 @@ func runServe(args []string) {
 	store := openStore(ctx, cfg.Database.Path)
 	defer func() { _ = store.Close() }()
 
-	srv, err := server.New(cfg, store)
+	backend, backendErr := newLLMBackend(cfg)
+	if backendErr != nil {
+		// Non-fatal: server still works for CRUD; worker idle until backend reachable.
+		log.Printf("llm backend disabled: %v — UI runs in BM25-only / no-summary mode", backendErr)
+	}
+	var eng *search.Engine
+	if backend != nil {
+		eng = search.New(store, backend)
+	} else {
+		eng = search.New(store, nil)
+	}
+
+	if backend != nil {
+		w := worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second), cfg, worker.Options{})
+		go func() {
+			if err := w.Run(ctx); err != nil && err != context.Canceled {
+				log.Printf("worker exited: %v", err)
+			}
+		}()
+	}
+
+	srv, err := server.New(cfg, store, eng)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -131,6 +158,32 @@ func runAdd(args []string) {
 		log.Fatalf("create link: %v", err)
 	}
 	fmt.Printf("queued link id=%d url=%s collection=%s\n", link.ID, link.URL, col.Slug)
+}
+
+// newLLMBackend constructs an llm.Backend from config. Returns (nil, nil)
+// when the backend is intentionally disabled — currently we always try, but
+// the caller treats a non-nil error as "degraded mode".
+func newLLMBackend(cfg config.Config) (llm.Backend, error) {
+	switch cfg.LLM.Backend {
+	case "ollama":
+		return ollama.New(ollama.Config{
+			Host:       cfg.LLM.Ollama.Host,
+			Model:      cfg.LLM.Ollama.Model,
+			EmbedModel: cfg.LLM.Ollama.EmbedModel,
+			NumCtx:     cfg.LLM.Ollama.NumCtx,
+			Timeout:    time.Duration(cfg.LLM.Ollama.TimeoutSeconds) * time.Second,
+		})
+	case "litellm":
+		return litellm.New(litellm.Config{
+			BaseURL:    cfg.LLM.LiteLLM.BaseURL,
+			Model:      cfg.LLM.LiteLLM.Model,
+			EmbedModel: cfg.LLM.LiteLLM.EmbedModel,
+			APIKey:     cfg.LLM.LiteLLM.APIKey,
+			Timeout:    time.Duration(cfg.LLM.LiteLLM.TimeoutSeconds) * time.Second,
+		})
+	default:
+		return nil, fmt.Errorf("unknown llm.backend %q", cfg.LLM.Backend)
+	}
 }
 
 func runReindex(args []string) {

@@ -1,0 +1,11 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0">Search</h2>
+	<form class="inline" style="margin-top:.5rem" method="get" action="/search">
+		<input type="search" name="q" value="{{.Query}}" placeholder="…" autofocus>
+		<button type="submit">Go</button>
+	</form>
+</section>
+
+{{template "search_results" .}}
+{{end}}

@@ -321,7 +321,68 @@ func (s *Store) DeleteLink(ctx context.Context, id int64) error {
 	return err
 }
 
+// ListLinksByStatus is the worker's inbox: oldest-first so older links don't
+// starve when a burst of new pending rows arrives.
+func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int) ([]Link, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, collection_id, url,
+		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
+		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
+		        fetched_at, created_at
+		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
+		status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		l, err := scanLink(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
+}
+
 // ---- Chunks ----
+
+// ReplaceChunks deletes any existing chunks for linkID and inserts the new
+// ones in a single transaction. Used by reindex to avoid duplicate chunks
+// piling up across runs.
+func (s *Store) ReplaceChunks(ctx context.Context, linkID int64, texts []string) ([]int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM chunks WHERE link_id = ?`, linkID); err != nil {
+		return nil, err
+	}
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO chunks(link_id, ord, text) VALUES (?, ?, ?)`)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	ids := make([]int64, 0, len(texts))
+	for i, t := range texts {
+		res, err := stmt.ExecContext(ctx, linkID, i, t)
+		if err != nil {
+			return nil, err
+		}
+		id, _ := res.LastInsertId()
+		ids = append(ids, id)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
 
 func (s *Store) InsertChunks(ctx context.Context, linkID int64, texts []string) ([]int64, error) {
 	if len(texts) == 0 {
