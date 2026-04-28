@@ -1,0 +1,89 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0">Chat with your library</h2>
+	<small class="muted">Ask questions; answers are grounded on your saved links and cite sources inline as <code>[src:id]</code>.</small>
+</section>
+
+<div id="chat-log" class="card" style="min-height:200px"></div>
+
+<div id="chat-sources" class="card muted" hidden>
+	<strong>Sources</strong>
+	<ul id="chat-sources-list" style="margin:.4rem 0 0"></ul>
+</div>
+
+<form id="chat-form" class="inline" onsubmit="return chatSubmit(event)">
+	<input id="chat-input" type="text" name="message" placeholder="ask…" autocomplete="off" required>
+	<input id="chat-session" type="hidden" name="session_id" value="0">
+	<input id="chat-collection" type="hidden" name="collection_id" value="0">
+	<button type="submit">Send</button>
+</form>
+
+<script>
+function chatAppend(role, text) {
+	const log = document.getElementById('chat-log');
+	const row = document.createElement('div');
+	row.className = 'chat-row';
+	row.innerHTML = '<strong>' + role + ':</strong> <span></span>';
+	row.querySelector('span').textContent = text;
+	log.appendChild(row);
+	log.scrollTop = log.scrollHeight;
+	return row.querySelector('span');
+}
+async function chatSubmit(ev) {
+	ev.preventDefault();
+	const inp = document.getElementById('chat-input');
+	const msg = inp.value.trim();
+	if (!msg) return false;
+	chatAppend('you', msg);
+	inp.value = '';
+
+	const fd = new FormData();
+	fd.set('message', msg);
+	fd.set('session_id', document.getElementById('chat-session').value);
+	fd.set('collection_id', document.getElementById('chat-collection').value);
+
+	const sourcesEl = document.getElementById('chat-sources');
+	const sourcesList = document.getElementById('chat-sources-list');
+	sourcesList.innerHTML = '';
+	sourcesEl.hidden = true;
+
+	const ansEl = chatAppend('linklore', '');
+	const resp = await fetch('/chat/stream', { method: 'POST', body: fd });
+	if (!resp.ok || !resp.body) {
+		ansEl.textContent = '[error: ' + resp.status + ']';
+		return false;
+	}
+	const reader = resp.body.getReader();
+	const dec = new TextDecoder();
+	let buf = '';
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		buf += dec.decode(value, { stream: true });
+		// SSE events are separated by \n\n
+		let idx;
+		while ((idx = buf.indexOf('\n\n')) !== -1) {
+			const block = buf.slice(0, idx);
+			buf = buf.slice(idx + 2);
+			let event = 'message', data = '';
+			block.split('\n').forEach(line => {
+				if (line.startsWith('event: ')) event = line.slice(7);
+				else if (line.startsWith('data: ')) data += line.slice(6);
+			});
+			data = data.replace(/\\n/g, '\n');
+			if (event === 'session') document.getElementById('chat-session').value = data;
+			else if (event === 'token') ansEl.textContent += data;
+			else if (event === 'source') {
+				const [id, title, url] = data.split('|');
+				const li = document.createElement('li');
+				li.innerHTML = '[src:' + id + '] <a href="' + url + '" target="_blank" rel="noopener"></a>';
+				li.querySelector('a').textContent = title;
+				sourcesList.appendChild(li);
+				sourcesEl.hidden = false;
+			} else if (event === 'error') ansEl.textContent += ' [error: ' + data + ']';
+		}
+	}
+	return false;
+}
+</script>
+{{end}}

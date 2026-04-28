@@ -64,12 +64,14 @@ func newStoreWithFixtures(t *testing.T) (*storage.Store, int64) {
 
 func TestSanitizeMatchQuery(t *testing.T) {
 	cases := map[string]string{
-		`hello world`:  "hello world",
-		`go "channel"`: "go channel",
-		`c++`:          "c",
-		`(rust)`:       "rust",
-		`a-b`:          "a b",
-		`   `:          "",
+		`hello world`:    "hello world",
+		`go "channel"`:   "go channel",
+		`c++`:            "c",
+		`(rust)`:         "rust",
+		`a-b`:            "a b",
+		`who? what!`:     "who what",
+		`a, b. c`:        "a b c",
+		`   `:            "",
 	}
 	for in, want := range cases {
 		if got := sanitizeMatchQuery(in); got != want {

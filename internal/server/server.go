@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
@@ -23,15 +24,16 @@ type Server struct {
 	cfg    config.Config
 	store  *storage.Store
 	r      *renderer
-	search *search.Engine // nil → search routes return empty results
+	search *search.Engine    // nil → search routes return empty results
+	chat   *chat.Service     // nil → chat routes return 503
 }
 
-func New(cfg config.Config, store *storage.Store, eng *search.Engine) (*Server, error) {
+func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *chat.Service) (*Server, error) {
 	r, err := newRenderer()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: store, r: r, search: eng}, nil
+	return &Server{cfg: cfg, store: store, r: r, search: eng, chat: chatSvc}, nil
 }
 
 // Handler returns the configured *http.ServeMux. Kept separate from ListenAndServe
@@ -55,9 +57,11 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /search", s.handleSearchPage)
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
+
+	mux.HandleFunc("GET /chat", s.handleChatPage)
+	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
 	mux.HandleFunc("GET /inbox", s.handlePlaceholder("Inbox", "Coming in Phase 7."))
-	mux.HandleFunc("GET /chat", s.handlePlaceholder("Chat", "Coming in Phase 6."))
-	mux.HandleFunc("GET /tags", s.handlePlaceholder("Tags", "Coming in Phase 4/7."))
+	mux.HandleFunc("GET /tags", s.handlePlaceholder("Tags", "Coming in Phase 7."))
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
 
 	return logging(mux)
@@ -204,6 +208,77 @@ func (s *Server) runSearch(ctx context.Context, q string, collectionID int64, li
 	return res
 }
 
+func (s *Server) handleChatPage(w http.ResponseWriter, _ *http.Request) {
+	if s.chat == nil {
+		http.Error(w, "chat unavailable: LLM backend not configured", http.StatusServiceUnavailable)
+		return
+	}
+	s.renderPage(w, "chat", map[string]any{"Title": "Chat"})
+}
+
+// handleChatStream POST {message, session_id?, collection_id?} — server-sent
+// events (text/event-stream): one "token" event per LLM chunk, a "sources"
+// event up front with the citation payload, a final "done" event.
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	if s.chat == nil {
+		http.Error(w, "chat unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	msg := strings.TrimSpace(r.PostForm.Get("message"))
+	if msg == "" {
+		http.Error(w, "message required", http.StatusBadRequest)
+		return
+	}
+	sessionID, _ := strconv.ParseInt(r.PostForm.Get("session_id"), 10, 64)
+	collectionID, _ := strconv.ParseInt(r.PostForm.Get("collection_id"), 10, 64)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// http.NewResponseController works through middleware wrappers (it uses
+	// Unwrap()), unlike a plain `w.(http.Flusher)` type assertion.
+	rc := http.NewResponseController(w)
+	flush := func() { _ = rc.Flush() }
+
+	turn, err := s.chat.Prepare(r.Context(), sessionID, collectionID, msg)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flush()
+		return
+	}
+
+	// session id + sources preamble.
+	fmt.Fprintf(w, "event: session\ndata: %d\n\n", turn.SessionID)
+	for _, src := range turn.Sources {
+		fmt.Fprintf(w, "event: source\ndata: %d|%s|%s\n\n",
+			src.LinkID, sseSafe(src.Title), sseSafe(src.URL))
+	}
+	flush()
+
+	_, streamErr := s.chat.Stream(r.Context(), turn.SessionID, turn.Prompt, func(text string) error {
+		fmt.Fprintf(w, "event: token\ndata: %s\n\n", sseSafe(text))
+		flush()
+		return nil
+	})
+	if streamErr != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", sseSafe(streamErr.Error()))
+		flush()
+		return
+	}
+	fmt.Fprint(w, "event: done\ndata: \n\n")
+	flush()
+}
+
+// sseSafe replaces newlines (which would terminate the SSE event) with \\n
+// escape sequences. The client will undo them when re-assembling tokens.
+func sseSafe(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "\\n").Replace(s)
+}
+
 func (s *Server) handlePlaceholder(title, msg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -264,3 +339,7 @@ func (s *statusWriter) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.NewResponseController reach the real ResponseWriter
+// (and its Flusher / Hijacker / etc) through this middleware wrapper.
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }

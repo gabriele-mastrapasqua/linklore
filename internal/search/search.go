@@ -322,7 +322,7 @@ func sanitizeMatchQuery(s string) string {
 	if s == "" {
 		return ""
 	}
-	bad := []string{`"`, "'", "(", ")", "*", ":", "^", "[", "]", "+", "-"}
+	bad := []string{`"`, "'", "(", ")", "*", ":", "^", "[", "]", "+", "-", "?", "!", ";", ",", ".", "/", "\\"}
 	for _, ch := range bad {
 		s = strings.ReplaceAll(s, ch, " ")
 	}

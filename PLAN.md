@@ -257,13 +257,13 @@ database:
 llm:
   backend: "ollama"          # ollama | litellm
   ollama:
-    host: "http://192.168.1.93:11434"   # DGX
+    host: "http://192.168.1.94:11434"   # DGX
     model: "qwen3:4b"
     embed_model: "nomic-embed-text"
     num_ctx: 8192
     timeout_seconds: 120
   litellm:
-    base_url: "http://192.168.1.93:4000/v1"   # vLLM via LiteLLM proxy
+    base_url: "http://192.168.1.94:4000/v1"   # vLLM via LiteLLM proxy
     model: "qwen3-4b"
     api_key: "$LITELLM_API_KEY"
 

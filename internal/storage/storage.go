@@ -528,6 +528,86 @@ func (s *Store) CountActiveTags(ctx context.Context) (int, error) {
 	return n, err
 }
 
+// ---- chat ----
+
+type ChatMessage struct {
+	ID        int64
+	SessionID int64
+	Role      string
+	Content   string
+	CreatedAt time.Time
+}
+
+// CreateChatSession returns the new session id. collectionID may be 0 for
+// global (cross-collection) chats.
+func (s *Store) CreateChatSession(ctx context.Context, collectionID int64) (int64, error) {
+	now := time.Now().UTC().Unix()
+	var res sql.Result
+	var err error
+	if collectionID > 0 {
+		res, err = s.db.ExecContext(ctx,
+			`INSERT INTO chat_sessions(collection_id, created_at) VALUES (?, ?)`, collectionID, now)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`INSERT INTO chat_sessions(created_at) VALUES (?)`, now)
+	}
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return id, nil
+}
+
+// AppendChatMessage stores a user/assistant/system message and returns its id.
+func (s *Store) AppendChatMessage(ctx context.Context, sessionID int64, role, content string) (int64, error) {
+	if role != "user" && role != "assistant" && role != "system" {
+		return 0, fmt.Errorf("invalid role %q", role)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO chat_messages(session_id, role, content, created_at) VALUES (?, ?, ?, ?)`,
+		sessionID, role, content, time.Now().UTC().Unix())
+	if err != nil {
+		return 0, err
+	}
+	id, _ := res.LastInsertId()
+	return id, nil
+}
+
+// RecentChatMessages returns up to limit most-recent messages oldest-first
+// (so callers can stitch them straight into a prompt).
+func (s *Store) RecentChatMessages(ctx context.Context, sessionID int64, limit int) ([]ChatMessage, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, role, content, created_at
+		  FROM chat_messages
+		 WHERE session_id = ?
+		 ORDER BY id DESC LIMIT ?`, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rev []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		var ts int64
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &ts); err != nil {
+			return nil, err
+		}
+		m.CreatedAt = time.Unix(ts, 0).UTC()
+		rev = append(rev, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Reverse to oldest-first.
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	return rev, nil
+}
+
 // ---- search helpers ----
 
 // FTSHit is a candidate produced by an FTS5 MATCH; bm25 is lower=better.

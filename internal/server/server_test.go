@@ -9,18 +9,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
+	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 )
 
 func newTestServer(t *testing.T) (*httptest.Server, *storage.Store) {
+	t.Helper()
+	return newTestServerWithChat(t, nil)
+}
+
+func newTestServerWithChat(t *testing.T, chatSvc *chat.Service) (*httptest.Server, *storage.Store) {
 	t.Helper()
 	st, err := storage.Open(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	srv, err := New(config.Default(), st, nil)
+	srv, err := New(config.Default(), st, nil, chatSvc)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -188,6 +197,56 @@ func TestHealthz(t *testing.T) {
 	code, body := get(t, ts, "/healthz")
 	if code != 200 || body != "ok" {
 		t.Errorf("got %d %q", code, body)
+	}
+}
+
+func TestChat_disabled503(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, _ := get(t, ts, "/chat")
+	if code != 503 {
+		t.Errorf("status = %d (expected 503 when chat is nil)", code)
+	}
+}
+
+func TestChat_streamSSE(t *testing.T) {
+	st, err := storage.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+
+	streamer := &fake.Backend{
+		StreamChunks: []llm.StreamChunk{{Text: "hello "}, {Text: "world"}, {Done: true}},
+	}
+	eng := search.New(st, nil) // BM25-only path is fine; collection has no chunks
+	chatSvc := chat.New(st, eng, streamer)
+
+	srv, err := New(config.Default(), st, eng, chatSvc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := ts.Client().PostForm(ts.URL+"/chat/stream",
+		url.Values{"message": {"hi"}, "collection_id": {i64s(col.ID)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("content-type = %q", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	stream := string(body)
+	for _, want := range []string{"event: session", "event: token", "data: hello", "event: done"} {
+		if !strings.Contains(stream, want) {
+			t.Errorf("missing %q in stream:\n%s", want, stream)
+		}
 	}
 }
 

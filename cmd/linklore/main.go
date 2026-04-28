@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/extract"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
@@ -110,7 +111,11 @@ func runServe(args []string) {
 		}()
 	}
 
-	srv, err := server.New(cfg, store, eng)
+	var chatSvc *chat.Service
+	if backend != nil {
+		chatSvc = chat.New(store, eng, backend)
+	}
+	srv, err := server.New(cfg, store, eng, chatSvc)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
