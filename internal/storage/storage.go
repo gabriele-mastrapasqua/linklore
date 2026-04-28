@@ -95,6 +95,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			{"order_idx", "REAL NOT NULL DEFAULT 0"},
 			{"note", "TEXT"},
 		},
+		"collections": {
+			{"feed_url", "TEXT"},
+			{"last_checked_at", "INTEGER"},
+		},
 	}
 	for table, cols := range addColumns {
 		for _, c := range cols {
@@ -113,11 +117,13 @@ func (s *Store) migrate(ctx context.Context) error {
 // ---- domain types ----
 
 type Collection struct {
-	ID          int64
-	Slug        string
-	Name        string
-	Description string
-	CreatedAt   time.Time
+	ID            int64
+	Slug          string
+	Name          string
+	Description   string
+	FeedURL       string     // empty when this isn't a feed-backed collection
+	LastCheckedAt *time.Time // last successful feed poll
+	CreatedAt     time.Time
 }
 
 type Link struct {
@@ -189,14 +195,26 @@ func (s *Store) CreateCollection(ctx context.Context, slug, name, description st
 
 func (s *Store) GetCollectionBySlug(ctx context.Context, slug string) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, COALESCE(description,''), created_at FROM collections WHERE slug = ?`, slug)
+		`SELECT id, slug, name, COALESCE(description,''),
+		        COALESCE(feed_url,''), last_checked_at, created_at
+		   FROM collections WHERE slug = ?`, slug)
+	return scanCollection(row.Scan)
+}
+
+func scanCollection(scan func(...any) error) (*Collection, error) {
 	var c Collection
 	var ts int64
-	if err := row.Scan(&c.ID, &c.Slug, &c.Name, &c.Description, &ts); err != nil {
+	var lastChecked sql.NullInt64
+	err := scan(&c.ID, &c.Slug, &c.Name, &c.Description, &c.FeedURL, &lastChecked, &ts)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("scan collection: %w", err)
+	}
+	if lastChecked.Valid {
+		t := time.Unix(lastChecked.Int64, 0).UTC()
+		c.LastCheckedAt = &t
 	}
 	c.CreatedAt = time.Unix(ts, 0).UTC()
 	return &c, nil
@@ -204,20 +222,20 @@ func (s *Store) GetCollectionBySlug(ctx context.Context, slug string) (*Collecti
 
 func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, slug, name, COALESCE(description,''), created_at FROM collections ORDER BY name`)
+		`SELECT id, slug, name, COALESCE(description,''),
+		        COALESCE(feed_url,''), last_checked_at, created_at
+		   FROM collections ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Collection
 	for rows.Next() {
-		var c Collection
-		var ts int64
-		if err := rows.Scan(&c.ID, &c.Slug, &c.Name, &c.Description, &ts); err != nil {
+		c, err := scanCollection(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
-		c.CreatedAt = time.Unix(ts, 0).UTC()
-		out = append(out, c)
+		out = append(out, *c)
 	}
 	return out, rows.Err()
 }
@@ -235,7 +253,8 @@ type CollectionStat struct {
 // counts via CASE/WHEN per collection.
 func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
+		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
+		       COALESCE(c.feed_url,''), c.last_checked_at, c.created_at,
 		       COUNT(l.id)                                                  AS total,
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END)           AS summarized,
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END) AS in_progress,
@@ -252,9 +271,15 @@ func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat,
 	for rows.Next() {
 		var cs CollectionStat
 		var ts int64
-		if err := rows.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description, &ts,
+		var lastChecked sql.NullInt64
+		if err := rows.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
+			&cs.FeedURL, &lastChecked, &ts,
 			&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 			return nil, err
+		}
+		if lastChecked.Valid {
+			t := time.Unix(lastChecked.Int64, 0).UTC()
+			cs.LastCheckedAt = &t
 		}
 		cs.CreatedAt = time.Unix(ts, 0).UTC()
 		out = append(out, cs)
@@ -268,7 +293,8 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 	var cs CollectionStat
 	var ts int64
 	row := s.db.QueryRowContext(ctx, `
-		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
+		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
+		       COALESCE(c.feed_url,''), c.last_checked_at, c.created_at,
 		       COUNT(l.id),
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END),
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END),
@@ -277,12 +303,18 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 		  LEFT JOIN links l ON l.collection_id = c.id
 		 WHERE c.id = ?
 		 GROUP BY c.id`, id)
-	if err := row.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description, &ts,
+	var lastChecked sql.NullInt64
+	if err := row.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
+		&cs.FeedURL, &lastChecked, &ts,
 		&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return CollectionStat{}, ErrNotFound
 		}
 		return CollectionStat{}, err
+	}
+	if lastChecked.Valid {
+		t := time.Unix(lastChecked.Int64, 0).UTC()
+		cs.LastCheckedAt = &t
 	}
 	cs.CreatedAt = time.Unix(ts, 0).UTC()
 	return cs, nil
@@ -350,17 +382,69 @@ func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
 // GetCollectionBySlugByID looks up a collection by primary key.
 func (s *Store) GetCollectionBySlugByID(ctx context.Context, id int64) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, slug, name, COALESCE(description,''), created_at FROM collections WHERE id = ?`, id)
-	var c Collection
-	var ts int64
-	if err := row.Scan(&c.ID, &c.Slug, &c.Name, &c.Description, &ts); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
+		`SELECT id, slug, name, COALESCE(description,''),
+		        COALESCE(feed_url,''), last_checked_at, created_at
+		   FROM collections WHERE id = ?`, id)
+	return scanCollection(row.Scan)
+}
+
+// SetCollectionFeed assigns or clears the feed_url on a collection.
+// Empty string clears it (the collection becomes a regular one again).
+func (s *Store) SetCollectionFeed(ctx context.Context, id int64, feedURL string) error {
+	feedURL = strings.TrimSpace(feedURL)
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET feed_url = ? WHERE id = ?`, feedURL, id)
+	return err
+}
+
+// MarkCollectionFeedChecked sets last_checked_at = now.
+func (s *Store) MarkCollectionFeedChecked(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET last_checked_at = ? WHERE id = ?`,
+		time.Now().UTC().Unix(), id)
+	return err
+}
+
+// CreateLinkIfMissing inserts a link unless one with the same URL is
+// already present in the collection. Returns the created (or existing)
+// link plus a "created" flag. Used by the feed importer for dedupe.
+func (s *Store) CreateLinkIfMissing(ctx context.Context, collectionID int64, urlStr string) (*Link, bool, error) {
+	urlStr = strings.TrimSpace(urlStr)
+	if urlStr == "" {
+		return nil, false, fmt.Errorf("url required")
+	}
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id FROM links WHERE collection_id = ? AND url = ?`, collectionID, urlStr)
+	var existingID int64
+	if err := row.Scan(&existingID); err == nil {
+		l, err := s.GetLink(ctx, existingID)
+		return l, false, err
+	}
+	l, err := s.CreateLink(ctx, collectionID, urlStr)
+	return l, err == nil, err
+}
+
+// ListFeedCollections returns every collection that has a non-empty
+// feed_url. Used by the periodic poller.
+func (s *Store) ListFeedCollections(ctx context.Context) ([]Collection, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, slug, name, COALESCE(description,''),
+		        COALESCE(feed_url,''), last_checked_at, created_at
+		   FROM collections WHERE feed_url IS NOT NULL AND feed_url != ''
+		   ORDER BY name`)
+	if err != nil {
 		return nil, err
 	}
-	c.CreatedAt = time.Unix(ts, 0).UTC()
-	return &c, nil
+	defer rows.Close()
+	var out []Collection
+	for rows.Next() {
+		c, err := scanCollection(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, rows.Err()
 }
 
 // ---- Links ----

@@ -1,0 +1,35 @@
+{{define "collection_feed"}}
+<section id="collection-feed-{{.Collection.ID}}" class="card">
+	<strong>RSS / Atom feed</strong>
+	{{if .Collection.FeedURL}}
+		<small class="muted" style="margin-left:.5rem">
+			source: <code>{{.Collection.FeedURL}}</code>
+			{{if .Collection.LastCheckedAt}}· last check: {{.Collection.LastCheckedAt.Format "2006-01-02 15:04"}}{{end}}
+		</small>
+	{{else}}
+		<small class="muted" style="margin-left:.5rem">no feed configured — set one to auto-import</small>
+	{{end}}
+
+	{{if .JustRefresh}}
+		<div class="muted" style="margin-top:.4rem;font-size:.85rem">
+			↻ {{.LastResult.Added}} new ·
+			{{.LastResult.Skipped}} already present
+			{{if .LastResult.Errors}}· {{len .LastResult.Errors}} error(s){{end}}
+		</div>
+	{{end}}
+
+	<form class="inline" style="margin-top:.5rem"
+	      hx-post="/c/{{.Collection.Slug}}/feed"
+	      hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML">
+		<input type="url" name="feed_url" value="{{.Collection.FeedURL}}"
+		       placeholder="https://example.com/feed.xml">
+		<button type="submit">Save</button>
+		{{if .Collection.FeedURL}}
+		<button type="button"
+		        hx-post="/c/{{.Collection.Slug}}/feed/refresh"
+		        hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
+		        hx-disabled-elt="this">↻ Refresh now</button>
+		{{end}}
+	</form>
+</section>
+{{end}}

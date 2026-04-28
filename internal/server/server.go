@@ -17,6 +17,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/feed"
+	"github.com/gabrielemastrapasqua/linklore/internal/feedimport"
 	"github.com/gabrielemastrapasqua/linklore/internal/reader"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
@@ -26,15 +27,16 @@ import (
 )
 
 type Server struct {
-	cfg     config.Config
-	store   *storage.Store
-	r       *renderer
-	search  *search.Engine // nil → search routes return empty results
-	chat    *chat.Service  // nil → chat routes return 503
-	feed    *feed.Builder
-	worker  *worker.Worker // optional, for refetch/reindex
-	events  *events.Broker // optional, for SSE push to clients
-	tagsCfg tagsCfg
+	cfg        config.Config
+	store      *storage.Store
+	r          *renderer
+	search     *search.Engine // nil → search routes return empty results
+	chat       *chat.Service  // nil → chat routes return 503
+	feed       *feed.Builder
+	feedImport *feedimport.Importer
+	worker     *worker.Worker // optional, for refetch/reindex
+	events     *events.Broker // optional, for SSE push to clients
+	tagsCfg    tagsCfg
 }
 
 // tagsCfg is a tiny local view onto config.Tags so we don't carry the whole
@@ -50,12 +52,13 @@ func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *c
 	}
 	return &Server{
 		cfg: cfg, store: store, r: r,
-		search:  eng,
-		chat:    chatSvc,
-		feed:    feed.New(store),
-		worker:  w,
-		events:  broker,
-		tagsCfg: tagsCfg{MaxPerLink: cfg.Tags.MaxPerLink, ActiveCap: cfg.Tags.ActiveCap, ReuseDistance: cfg.Tags.ReuseDistance},
+		search:     eng,
+		chat:       chatSvc,
+		feed:       feed.New(store),
+		feedImport: feedimport.New(store),
+		worker:     w,
+		events:     broker,
+		tagsCfg:    tagsCfg{MaxPerLink: cfg.Tags.MaxPerLink, ActiveCap: cfg.Tags.ActiveCap, ReuseDistance: cfg.Tags.ReuseDistance},
 	}, nil
 }
 
@@ -78,6 +81,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
+	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)
+	mux.HandleFunc("POST /c/{slug}/feed/refresh", s.handleRefreshFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
 	mux.HandleFunc("POST /links/{id}/reorder", s.handleReorderLink)
@@ -156,6 +161,19 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.notFound(w, err)
 		return
+	}
+	// Auto-refresh feed on entry when the collection is feed-backed and
+	// hasn't been polled recently. We do it inline (not in a goroutine)
+	// so the rendered list already reflects the new entries — without
+	// blocking too long: the importer has its own 30s timeout.
+	if s.feedImport != nil && col.FeedURL != "" {
+		stale := col.LastCheckedAt == nil || time.Since(*col.LastCheckedAt) > 15*time.Minute
+		if stale {
+			if _, ferr := s.feedImport.RefreshOne(r.Context(), col.ID); ferr != nil {
+				log.Printf("auto-refresh feed for %s: %v", col.Slug, ferr)
+			}
+			col, _ = s.store.GetCollectionBySlug(r.Context(), slug)
+		}
 	}
 	links, err := s.store.ListLinksByCollection(r.Context(), col.ID, 200, 0)
 	if err != nil {
@@ -684,6 +702,55 @@ func (s *Server) handleMergeTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/tags", http.StatusSeeOther)
+}
+
+// handleSetFeed assigns or clears collection.feed_url. Empty value
+// turns the collection back into a regular one.
+func (s *Server) handleSetFeed(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	url := strings.TrimSpace(r.PostForm.Get("feed_url"))
+	if err := s.store.SetCollectionFeed(r.Context(), col.ID, url); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Re-render the feed-control card.
+	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+	s.renderFragment(w, "collection_feed", map[string]any{
+		"Collection": updated,
+	})
+}
+
+// handleRefreshFeed triggers a one-shot poll. Result + freshly-rendered
+// feed card are returned so the user sees "X added · Y skipped".
+func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	res, err := s.feedImport.RefreshOne(r.Context(), col.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+	s.renderFragment(w, "collection_feed", map[string]any{
+		"Collection":   updated,
+		"LastResult":   res,
+		"JustRefresh":  true,
+	})
+	// Stats refresh OOB so the link counter updates without a page reload.
+	if updated != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), updated)
+	}
 }
 
 func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request) {

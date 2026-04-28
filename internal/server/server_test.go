@@ -361,6 +361,33 @@ func TestTagsMerge(t *testing.T) {
 	}
 }
 
+func TestFeedImport_setURL(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "rss", "RSS", "")
+	code, body := postForm(t, ts, "/c/rss/feed",
+		url.Values{"feed_url": {"https://example.com/feed.xml"}})
+	if code != 200 {
+		t.Fatalf("status=%d body=%s", code, body)
+	}
+	if !strings.Contains(body, "https://example.com/feed.xml") {
+		t.Errorf("feed url not echoed back: %s", body)
+	}
+	got, _ := st.GetCollectionBySlug(context.Background(), "rss")
+	if got.FeedURL != "https://example.com/feed.xml" {
+		t.Errorf("feed_url = %q", got.FeedURL)
+	}
+	_ = col
+}
+
+func TestFeedImport_refreshErrorsWithoutURL(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "rss", "RSS", "")
+	code, _ := postForm(t, ts, "/c/rss/feed/refresh", url.Values{})
+	if code < 400 {
+		t.Errorf("expected 4xx without feed_url, got %d", code)
+	}
+}
+
 func TestFeed_atomXMLForCollection(t *testing.T) {
 	ts, st := newTestServer(t)
 	col, _ := st.CreateCollection(context.Background(), "reading", "Reading", "")

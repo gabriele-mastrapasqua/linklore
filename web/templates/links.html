@@ -1,7 +1,7 @@
 {{define "content"}}
 <section class="card">
 	<h2 style="margin:0">{{.Collection.Name}}</h2>
-	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}</div>
+	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
 	{{template "collection_stats" .}}
 	<form class="inline" style="margin-top:.75rem"
 	      hx-post="/c/{{.Collection.Slug}}/links"
@@ -11,6 +11,8 @@
 		<button type="submit">Add link</button>
 	</form>
 </section>
+
+{{template "collection_feed" (dict "Collection" .Collection)}}
 
 <div id="links-list">
 	<div id="links-empty"{{if .Links}} hidden{{end}}>

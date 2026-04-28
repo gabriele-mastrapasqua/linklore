@@ -5,11 +5,13 @@ package storage
 // Mirrors graphrag's inline migration pattern in storage/sqlite.go.
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS collections (
-		id          INTEGER PRIMARY KEY,
-		slug        TEXT NOT NULL UNIQUE,
-		name        TEXT NOT NULL,
-		description TEXT,
-		created_at  INTEGER NOT NULL
+		id              INTEGER PRIMARY KEY,
+		slug            TEXT NOT NULL UNIQUE,
+		name            TEXT NOT NULL,
+		description     TEXT,
+		feed_url        TEXT,            -- when set, this collection is fed from an RSS/Atom URL
+		last_checked_at INTEGER,         -- last time we polled the feed
+		created_at      INTEGER NOT NULL
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS links (
