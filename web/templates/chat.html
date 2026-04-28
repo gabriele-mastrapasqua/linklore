@@ -32,18 +32,40 @@
 <script>
 const chatModel = {{.Model | printf "%q"}};
 function chatAppend(role, text, withStats) {
+	// "you" and "linklore" get distinct bubble styles (left vs right,
+	// own colour pair). The whole row is a flex container so the
+	// bubble can hug its edge of the chat log.
 	const log = document.getElementById('chat-log');
 	const row = document.createElement('div');
-	row.className = 'chat-row';
-	row.innerHTML = '<strong>' + role + ':</strong> <span class="answer"></span>'
-		+ (withStats ? ' <small class="muted stats" style="margin-left:.5rem"></small>' : '');
-	row.querySelector('.answer').textContent = text;
+	row.className = 'chat-row chat-row-' + (role === 'you' ? 'user' : 'bot');
+
+	// Tiny circular avatar with the role's initial — keeps the
+	// "who said what" obvious without loading any image.
+	const avatar = document.createElement('div');
+	avatar.className = 'chat-avatar';
+	avatar.textContent = role === 'you' ? 'Y' : 'L';
+	row.appendChild(avatar);
+
+	const bubble = document.createElement('div');
+	bubble.className = 'chat-bubble chat-bubble-' + (role === 'you' ? 'user' : 'bot');
+	const author = document.createElement('div');
+	author.className = 'chat-author';
+	author.textContent = role;
+	bubble.appendChild(author);
+	const ans = document.createElement('div');
+	ans.className = 'answer';
+	ans.textContent = text;
+	bubble.appendChild(ans);
+	let statsEl = null;
+	if (withStats) {
+		statsEl = document.createElement('small');
+		statsEl.className = 'chat-stats';
+		bubble.appendChild(statsEl);
+	}
+	row.appendChild(bubble);
 	log.appendChild(row);
 	log.scrollTop = log.scrollHeight;
-	return {
-		ans: row.querySelector('.answer'),
-		stats: row.querySelector('.stats'),
-	};
+	return { ans: ans, stats: statsEl };
 }
 async function chatSubmit(ev) {
 	ev.preventDefault();
