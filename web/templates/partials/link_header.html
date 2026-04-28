@@ -1,8 +1,14 @@
 {{define "link_header"}}
+{{/*
+   Polling rule: only repaint when the worker is going to do something
+   on the next tick — i.e. status=pending OR (status=fetched AND the
+   user just asked to summarise). Plain status=fetched without a
+   queued action is a stable state (the user has to click "Generate
+   summary" to advance), so polling there only causes flicker.
+*/}}
 <div id="link-header-{{.Link.ID}}"
-     {{if and (ne .Link.Status "summarized") (ne .Link.Status "failed")}}
-     hx-get="/links/{{.Link.ID}}/header" hx-trigger="every 2s" hx-swap="outerHTML"
-     {{end}}>
+     data-link-id="{{.Link.ID}}"
+     data-status="{{.Link.Status}}">
 	<div class="badges" style="margin-top:.4rem">
 		<span class="badge {{.Link.Status}}">{{.Link.Status}}</span>
 		{{if .Link.ContentLang}}<span class="badge">{{.Link.ContentLang}}</span>{{end}}

@@ -28,8 +28,12 @@ import (
 	readability "github.com/go-shiori/go-readability"
 )
 
-// DefaultUserAgent identifies linklore to upstream servers.
-const DefaultUserAgent = "linklore/0.1 (+https://github.com/gabrielemastrapasqua/linklore)"
+// DefaultUserAgent looks like a real desktop browser. Many sites
+// (Reddit, Twitter, Cloudflare-fronted blogs) serve an interstitial
+// "please verify" page when they see a bot UA, so a custom string
+// makes extraction useless. We mimic a stable, cache-friendly Safari
+// UA that's commonly served the real article HTML.
+const DefaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
 
 // MinReadableChars: if readability output is shorter than this we treat
 // the page as JS-rendered / paywalled and fall back to a raw-body cleanup.
@@ -73,7 +77,10 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("new request: %w", err)
 	}
 	req.Header.Set("User-Agent", f.UserAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,it;q=0.8")
+	req.Header.Set("Accept-Encoding", "identity") // skip gzip — net/http handles transparently otherwise
+	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := f.Client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("get %s: %w", url, err)

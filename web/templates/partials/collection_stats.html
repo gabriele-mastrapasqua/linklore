@@ -1,9 +1,8 @@
 {{define "collection_stats"}}
 <div id="collection-stats-{{.Collection.ID}}"
      class="collection-stats badges"
-     {{if gt .Stats.InProgress 0}}
-     hx-get="/c/{{.Collection.Slug}}/stats" hx-trigger="every 2s" hx-swap="outerHTML"
-     {{end}}>
+     data-collection-id="{{.Collection.ID}}"
+     data-collection-slug="{{.Collection.Slug}}">
 	<span class="badge">{{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}}</span>
 	{{if gt .Stats.Summarized 0}}<span class="badge summarized">{{.Stats.Summarized}} ready</span>{{end}}
 	{{if gt .Stats.InProgress 0}}<span class="badge pending">{{.Stats.InProgress}} processing</span>{{end}}

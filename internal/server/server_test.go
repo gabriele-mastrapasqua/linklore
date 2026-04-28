@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
@@ -31,7 +34,7 @@ func newTestServerWithChat(t *testing.T, chatSvc *chat.Service) (*httptest.Serve
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	srv, err := New(config.Default(), st, nil, chatSvc, nil)
+	srv, err := New(config.Default(), st, nil, chatSvc, nil, nil)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -383,7 +386,7 @@ func TestChatPage_emptyLibraryHint(t *testing.T) {
 	st, _ := storage.Open(context.Background(), ":memory:")
 	t.Cleanup(func() { _ = st.Close() })
 	srv, err := New(config.Default(), st, nil,
-		chat.New(st, search.New(st, nil), &fake.Backend{}), nil)
+		chat.New(st, search.New(st, nil), &fake.Backend{}), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,11 +700,13 @@ func TestSidebar_listsActiveCollection(t *testing.T) {
 		t.Errorf("All entry missing from sidebar")
 	}
 
-	// Inside /c/alpha → that link gets the active class.
+	// Inside /c/alpha → that link gets the active class. The id +
+	// href + active class all live on the same <a>, so a regex check
+	// works regardless of attribute order.
 	_, body = get(t, ts, "/c/alpha")
-	// Look for a sidebar-link with the alpha href that's active.
-	if !strings.Contains(body, `href="/c/alpha" class="sidebar-link active`) {
-		t.Errorf("active class not applied to /c/alpha sidebar link: %s", body[:300])
+	rx := regexp.MustCompile(`(?s)<a[^>]+id="sidebar-collection-\d+"[^>]+href="/c/alpha"[^>]+class="sidebar-link active`)
+	if !rx.MatchString(body) {
+		t.Errorf("active class not applied to /c/alpha sidebar link")
 	}
 	// Bravo is present but not active.
 	if !strings.Contains(body, `href="/c/bravo"`) {
@@ -868,7 +873,7 @@ func TestRefetchReindex_returnsFragmentWithQueuedBadge(t *testing.T) {
 		stubReindexFetcher{body: "<html><title>x</title><body>plenty of body text here for readability to munch through plenty of body text here</body></html>"},
 		config.Default(), worker.Options{})
 
-	srv, err := New(config.Default(), st, nil, nil, wk)
+	srv, err := New(config.Default(), st, nil, nil, wk, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,36 +901,114 @@ type stubReindexFetcher struct{ body string }
 
 func (s stubReindexFetcher) Fetch(_ context.Context, _ string) (string, error) { return s.body, nil }
 
-func TestLinkHeader_pollsUntilTerminal(t *testing.T) {
+func TestLinkHeader_carriesStatusForSSEClient(t *testing.T) {
 	st, _ := storage.Open(context.Background(), ":memory:")
 	t.Cleanup(func() { _ = st.Close() })
 	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
 	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
 
-	srv, err := New(config.Default(), st, nil, nil, nil)
+	srv, err := New(config.Default(), st, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// status=pending → fragment should carry hx-trigger="every 2s"
+	// status=pending → fragment carries data-link-id + data-status
+	// (events.js uses these to know what to refresh on SSE messages).
 	code, body := get(t, ts, "/links/"+i64s(l.ID)+"/header")
 	if code != 200 {
 		t.Fatalf("status: %d", code)
 	}
-	if !strings.Contains(body, `hx-trigger="every 2s"`) {
-		t.Errorf("expected polling attribute in pending header: %s", body)
+	if !strings.Contains(body, `data-link-id="`+i64s(l.ID)+`"`) {
+		t.Errorf("expected data-link-id in header: %s", body)
+	}
+	if !strings.Contains(body, `data-status="pending"`) {
+		t.Errorf("expected data-status=pending in header: %s", body)
+	}
+	// And no leftover polling attributes — those were replaced by SSE.
+	if strings.Contains(body, `hx-trigger="every`) {
+		t.Errorf("polling attribute should be gone: %s", body)
 	}
 
-	// flip to summarized → polling attribute must disappear.
+	// flip to summarized → status reflects in attribute, still no polling.
 	_ = st.UpdateLinkSummary(context.Background(), l.ID, "ok")
 	code, body = get(t, ts, "/links/"+i64s(l.ID)+"/header")
 	if code != 200 {
 		t.Fatalf("status: %d", code)
 	}
-	if strings.Contains(body, `hx-trigger="every 2s"`) {
+	if strings.Contains(body, `hx-trigger="every`) {
 		t.Errorf("polling should have stopped on summarized: %s", body)
+	}
+}
+
+func TestEvents_streamsFromBroker(t *testing.T) {
+	st, _ := storage.Open(context.Background(), ":memory:")
+	t.Cleanup(func() { _ = st.Close() })
+	broker := events.New()
+	srv, err := New(config.Default(), st, nil, nil, nil, broker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// Open SSE in a goroutine, publish, expect the framed event.
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/events", nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("content-type: %q", ct)
+	}
+
+	// Fire a publish AFTER the stream is open.
+	go func() {
+		// give the subscriber time to register
+		for i := 0; i < 20; i++ {
+			if broker.SubscriberCount() > 0 {
+				break
+			}
+		}
+		broker.Publish(events.Event{Kind: events.KindLinkUpdated, LinkID: 7, CollectionID: 3})
+	}()
+
+	buf := make([]byte, 4096)
+	deadline := make(chan struct{})
+	go func() {
+		// Read up to 1.5s waiting for the link_updated frame.
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				out := string(buf[:n])
+				if strings.Contains(out, "event: link_updated") &&
+					strings.Contains(out, "\"link_id\":7") {
+					close(deadline)
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-deadline:
+	case <-time.After(2 * time.Second):
+		t.Fatal("never received the link_updated event")
+	}
+}
+
+func TestEvents_503WhenNoBroker(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, _ := get(t, ts, "/events")
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("status=%d (want 503)", code)
 	}
 }
 
@@ -975,7 +1058,7 @@ func TestChat_e2e_SSE_frameOrderAndCitations(t *testing.T) {
 	eng := search.New(st, streamer)
 	chatSvc := chat.New(st, eng, streamer)
 
-	srv, err := New(config.Default(), st, eng, chatSvc, nil)
+	srv, err := New(config.Default(), st, eng, chatSvc, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1068,7 +1151,7 @@ func TestChat_streamSSE(t *testing.T) {
 	eng := search.New(st, nil) // BM25-only path is fine; collection has no chunks
 	chatSvc := chat.New(st, eng, streamer)
 
-	srv, err := New(config.Default(), st, eng, chatSvc, nil)
+	srv, err := New(config.Default(), st, eng, chatSvc, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

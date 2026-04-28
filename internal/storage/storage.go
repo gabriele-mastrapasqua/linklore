@@ -236,7 +236,7 @@ func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat,
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
 		       COUNT(l.id)                                                  AS total,
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END)           AS summarized,
-		       COUNT(CASE WHEN l.status IN ('pending','fetched') THEN 1 END) AS in_progress,
+		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END) AS in_progress,
 		       COUNT(CASE WHEN l.status = 'failed' THEN 1 END)               AS failed
 		  FROM collections c
 		  LEFT JOIN links l ON l.collection_id = c.id
@@ -269,7 +269,7 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
 		       COUNT(l.id),
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END),
-		       COUNT(CASE WHEN l.status IN ('pending','fetched') THEN 1 END),
+		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END),
 		       COUNT(CASE WHEN l.status = 'failed' THEN 1 END)
 		  FROM collections c
 		  LEFT JOIN links l ON l.collection_id = c.id
@@ -308,12 +308,15 @@ func (s *Store) SetPref(ctx context.Context, key, value string) error {
 	return err
 }
 
-// CountInProgress returns total links across all collections that are still
-// being processed by the worker. Drives the topbar "processing N" badge.
+// CountInProgress returns total links across all collections that are
+// actively being worked on right now ("pending" — the worker still has
+// to fetch + extract). Once a link reaches "fetched" it's a stable
+// state until the user clicks "Generate summary"; counting it as
+// "processing" is misleading because there's no active job.
 func (s *Store) CountInProgress(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM links WHERE status IN ('pending','fetched')`).Scan(&n)
+		`SELECT COUNT(*) FROM links WHERE status = 'pending'`).Scan(&n)
 	return n, err
 }
 

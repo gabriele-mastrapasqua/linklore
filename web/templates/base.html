@@ -7,14 +7,15 @@
 	<link rel="stylesheet" href="/static/app.css">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
+	<script src="/static/events.js" defer></script>
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
 	<h1><a href="/">linklore</a></h1>
 	<input type="search" name="q" placeholder="search…"
 	       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
-	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 2s" hx-swap="innerHTML"></span>
-	<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 10s" hx-swap="innerHTML"></span>
+	<span id="worker-status" hx-get="/worker/status" hx-trigger="load" hx-swap="innerHTML"></span>
+	<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load" hx-swap="innerHTML"></span>
 	<nav>
 		<a href="/">collections</a>
 		<a href="/chat">chat</a>

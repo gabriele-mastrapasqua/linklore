@@ -15,6 +15,7 @@ import (
 
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/feed"
 	"github.com/gabrielemastrapasqua/linklore/internal/reader"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
@@ -32,6 +33,7 @@ type Server struct {
 	chat    *chat.Service  // nil → chat routes return 503
 	feed    *feed.Builder
 	worker  *worker.Worker // optional, for refetch/reindex
+	events  *events.Broker // optional, for SSE push to clients
 	tagsCfg tagsCfg
 }
 
@@ -41,7 +43,7 @@ type tagsCfg struct {
 	MaxPerLink, ActiveCap, ReuseDistance int
 }
 
-func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *chat.Service, w *worker.Worker) (*Server, error) {
+func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *chat.Service, w *worker.Worker, broker *events.Broker) (*Server, error) {
 	r, err := newRenderer()
 	if err != nil {
 		return nil, err
@@ -52,6 +54,7 @@ func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *c
 		chat:    chatSvc,
 		feed:    feed.New(store),
 		worker:  w,
+		events:  broker,
 		tagsCfg: tagsCfg{MaxPerLink: cfg.Tags.MaxPerLink, ActiveCap: cfg.Tags.ActiveCap, ReuseDistance: cfg.Tags.ReuseDistance},
 	}, nil
 }
@@ -92,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
 	mux.HandleFunc("GET /healthz/llm", s.handleLLMHealth)
+	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("POST /links/{id}/summarize", s.handleReindex) // alias for the LLM-onboarding flow
 	mux.HandleFunc("POST /preferences/previews", s.handleTogglePreviews)
 	mux.HandleFunc("POST /preferences/theme", s.handleSetTheme)
@@ -783,6 +787,53 @@ func (s *Server) handleTogglePreviews(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`previews: <strong>on</strong>`))
 	} else {
 		_, _ = w.Write([]byte(`previews: <strong>off</strong>`))
+	}
+}
+
+// handleEvents is the SSE endpoint clients connect to once at page
+// load. The worker publishes status changes to the broker; we forward
+// them as text/event-stream frames the JS layer turns into targeted
+// fragment refreshes. Replaces the old hx-trigger="every Ns" polling.
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if s.events == nil {
+		http.Error(w, "events broker not wired", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering
+	rc := http.NewResponseController(w)
+	flush := func() { _ = rc.Flush() }
+
+	ch, cancel := s.events.Subscribe()
+	defer cancel()
+
+	// Initial nudge so the browser commits the response and the client
+	// EventSource fires its onopen.
+	fmt.Fprintf(w, "event: hello\ndata: ok\n\n")
+	flush()
+
+	// Keep-alive every 25s — proxies / browsers will close idle SSE
+	// connections after a minute of silence.
+	tick := time.NewTicker(25 * time.Second)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-tick.C:
+			fmt.Fprint(w, ": ping\n\n") // SSE comment
+			flush()
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "event: %s\ndata: {\"link_id\":%d,\"collection_id\":%d}\n\n",
+				ev.Kind, ev.LinkID, ev.CollectionID)
+			flush()
+		}
 	}
 }
 

@@ -95,7 +95,10 @@
       "Bash(git branch *)",
       "Bash(git symbolic-ref *)",
       "Bash(git config *)",
-      "Bash(echo \"rAF in dnd.js? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)"
+      "Bash(echo \"rAF in dnd.js? $\\(curl -s http://127.0.0.1:8080/static/dnd.js)",
+      "Bash(perl -i -pe ' *)",
+      "Bash(grep -nE 'New\\\\\\(config\\\\.Default\\\\\\(\\\\\\), st, .*[^,] *\\\\\\)$' internal/server/server_test.go)",
+      "Bash(curl -sN --max-time 1 http://127.0.0.1:8080/events)"
     ]
   }
 }

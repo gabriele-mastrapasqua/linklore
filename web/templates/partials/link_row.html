@@ -3,9 +3,7 @@
      draggable="true"
      data-link-id="{{.ID}}"
      data-collection-id="{{.CollectionID}}"
-     {{if and (ne .Status "summarized") (ne .Status "failed")}}
-     hx-get="/links/{{.ID}}/row" hx-trigger="every 2s" hx-swap="outerHTML"
-     {{end}}>
+     data-status="{{.Status}}">
 	<div class="meta">
 		<div class="title">
 			{{if .FaviconURL}}<img src="{{.FaviconURL}}" alt="" class="preview preview-favicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">{{end}}

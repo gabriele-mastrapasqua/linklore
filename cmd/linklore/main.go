@@ -15,6 +15,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/archive"
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/extract"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm/litellm"
@@ -108,6 +109,8 @@ func runServe(args []string) {
 		eng = search.New(store, nil)
 	}
 
+	broker := events.New()
+
 	var wk *worker.Worker
 	if backend != nil {
 		archiveRoot := ""
@@ -115,7 +118,8 @@ func runServe(args []string) {
 			archiveRoot = filepath.Join(filepath.Dir(cfg.Database.Path), "snapshots")
 		}
 		ar, _ := archive.New(archiveRoot)
-		wk = worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second), cfg, worker.Options{Archive: ar})
+		wk = worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second),
+			cfg, worker.Options{Archive: ar, Events: broker})
 		go func() {
 			if err := wk.Run(ctx); err != nil && err != context.Canceled {
 				log.Printf("worker exited: %v", err)
@@ -127,7 +131,7 @@ func runServe(args []string) {
 	if backend != nil {
 		chatSvc = chat.New(store, eng, backend)
 	}
-	srv, err := server.New(cfg, store, eng, chatSvc, wk)
+	srv, err := server.New(cfg, store, eng, chatSvc, wk, broker)
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

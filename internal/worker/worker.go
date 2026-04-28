@@ -24,6 +24,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/chunking"
 	"github.com/gabrielemastrapasqua/linklore/internal/config"
 	"github.com/gabrielemastrapasqua/linklore/internal/embed"
+	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/extract"
 	"github.com/gabrielemastrapasqua/linklore/internal/lang"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
@@ -51,6 +52,7 @@ type Worker struct {
 
 	pollInterval time.Duration
 	logger       *log.Logger
+	events       *events.Broker
 
 	// Health state: when the backend errors on a probe we mark it
 	// unhealthy and skip summary/embed steps until the next probe
@@ -68,6 +70,7 @@ type Options struct {
 	PollInterval time.Duration // default 2s
 	Logger       *log.Logger
 	Archive      *archive.Store // nil → archiving disabled regardless of config
+	Events       *events.Broker // nil → no SSE notifications (no-op publish)
 }
 
 func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.Config, opts Options) *Worker {
@@ -92,6 +95,7 @@ func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.
 		chunkFn:      chunking.Chunk,
 		pollInterval: opts.PollInterval,
 		logger:       opts.Logger,
+		events:       opts.Events,
 		// Optimistic default: assume the backend is healthy until a
 		// probe says otherwise. The first tick re-probes anyway.
 		llmHealthy: backend != nil,
@@ -209,17 +213,29 @@ func (w *Worker) tick(ctx context.Context) error {
 	return g.Wait()
 }
 
+// publish is a small wrapper that no-ops when no broker is wired.
+func (w *Worker) publish(linkID, collectionID int64) {
+	if w.events == nil {
+		return
+	}
+	w.events.Publish(events.Event{
+		Kind: events.KindLinkUpdated, LinkID: linkID, CollectionID: collectionID,
+	})
+}
+
 func (w *Worker) processFetch(ctx context.Context, l storage.Link) {
 	body, err := w.fetch.Fetch(ctx, l.URL)
 	if err != nil {
 		w.logger.Printf("worker: fetch %d (%s): %v", l.ID, l.URL, err)
 		_ = w.store.MarkLinkFailed(ctx, l.ID, truncErr(err))
+		w.publish(l.ID, l.CollectionID)
 		return
 	}
 	a, err := extract.Extract(body, l.URL)
 	if err != nil {
 		w.logger.Printf("worker: extract %d: %v", l.ID, err)
 		_ = w.store.MarkLinkFailed(ctx, l.ID, truncErr(err))
+		w.publish(l.ID, l.CollectionID)
 		return
 	}
 	// Optional HTML archive (gzipped on disk, path persisted alongside).
@@ -232,6 +248,7 @@ func (w *Worker) processFetch(ctx context.Context, l storage.Link) {
 		}
 	}
 	contentLang := lang.Detect(a.ContentMD)
+	defer w.publish(l.ID, l.CollectionID)
 	if err := w.store.UpdateLinkExtractionFull(ctx, l.ID,
 		a.Title, a.Description, a.ImageURL, a.FaviconURL, a.ExtraImages,
 		a.ContentMD, contentLang, archivePath); err != nil {
@@ -249,6 +266,7 @@ func (w *Worker) processIndex(ctx context.Context, l storage.Link) {
 	if l.ContentMD == "" {
 		return // nothing to chunk; refetch needed
 	}
+	defer w.publish(l.ID, l.CollectionID)
 
 	// LLM-optional: when the gateway is down (auth/network/etc) we leave
 	// the link at status=fetched so the link stays usable as a plain
