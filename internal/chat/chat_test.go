@@ -184,6 +184,58 @@ func TestE2E_TwoTurnConversation(t *testing.T) {
 	}
 }
 
+func TestPrepare_followUpInheritsRetrievalFromPriorTurn(t *testing.T) {
+	// First turn names the topic ("rust ownership"); second turn is a
+	// pronoun-only follow-up ("spiegamelo meglio") that on its own would
+	// retrieve zero chunks. The retrieval query must concatenate prior
+	// user turns so RAG still grounds.
+	svc, colID := newChatFixture(t)
+
+	t1, err := svc.Prepare(context.Background(), 0, colID, "rust ownership")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(t1.Sources) == 0 {
+		t.Fatalf("turn 1 should have sources")
+	}
+	// Don't actually call Stream — Prepare alone exercises retrieval.
+	t2, err := svc.Prepare(context.Background(), t1.SessionID, colID, "spiegamelo meglio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(t2.Sources) == 0 {
+		t.Fatalf("follow-up should still find sources thanks to prior-turn carry-over")
+	}
+	if !strings.Contains(strings.ToLower(t2.Sources[0].Title), "rust") {
+		t.Errorf("follow-up surfaced wrong source: %+v", t2.Sources)
+	}
+}
+
+func TestBuildRetrievalQuery_concatsPriorUserTurns(t *testing.T) {
+	hist := []storage.ChatMessage{
+		{Role: "user", Content: "rust ownership"},
+		{Role: "assistant", Content: "Rust uses ownership..."},
+		{Role: "user", Content: "spiegamelo meglio"},
+	}
+	got := buildRetrievalQuery("spiegamelo meglio", hist)
+	if got == "spiegamelo meglio" {
+		t.Errorf("did not carry over prior turn: %q", got)
+	}
+	if !strings.Contains(got, "rust ownership") {
+		t.Errorf("prior turn missing: %q", got)
+	}
+	if !strings.HasSuffix(got, "spiegamelo meglio") {
+		t.Errorf("current msg should be at the end: %q", got)
+	}
+}
+
+func TestBuildRetrievalQuery_noHistoryIsPassthrough(t *testing.T) {
+	got := buildRetrievalQuery("hello", nil)
+	if got != "hello" {
+		t.Errorf("got %q, want passthrough", got)
+	}
+}
+
 func TestStream_TPS_isMeasuredAndMonotonic(t *testing.T) {
 	svc, colID := newChatFixture(t)
 	turn, err := svc.Prepare(context.Background(), 0, colID, "rust ownership")

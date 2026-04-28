@@ -82,14 +82,19 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 		return nil, fmt.Errorf("append user msg: %w", err)
 	}
 
-	hits, err := s.search.RetrieveChunks(ctx, userMsg, collectionID, s.TopK, true)
-	if err != nil {
-		return nil, fmt.Errorf("retrieve chunks: %w", err)
-	}
-
 	history, err := s.store.RecentChatMessages(ctx, sessionID, s.HistoryTurns*2+1)
 	if err != nil {
 		return nil, fmt.Errorf("history: %w", err)
+	}
+
+	// Multi-turn retrieval: a follow-up like "lo sai cosa è?" carries no
+	// content words on its own. Concatenate the last few user turns with
+	// the current message so the FTS/cosine pass has something to match on.
+	retrievalQuery := buildRetrievalQuery(userMsg, history)
+
+	hits, err := s.search.RetrieveChunks(ctx, retrievalQuery, collectionID, s.TopK, true)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve chunks: %w", err)
 	}
 
 	citations := make([]Citation, 0, len(hits))
@@ -98,7 +103,11 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 		if title == "" {
 			title = h.Link.URL
 		}
-		snip := truncate(h.Chunk.Text, 240)
+		// 1200 chars (~250 tokens) per chunk — gives the model real
+		// material to ground the answer. Below ~600 the assistant
+		// often hallucinates because it sees only the chunk's first
+		// boilerplate sentence.
+		snip := truncate(h.Chunk.Text, 1200)
 		citations = append(citations, Citation{
 			LinkID: h.Link.ID, Title: title, URL: h.Link.URL, Snippet: snip,
 		})
@@ -109,6 +118,30 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 		Prompt:    buildPrompt(userMsg, citations, history),
 		Sources:   citations,
 	}, nil
+}
+
+// buildRetrievalQuery glues the current user message together with the last
+// few user turns. Keeps the assistant grounded across follow-ups like
+// "what about X?" / "spiegami meglio" that have no content words alone.
+func buildRetrievalQuery(currentMsg string, history []storage.ChatMessage) string {
+	var prior []string
+	const maxPriorUserTurns = 2
+	// history is oldest-first. Walk from the end backwards collecting
+	// user messages, skipping the very last one (it IS currentMsg).
+	for i := len(history) - 1; i >= 0 && len(prior) < maxPriorUserTurns+1; i-- {
+		m := history[i]
+		if m.Role != "user" {
+			continue
+		}
+		if m.Content == currentMsg && len(prior) == 0 {
+			continue // skip the freshly-persisted current msg
+		}
+		prior = append([]string{m.Content}, prior...)
+	}
+	if len(prior) == 0 {
+		return currentMsg
+	}
+	return strings.Join(prior, " ") + " " + currentMsg
 }
 
 // StreamStats reports on a streaming generation: how many delta chunks were
