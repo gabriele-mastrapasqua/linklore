@@ -88,6 +88,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 
 	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
+	mux.HandleFunc("GET /healthz/llm", s.handleLLMHealth)
+	mux.HandleFunc("POST /links/{id}/summarize", s.handleReindex) // alias for the LLM-onboarding flow
 	mux.HandleFunc("POST /preferences/previews", s.handleTogglePreviews)
 
 	mux.HandleFunc("GET /chat", s.handleChatPage)
@@ -211,12 +213,36 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
 	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
+	llmHealthy, llmErr := s.llmHealthSnapshot()
 	s.renderPageRq(w, r, "link_detail", map[string]any{
 		"Title":      "Link",
 		"Link":       link,
 		"Collection": col,
 		"Tags":       linkTags,
+		// Banner data: only show "no summary yet, configure LLM" when
+		// status=fetched (extraction OK, summary missing) AND the LLM is
+		// either unhealthy or unconfigured.
+		"NeedsSummary":  link.Status == storage.StatusFetched,
+		"LLMHealthy":    llmHealthy,
+		"LLMError":      llmErr,
 	})
+}
+
+// llmHealthSnapshot returns a (healthy, message) pair for the templates.
+// When there's no worker / no backend configured, healthy=false with a
+// clear "not configured" message instead of a stack trace.
+func (s *Server) llmHealthSnapshot() (bool, string) {
+	if s.worker == nil {
+		return false, "no LLM backend configured — set llm.backend + LITELLM_API_KEY in your config"
+	}
+	healthy, err, _ := s.worker.LLMHealth()
+	if healthy {
+		return true, ""
+	}
+	if err == nil {
+		return false, "LLM gateway not yet probed — try again in a few seconds"
+	}
+	return false, err.Error()
 }
 
 // handleLinkRow returns a single link_row fragment. Used by the HTMX
@@ -520,6 +546,29 @@ func (s *Server) handleTogglePreviews(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_, _ = w.Write([]byte(`previews: <strong>off</strong>`))
 	}
+}
+
+// handleLLMHealth returns "ok" when the worker reports a healthy LLM,
+// "down: <reason>" otherwise. UI / topbar polls this every few seconds.
+func (s *Server) handleLLMHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if s.worker == nil {
+		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">no LLM</span>`))
+		return
+	}
+	healthy, err, _ := s.worker.LLMHealth()
+	if healthy {
+		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">LLM ok</span>`))
+		return
+	}
+	msg := "offline"
+	if err != nil {
+		msg = err.Error()
+		if len(msg) > 80 {
+			msg = msg[:80] + "…"
+		}
+	}
+	fmt.Fprintf(w, `<span class="badge failed" title="%s">LLM offline</span>`, htmlEscape(msg))
 }
 
 func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {

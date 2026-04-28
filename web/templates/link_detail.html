@@ -7,6 +7,22 @@
 	</h2>
 	<div class="url"><a href="{{.Link.URL}}" target="_blank" rel="noopener">{{.Link.URL}}</a></div>
 	{{template "link_header" (dict "Link" .Link)}}
+
+	{{if .NeedsSummary}}
+	<div class="card" style="margin-top:.6rem;background:#fff7ed;border-color:#fdba74">
+		<strong>No summary yet.</strong>
+		{{if .LLMHealthy}}
+		<small class="muted">The LLM is reachable — click below to generate a TL;DR + auto-tags for this link.</small>
+		{{else}}
+		<small class="muted">{{.LLMError}}</small>
+		{{end}}
+		<div class="actions" style="margin-top:.4rem">
+			<button hx-post="/links/{{.Link.ID}}/summarize"
+			        hx-target="#link-header-{{.Link.ID}}" hx-swap="outerHTML"
+			        hx-disabled-elt="this">Generate summary</button>
+		</div>
+	</div>
+	{{end}}
 </section>
 
 {{if or .Link.ImageURL .Link.ExtraImages}}

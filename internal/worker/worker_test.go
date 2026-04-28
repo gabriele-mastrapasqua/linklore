@@ -241,6 +241,99 @@ func (authFailingBackend) Embed(context.Context, []string, *llm.EmbedOptions) (*
 	return nil, errors.New("litellm embed: status 401: auth required")
 }
 
+// unhealthyBackend implements both llm.Backend and llm.HealthChecker but
+// the health probe always fails. Used to verify the worker degrades to
+// fetch+extract only and never tries Summary/Embed.
+type unhealthyBackend struct{ *fake.Backend }
+
+func (unhealthyBackend) Healthcheck(_ context.Context) error {
+	return errors.New("simulated gateway down")
+}
+
+func TestWorker_skipsLLMStepsWhenUnhealthy(t *testing.T) {
+	backend := unhealthyBackend{
+		Backend: &fake.Backend{
+			GenerateText: `{"tldr":"x","tags":["x"]}`,
+			EmbedDim:     8,
+		},
+	}
+	w, st, colID := newWorker(t, &stubFetcher{body: fixtureHTML}, backend)
+	l, _ := st.CreateLink(context.Background(), colID, "https://example.com/x")
+
+	if err := w.tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetLink(context.Background(), l.ID)
+	// Fetch+extract still ran → status=fetched. Summary/embed skipped.
+	if got.Status != storage.StatusFetched {
+		t.Errorf("status = %q (expected fetched while LLM down)", got.Status)
+	}
+	if got.Summary != "" {
+		t.Errorf("summary written despite unhealthy LLM: %q", got.Summary)
+	}
+	chunks, _ := st.ListChunksByLink(context.Background(), l.ID)
+	if len(chunks) != 0 {
+		t.Errorf("chunks created while LLM down: %d", len(chunks))
+	}
+
+	// LLMHealth must reflect the failure.
+	healthy, lastErr, _ := w.LLMHealth()
+	if healthy || lastErr == nil {
+		t.Errorf("worker thinks LLM is healthy: healthy=%v err=%v", healthy, lastErr)
+	}
+}
+
+// healthFlippingBackend reports unhealthy on the first probe, healthy on
+// every subsequent one. Used to verify the worker recovers when the
+// gateway comes back online.
+type healthFlippingBackend struct {
+	*fake.Backend
+	probes int32
+}
+
+func (b *healthFlippingBackend) Healthcheck(_ context.Context) error {
+	if atomic.AddInt32(&b.probes, 1) == 1 {
+		return errors.New("first probe down")
+	}
+	return nil
+}
+
+func TestWorker_recoversWhenLLMComesBack(t *testing.T) {
+	backend := &healthFlippingBackend{
+		Backend: &fake.Backend{
+			GenerateText: `{"tldr":"recovered","tags":["recovered"]}`,
+			EmbedDim:     8,
+		},
+	}
+	w, st, colID := newWorker(t, &stubFetcher{body: fixtureHTML}, backend)
+	l, _ := st.CreateLink(context.Background(), colID, "https://example.com/x")
+
+	// Tick 1: probe fails → fetched but no summary.
+	_ = w.tick(context.Background())
+	got, _ := st.GetLink(context.Background(), l.ID)
+	if got.Status != storage.StatusFetched {
+		t.Fatalf("after first tick: %q", got.Status)
+	}
+
+	// Force the next probe by clearing the throttle.
+	resetWorkerHealthThrottle(w)
+
+	// Tick 2: probe succeeds → link reaches summarized.
+	_ = w.tick(context.Background())
+	got, _ = st.GetLink(context.Background(), l.ID)
+	if got.Status != storage.StatusSummarized {
+		t.Errorf("after recovery: %q (want summarized)", got.Status)
+	}
+}
+
+// resetWorkerHealthThrottle nudges lastHealthAt back so probeHealth
+// runs again on the next tick. Test-only.
+func resetWorkerHealthThrottle(w *Worker) {
+	w.healthMu.Lock()
+	w.lastHealthAt = time.Time{}
+	w.healthMu.Unlock()
+}
+
 // embedFailingBackend wraps another backend and always errors on Embed.
 type embedFailingBackend struct {
 	inner llm.Backend

@@ -50,3 +50,12 @@ type Backend interface {
 	GenerateStream(ctx context.Context, prompt string, opts *GenerateOptions) (<-chan StreamChunk, error)
 	Embed(ctx context.Context, texts []string, opts *EmbedOptions) (*EmbedResult, error)
 }
+
+// HealthChecker is an optional capability: backends that implement it can
+// be probed with a cheap "are you alive?" call. The worker uses this to
+// decide whether to attempt summary/embed for a given tick — when the
+// gateway is down we'd rather skip than rack up retries that all fail
+// the same way. Backends that don't implement it are assumed healthy.
+type HealthChecker interface {
+	Healthcheck(ctx context.Context) error
+}

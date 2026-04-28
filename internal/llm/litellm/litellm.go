@@ -78,6 +78,33 @@ type embedResp struct {
 	Data []embedRespItem `json:"data"`
 }
 
+// Healthcheck does a HEAD/GET on /v1/models. Cheap (returns metadata
+// only), and the master key already has access to it, so this is what
+// graphrag uses too. A non-2xx response or any transport error counts
+// as "down".
+func (b *Backend) Healthcheck(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.BaseURL+"/models", nil)
+	if err != nil {
+		return err
+	}
+	if b.cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+b.cfg.APIKey)
+	}
+	// Independent client with a short timeout — health probes shouldn't
+	// hang on a partial outage.
+	hc := &http.Client{Timeout: 5 * time.Second}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("litellm health: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("litellm health: status %d: %s", resp.StatusCode, raw)
+	}
+	return nil
+}
+
 func (b *Backend) modelFor(o *llm.GenerateOptions) string {
 	if o != nil && o.Model != "" {
 		return o.Model

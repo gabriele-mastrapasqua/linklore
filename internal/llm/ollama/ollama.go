@@ -89,6 +89,24 @@ func (b *Backend) buildOptions(o *llm.GenerateOptions) map[string]any {
 	return out
 }
 
+// Healthcheck pings /api/tags. Ollama exposes it without auth.
+func (b *Backend) Healthcheck(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.Host+"/api/tags", nil)
+	if err != nil {
+		return err
+	}
+	hc := &http.Client{Timeout: 5 * time.Second}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama health: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ollama health: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (b *Backend) modelFor(o *llm.GenerateOptions) string {
 	if o != nil && o.Model != "" {
 		return o.Model

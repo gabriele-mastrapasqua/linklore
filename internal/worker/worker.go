@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/archive"
@@ -50,6 +51,15 @@ type Worker struct {
 
 	pollInterval time.Duration
 	logger       *log.Logger
+
+	// Health state: when the backend errors on a probe we mark it
+	// unhealthy and skip summary/embed steps until the next probe
+	// succeeds. This keeps fetch+extract working as a plain bookmark
+	// pipeline when the LLM gateway is down or not configured.
+	healthMu     sync.RWMutex
+	llmHealthy   bool
+	lastHealthAt time.Time
+	lastHealthErr error
 }
 
 // Options bundles the optional knobs so callers don't have to re-pass
@@ -82,7 +92,68 @@ func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.
 		chunkFn:      chunking.Chunk,
 		pollInterval: opts.PollInterval,
 		logger:       opts.Logger,
+		// Optimistic default: assume the backend is healthy until a
+		// probe says otherwise. The first tick re-probes anyway.
+		llmHealthy: backend != nil,
 	}
+}
+
+// LLMHealth returns the most recent health state and the error, if any,
+// from the last probe. (lastErr nil means healthy.)
+func (w *Worker) LLMHealth() (healthy bool, lastErr error, lastAt time.Time) {
+	w.healthMu.RLock()
+	defer w.healthMu.RUnlock()
+	return w.llmHealthy, w.lastHealthErr, w.lastHealthAt
+}
+
+// probeHealth is best-effort: backends that don't implement HealthChecker
+// are treated as healthy. Probes are throttled — at most one every 60s.
+func (w *Worker) probeHealth(ctx context.Context) {
+	if w.llm == nil {
+		w.healthMu.Lock()
+		w.llmHealthy = false
+		w.lastHealthErr = errors.New("no LLM backend configured")
+		w.lastHealthAt = time.Now()
+		w.healthMu.Unlock()
+		return
+	}
+	hc, ok := w.llm.(llm.HealthChecker)
+	if !ok {
+		// Backend can't be probed — trust it.
+		return
+	}
+	w.healthMu.RLock()
+	if !w.lastHealthAt.IsZero() && time.Since(w.lastHealthAt) < 60*time.Second && w.llmHealthy {
+		w.healthMu.RUnlock()
+		return
+	}
+	w.healthMu.RUnlock()
+
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err := hc.Healthcheck(probeCtx)
+
+	w.healthMu.Lock()
+	defer w.healthMu.Unlock()
+	w.lastHealthAt = time.Now()
+	w.lastHealthErr = err
+	if err != nil {
+		if w.llmHealthy {
+			w.logger.Printf("worker: LLM marked unhealthy: %v", err)
+		}
+		w.llmHealthy = false
+	} else {
+		if !w.llmHealthy {
+			w.logger.Printf("worker: LLM is back online")
+		}
+		w.llmHealthy = true
+	}
+}
+
+func (w *Worker) llmIsHealthy() bool {
+	w.healthMu.RLock()
+	defer w.healthMu.RUnlock()
+	return w.llmHealthy
 }
 
 // Run blocks until ctx is cancelled, polling for pending/needs-reindex links
@@ -104,6 +175,9 @@ func (w *Worker) Run(ctx context.Context) error {
 
 // tick processes one batch — exposed for tests so we don't have to wait on the timer.
 func (w *Worker) tick(ctx context.Context) error {
+	// Re-probe health periodically; cheap, doesn't block the tick.
+	w.probeHealth(ctx)
+
 	// Pending fetch+extract.
 	pending, err := w.store.ListLinksByStatus(ctx, storage.StatusPending, w.cfgWk.Concurrency*2)
 	if err != nil {
@@ -174,6 +248,14 @@ func (w *Worker) processFetch(ctx context.Context, l storage.Link) {
 func (w *Worker) processIndex(ctx context.Context, l storage.Link) {
 	if l.ContentMD == "" {
 		return // nothing to chunk; refetch needed
+	}
+
+	// LLM-optional: when the gateway is down (auth/network/etc) we leave
+	// the link at status=fetched so the link stays usable as a plain
+	// bookmark, and the user can click "generate summary" later when
+	// the gateway is reachable. probeHealth on the next tick will retry.
+	if !w.llmIsHealthy() {
+		return
 	}
 
 	// 1) Summarise + tag FIRST. Auto-tags don't depend on embeddings, so

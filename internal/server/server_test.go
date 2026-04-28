@@ -466,6 +466,54 @@ func TestLinkDetail_noPreviewSectionWhenNoImages(t *testing.T) {
 	}
 }
 
+func TestLinkDetail_showsGenerateSummaryBannerWhenFetched(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	// Status=fetched (extraction done, no summary yet).
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"T", "d", "", "body", "en", "")
+
+	code, body := get(t, ts, "/links/"+i64s(l.ID))
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if !strings.Contains(body, "No summary yet.") {
+		t.Errorf("expected banner on a fetched link")
+	}
+	if !strings.Contains(body, `hx-post="/links/`+i64s(l.ID)+`/summarize"`) {
+		t.Errorf("expected Generate summary button to POST to /summarize")
+	}
+}
+
+func TestLinkDetail_noBannerWhenAlreadySummarized(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID, "T", "d", "", "body", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "tldr")
+
+	code, body := get(t, ts, "/links/"+i64s(l.ID))
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if strings.Contains(body, "No summary yet.") {
+		t.Errorf("banner shown on a summarized link")
+	}
+}
+
+func TestLLMHealth_endpoint(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/healthz/llm")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	// No worker → "no LLM" badge.
+	if !strings.Contains(body, "no LLM") {
+		t.Errorf("expected 'no LLM' when worker is nil, got %q", body)
+	}
+}
+
 func TestPreviewsToggle_defaultOnAndCookieFlips(t *testing.T) {
 	ts, _ := newTestServer(t)
 
