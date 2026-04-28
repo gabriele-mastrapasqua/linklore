@@ -552,6 +552,19 @@ body.previews-off .preview { display: none !important; }
 	100% { background: var(--card); transform: translateY(0); }
 }
 
+/* Inline text-style buttons (e.g. "✎ rename") that look like a link
+   but stay accessible as <button> elements. */
+.link-button {
+	background: none;
+	border: 0;
+	padding: .15rem .4rem;
+	color: var(--muted);
+	cursor: pointer;
+	font-size: .85rem;
+	border-radius: 4px;
+}
+.link-button:hover { color: var(--text); background: var(--badge-bg); }
+
 /* Tiny chip used as the drag image so the user moves a label around the
    layout instead of an entire card. Built off-screen by dnd.js then
    handed to dataTransfer.setDragImage; never displayed inline. */

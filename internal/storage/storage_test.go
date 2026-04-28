@@ -24,6 +24,36 @@ func TestMigrate_idempotent(t *testing.T) {
 	}
 }
 
+func TestRenameCollection(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	a, _ := s.CreateCollection(ctx, "old", "Old name", "")
+	b, _ := s.CreateCollection(ctx, "other", "Other", "")
+
+	if err := s.RenameCollection(ctx, a.ID, "new", "New name"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetCollectionBySlugByID(ctx, a.ID)
+	if got.Slug != "new" || got.Name != "New name" {
+		t.Errorf("rename: %+v", got)
+	}
+
+	// Empty fields keep the existing values.
+	if err := s.RenameCollection(ctx, a.ID, "", "Renamed Again"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetCollectionBySlugByID(ctx, a.ID)
+	if got.Slug != "new" || got.Name != "Renamed Again" {
+		t.Errorf("partial rename: %+v", got)
+	}
+
+	// Slug clash → ErrSlugTaken.
+	if err := s.RenameCollection(ctx, a.ID, "other", ""); err != ErrSlugTaken {
+		t.Errorf("expected ErrSlugTaken, got %v", err)
+	}
+	_ = b
+}
+
 func TestCollections_CRUD(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

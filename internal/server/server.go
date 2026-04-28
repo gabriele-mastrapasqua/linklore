@@ -79,10 +79,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /collections", s.handleCreateCollection)
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
+	mux.HandleFunc("POST /c/{slug}/rename", s.handleRenameCollection)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
-	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)
-	mux.HandleFunc("POST /c/{slug}/feed/discover", s.handleDiscoverFeed)
+	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)               // legacy alias
+	mux.HandleFunc("POST /c/{slug}/feed/save", s.handleSaveFeed)         // unified entry point
+	mux.HandleFunc("POST /c/{slug}/feed/discover", s.handleDiscoverFeed) // legacy alias
 	mux.HandleFunc("POST /c/{slug}/feed/refresh", s.handleRefreshFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
@@ -705,6 +707,46 @@ func (s *Server) handleMergeTags(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/tags", http.StatusSeeOther)
 }
 
+// handleRenameCollection updates the collection's slug and/or name.
+// On a slug change we redirect to the new URL so the user's browser
+// reflects the move; on a name-only change we just re-render the
+// header card.
+func (s *Server) handleRenameCollection(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	newSlug := strings.TrimSpace(r.PostForm.Get("slug"))
+	newName := strings.TrimSpace(r.PostForm.Get("name"))
+	if newSlug == "" && newName == "" {
+		http.Error(w, "slug or name required", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.RenameCollection(r.Context(), col.ID, newSlug, newName); err != nil {
+		switch err {
+		case storage.ErrSlugTaken:
+			http.Error(w, "slug already taken", http.StatusConflict)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	// Redirect to the (possibly new) collection URL — works for both
+	// htmx and plain form posts because htmx follows HX-Redirect.
+	final := col.Slug
+	if newSlug != "" {
+		final = newSlug
+	}
+	w.Header().Set("HX-Redirect", "/c/"+final)
+	http.Redirect(w, r, "/c/"+final, http.StatusSeeOther)
+}
+
 // handleSetFeed assigns or clears collection.feed_url. Empty value
 // turns the collection back into a regular one.
 func (s *Server) handleSetFeed(w http.ResponseWriter, r *http.Request) {
@@ -727,6 +769,70 @@ func (s *Server) handleSetFeed(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "collection_feed", map[string]any{
 		"Collection": updated,
 	})
+}
+
+// handleSaveFeed is the unified entry point for the feed form. The
+// user pastes either a site URL or a direct feed URL into the same
+// "url" field; we run Discover() which:
+//
+//   - returns the URL as-is when it's already a valid feed,
+//   - otherwise fetches the page and looks for <link rel="alternate"
+//     type="application/rss+xml|atom+xml">,
+//   - or falls back to well-known paths under the site root.
+//
+// On success the resolved feed_url is saved on the collection. Empty
+// "url" clears the feed (collection becomes a regular one again).
+func (s *Server) handleSaveFeed(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	raw := strings.TrimSpace(r.PostForm.Get("url"))
+
+	// Empty → clear.
+	if raw == "" {
+		_ = s.store.SetCollectionFeed(r.Context(), col.ID, "")
+		updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+		s.renderFragment(w, "collection_feed", map[string]any{"Collection": updated})
+		return
+	}
+
+	feedURL, derr := s.feedImport.Discover(r.Context(), raw)
+	if derr != nil {
+		updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+		s.renderFragment(w, "collection_feed", map[string]any{
+			"Collection":   updated,
+			"DiscoverErr":  derr.Error(),
+			"DiscoverFrom": raw,
+		})
+		return
+	}
+	if err := s.store.SetCollectionFeed(r.Context(), col.ID, feedURL); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+	// Same trigger that "Save" used to do: optimistically pull the feed
+	// once so the user immediately sees the entries.
+	res, _ := s.feedImport.RefreshOne(r.Context(), col.ID)
+	updated, _ = s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+	data := map[string]any{
+		"Collection":   updated,
+		"DiscoverdMsg": feedURL,
+	}
+	if res != nil {
+		data["JustRefresh"] = true
+		data["LastResult"] = res
+	}
+	s.renderFragment(w, "collection_feed", data)
+	if updated != nil {
+		s.writeCollectionStatsOOB(w, r.Context(), updated)
+	}
 }
 
 // handleDiscoverFeed takes a free-form site URL ("page_url") and tries

@@ -379,6 +379,42 @@ func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
 	return err
 }
 
+// RenameCollection updates the human-readable name and/or the slug.
+// Empty slug or name → keep the existing one. Slug uniqueness is
+// enforced by the schema; we surface the conflict as ErrSlugTaken so
+// the UI can show a clean message instead of the raw SQL constraint
+// error.
+var ErrSlugTaken = errors.New("slug already taken")
+
+func (s *Store) RenameCollection(ctx context.Context, id int64, newSlug, newName string) error {
+	current, err := s.GetCollectionBySlugByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if newSlug == "" {
+		newSlug = current.Slug
+	}
+	if newName == "" {
+		newName = current.Name
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET slug = ?, name = ? WHERE id = ?`,
+		newSlug, newName, id)
+	if err != nil {
+		// SQLite reports unique constraint failure with a recognisable
+		// substring; map it to our typed error so the handler doesn't
+		// have to substring-match.
+		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") {
+			return ErrSlugTaken
+		}
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // GetCollectionBySlugByID looks up a collection by primary key.
 func (s *Store) GetCollectionBySlugByID(ctx context.Context, id int64) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,

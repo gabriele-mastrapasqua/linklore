@@ -361,6 +361,45 @@ func TestTagsMerge(t *testing.T) {
 	}
 }
 
+func TestRenameCollection_handler(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "old", "Old", "")
+
+	resp, err := ts.Client().PostForm(ts.URL+"/c/old/rename",
+		url.Values{"slug": {"new"}, "name": {"New"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// Default httptest.Client follows the redirect; the final page
+	// should be the renamed collection.
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	got, _ := st.GetCollectionBySlug(context.Background(), "new")
+	if got == nil || got.Name != "New" {
+		t.Errorf("rename didn't apply: %+v", got)
+	}
+}
+
+func TestRenameCollection_slugConflict(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "alpha", "Alpha", "")
+	st.CreateCollection(context.Background(), "bravo", "Bravo", "")
+	// Disable auto-redirect so we can inspect the 409.
+	cli := *ts.Client()
+	cli.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := cli.PostForm(ts.URL+"/c/alpha/rename",
+		url.Values{"slug": {"bravo"}, "name": {"Alpha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status=%d (want 409)", resp.StatusCode)
+	}
+}
+
 func TestFeedImport_setURL(t *testing.T) {
 	ts, st := newTestServer(t)
 	col, _ := st.CreateCollection(context.Background(), "rss", "RSS", "")

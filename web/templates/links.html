@@ -1,7 +1,25 @@
 {{define "content"}}
 <section class="card">
-	<h2 style="margin:0">{{.Collection.Name}}</h2>
+	<div style="display:flex;align-items:center;gap:.5rem">
+		<h2 style="margin:0;flex:1">{{.Collection.Name}}</h2>
+		<button type="button" class="link-button"
+		        onclick="document.getElementById('rename-{{.Collection.ID}}').toggleAttribute('hidden')"
+		        title="rename this collection">✎ rename</button>
+	</div>
 	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
+
+	<form id="rename-{{.Collection.ID}}" class="inline" hidden style="margin-top:.5rem"
+	      hx-post="/c/{{.Collection.Slug}}/rename"
+	      hx-on::after-request="if (event.detail.successful) location.href='/c/'+(this.querySelector('[name=slug]').value||'{{.Collection.Slug}}')">
+		<input type="text" name="name" value="{{.Collection.Name}}"
+		       placeholder="new name" required>
+		<input type="text" name="slug" value="{{.Collection.Slug}}"
+		       placeholder="new slug" pattern="[a-z0-9\-]+">
+		<button type="submit">Save</button>
+		<button type="button"
+		        onclick="document.getElementById('rename-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
+	</form>
+
 	{{template "collection_stats" .}}
 	<form class="inline" style="margin-top:.75rem"
 	      hx-post="/c/{{.Collection.Slug}}/links"
