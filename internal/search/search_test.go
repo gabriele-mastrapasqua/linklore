@@ -64,19 +64,40 @@ func newStoreWithFixtures(t *testing.T) (*storage.Store, int64) {
 
 func TestSanitizeMatchQuery(t *testing.T) {
 	cases := map[string]string{
-		`hello world`:    "hello world",
-		`go "channel"`:   "go channel",
-		`c++`:            "c",
-		`(rust)`:         "rust",
-		`a-b`:            "a b",
-		`who? what!`:     "who what",
-		`a, b. c`:        "a b c",
-		`   `:            "",
+		`hello world`:  "hello OR world",
+		`go "channel"`: "go OR channel",
+		`c++`:          "c",
+		`(rust)`:       "rust",
+		`a-b`:          "a OR b",
+		`who? what!`:   "who OR what",
+		`a, b. c`:      "a OR b OR c",
+		`   `:          "",
 	}
 	for in, want := range cases {
 		if got := sanitizeMatchQuery(in); got != want {
 			t.Errorf("sanitize(%q) = %q want %q", in, got, want)
 		}
+	}
+}
+
+func TestRetrieveChunks_naturalLanguageQueryDoesNotANDOut(t *testing.T) {
+	// The default FTS5 operator is AND: "rust spiega" used to yield 0
+	// hits even when a chunk has "rust" but not "spiega". The OR-join
+	// in sanitizeMatchQuery prevents that. This is the bitnet bug
+	// reproduced as a regression test.
+	st, colID := newStoreWithFixtures(t)
+	eng := New(st, nil) // BM25 only — pure FTS test
+
+	hits, err := eng.RetrieveChunks(context.Background(), "rust spiega",
+		colID, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("expected at least one hit even though 'spiega' is absent")
+	}
+	if !strings.Contains(strings.ToLower(hits[0].Link.Title), "rust") {
+		t.Errorf("top hit not rust: %v", hits[0].Link.Title)
 	}
 }
 

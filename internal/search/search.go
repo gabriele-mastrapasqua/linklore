@@ -328,10 +328,19 @@ func (e *Engine) cosineRerank(ctx context.Context, query string, linkIDs []int64
 	return out, nil
 }
 
-// sanitizeMatchQuery escapes FTS5 syntax characters that would otherwise
-// blow up MATCH (e.g. dangling " or unmatched parens). The strategy is
-// dumb but safe: drop the offending characters entirely. Users searching
-// for things like `c++` still get hits via the prefix term.
+// sanitizeMatchQuery converts a free-form user query into a safe FTS5
+// MATCH expression. Two things matter:
+//
+//  1. Strip every FTS5 syntax character so a stray quote/paren/dash
+//     can't blow up the parser. Same dumb-but-safe approach as before.
+//  2. Join the remaining tokens with OR. FTS5's default operator
+//     between terms is AND, which is the wrong default for natural
+//     questions ("bitnet spiega", "what is rust ownership") — the
+//     user's intent is "any of these", not "all of these". Without OR
+//     a single rare word in the question torpedoes the whole match.
+//
+// Common words ("a", "the", "che", …) aren't a problem in practice
+// because BM25 ranks the rarer term high anyway.
 func sanitizeMatchQuery(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -341,9 +350,15 @@ func sanitizeMatchQuery(s string) string {
 	for _, ch := range bad {
 		s = strings.ReplaceAll(s, ch, " ")
 	}
-	// Collapse multiple spaces.
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
+	// Tokenise on whitespace, drop empties, then OR-join.
+	var toks []string
+	for _, t := range strings.Fields(s) {
+		if t != "" {
+			toks = append(toks, t)
+		}
 	}
-	return strings.TrimSpace(s)
+	if len(toks) == 0 {
+		return ""
+	}
+	return strings.Join(toks, " OR ")
 }
