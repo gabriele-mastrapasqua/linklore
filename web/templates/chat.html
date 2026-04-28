@@ -1,33 +1,35 @@
 {{define "content"}}
-<section class="card">
-	<h2 style="margin:0">Chat with your library</h2>
-	<small class="muted">Ask questions; answers are grounded on your saved links and cite sources inline as <code>[src:id]</code>.</small>
-	<div class="badges" style="margin-top:.4rem">
-		{{if eq .Ready 0}}
-		<span class="badge failed">no summarised links yet — add a link or click reindex on a failed one</span>
-		{{else}}
-		<span class="badge summarized">{{.Ready}} link{{if ne .Ready 1}}s{{end}} ready for chat</span>
-		{{end}}
-		{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
-		{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
-		<span class="badge" style="background:#eef2ff;color:#3730a3"
-		      title="active LLM ({{.Backend}})">{{.Model}}</span>
+<div class="chat-shell">
+	<header class="chat-header">
+		<h2 style="margin:0;font-size:1.05rem">Chat with your library</h2>
+		<div class="badges" style="margin-top:.25rem">
+			{{if eq .Ready 0}}
+			<span class="badge failed">no summarised links yet — add a link or click reindex on a failed one</span>
+			{{else}}
+			<span class="badge summarized">{{.Ready}} ready</span>
+			{{end}}
+			{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
+			{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
+			<span class="badge" style="background:var(--badge-bg);color:var(--badge-fg)"
+			      title="active LLM ({{.Backend}})">{{.Model}}</span>
+		</div>
+	</header>
+
+	<div class="chat-body">
+		<div id="chat-log" class="chat-log"></div>
+		<aside id="chat-sources" class="chat-sources" hidden>
+			<strong>Sources</strong>
+			<ul id="chat-sources-list"></ul>
+		</aside>
 	</div>
-</section>
 
-<div id="chat-log" class="card" style="min-height:200px"></div>
-
-<div id="chat-sources" class="card muted" hidden>
-	<strong>Sources</strong>
-	<ul id="chat-sources-list" style="margin:.4rem 0 0"></ul>
+	<form id="chat-form" class="chat-input-bar" onsubmit="return chatSubmit(event)">
+		<input id="chat-input" type="text" name="message" placeholder="ask…" autocomplete="off" required>
+		<input id="chat-session" type="hidden" name="session_id" value="0">
+		<input id="chat-collection" type="hidden" name="collection_id" value="0">
+		<button type="submit">Send</button>
+	</form>
 </div>
-
-<form id="chat-form" class="inline" onsubmit="return chatSubmit(event)">
-	<input id="chat-input" type="text" name="message" placeholder="ask…" autocomplete="off" required>
-	<input id="chat-session" type="hidden" name="session_id" value="0">
-	<input id="chat-collection" type="hidden" name="collection_id" value="0">
-	<button type="submit">Send</button>
-</form>
 
 <script>
 const chatModel = {{.Model | printf "%q"}};

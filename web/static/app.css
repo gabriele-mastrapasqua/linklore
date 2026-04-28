@@ -222,18 +222,92 @@ button[disabled], .htmx-request button { cursor: wait !important; }
      no images so we never load anything).
    - generous vertical spacing so a long conversation reads as a
      thread rather than a wall.                                       */
-#chat-log {
+/* The chat-shell occupies the viewport: header on top, body that
+   contains the scrollable conversation + an optional right sidebar
+   for sources, and a sticky input bar pinned at the bottom. The
+   user always sees the textarea no matter how long the answer is. */
+.chat-shell {
+	display: flex;
+	flex-direction: column;
+	height: calc(100vh - 56px - 1rem); /* topbar height + breathing space */
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	margin-bottom: var(--gap);
+}
+.chat-header {
+	padding: .75rem 1rem;
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.chat-body {
+	display: flex;
+	flex: 1;
+	min-height: 0; /* let children scroll, don't push the parent */
+}
+.chat-log {
+	flex: 1;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	gap: 1.1rem;
-	padding: .25rem 0 .75rem;
-	/* Fixed-height log so the conversation scrolls inside the card
-	   instead of pushing the whole page down. The JS auto-scrolls to
-	   the bottom on each append. */
-	height: 60vh;
-	max-height: 70vh;
+	padding: 1rem 1rem .5rem;
 	overflow-y: auto;
 	scroll-behavior: smooth;
+}
+.chat-sources {
+	flex-shrink: 0;
+	width: 260px;
+	max-width: 35%;
+	border-left: 1px solid var(--border);
+	padding: 1rem;
+	overflow-y: auto;
+	background: var(--bg);
+	font-size: .85rem;
+}
+.chat-sources strong { display: block; margin-bottom: .5rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.chat-sources ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
+.chat-sources li {
+	padding: .4rem .55rem;
+	border-radius: 6px;
+	background: var(--card);
+	border: 1px solid var(--border);
+	line-height: 1.35;
+}
+.chat-sources li a { word-break: break-word; }
+.chat-input-bar {
+	display: flex;
+	gap: .5rem;
+	padding: .75rem 1rem;
+	border-top: 1px solid var(--border);
+	background: var(--card);
+	flex-shrink: 0;
+}
+.chat-input-bar input[type="text"] {
+	flex: 1;
+	padding: .5rem .75rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font: inherit;
+	background: var(--bg);
+	color: var(--text);
+}
+.chat-input-bar button {
+	padding: .5rem 1.1rem;
+	border: 0;
+	border-radius: 8px;
+	background: var(--accent);
+	color: #fff;
+	cursor: pointer;
+	font-weight: 500;
+}
+.chat-input-bar button:hover { filter: brightness(1.1); }
+
+/* Mobile: sources collapse below the log instead of sitting beside it. */
+@media (max-width: 720px) {
+	.chat-body { flex-direction: column; }
+	.chat-sources { width: auto; max-width: none; max-height: 35vh; border-left: 0; border-top: 1px solid var(--border); }
 }
 .chat-row {
 	display: flex;
@@ -345,6 +419,70 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 :root[data-theme="dark"] .badge.fetched { background: #082f36; color: #a5f3fc; }
 
 img.thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; }
+
+/* Lightbox modal: full-viewport overlay with a centred frame
+   containing the big image + an "open original" link. The whole
+   thing only renders when .open is added by lightbox.js, so it
+   has zero cost on page load. */
+.lightbox-modal {
+	position: fixed; inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+}
+.lightbox-modal.open { display: flex; }
+.lightbox-backdrop {
+	position: absolute; inset: 0;
+	background: rgba(0, 0, 0, .82);
+	backdrop-filter: blur(2px);
+}
+.lightbox-frame {
+	position: relative;
+	z-index: 1;
+	max-width: 92vw;
+	max-height: 92vh;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: .6rem;
+}
+.lightbox-img {
+	max-width: 92vw;
+	max-height: 80vh;
+	border-radius: 10px;
+	object-fit: contain;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+	background: #1a1d23;
+}
+.lightbox-close {
+	position: absolute;
+	top: -2.4rem; right: -.4rem;
+	width: 36px; height: 36px;
+	border-radius: 50%;
+	border: 0;
+	background: rgba(255, 255, 255, .92);
+	color: #111;
+	font-size: 1.4rem;
+	line-height: 1;
+	cursor: pointer;
+	display: flex; align-items: center; justify-content: center;
+	box-shadow: 0 6px 14px rgba(0, 0, 0, .35);
+}
+.lightbox-close:hover { background: #fff; }
+.lightbox-actions a {
+	color: #fff;
+	background: rgba(255, 255, 255, .12);
+	padding: .35rem .75rem;
+	border-radius: 999px;
+	text-decoration: none;
+	font-size: .85rem;
+}
+.lightbox-actions a:hover { background: rgba(255, 255, 255, .22); }
+
+/* Cursor hint on previewable images. */
+.preview-strip img, .detail-preview-strip img, .preview-primary,
+.detail-preview-primary { cursor: zoom-in; }
 
 /* Link preview block: favicon + primary thumbnail + extra image strip.
    Toggled globally with body.previews-off. We never download these —
