@@ -12,11 +12,12 @@
 	<h1><a href="/">linklore</a></h1>
 	<input type="search" name="q" placeholder="search…"
 	       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
+	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 2s" hx-swap="innerHTML"></span>
 	<nav>
 		<a href="/">collections</a>
-		<a href="/inbox">inbox</a>
 		<a href="/chat">chat</a>
 		<a href="/tags">tags</a>
+		<a href="/bookmarklet">+</a>
 	</nav>
 </header>
 <main>

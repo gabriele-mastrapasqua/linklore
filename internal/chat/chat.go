@@ -141,24 +141,29 @@ func (s *Service) Stream(ctx context.Context, sessionID int64, prompt string, on
 }
 
 // buildPrompt composes the system + sources + history + user-question prompt.
+//
+// Language: the assistant must reply in the SAME language as the user. We
+// state this explicitly so qwen36-chat doesn't default to English when the
+// user writes in Italian / French / etc. The system text is bilingual on
+// purpose so the model lock-step matches whatever side it picks.
 func buildPrompt(userMsg string, citations []Citation, history []storage.ChatMessage) string {
 	var b strings.Builder
-	b.WriteString("You are linklore, a helpful assistant grounded ONLY on the user's saved links.\n")
-	b.WriteString("- Answer concisely.\n")
-	b.WriteString("- When you use a source, cite it inline like [src:<id>].\n")
-	b.WriteString("- If the sources do not answer the question, say so plainly.\n\n")
+	b.WriteString("You are linklore, an assistant grounded ONLY on the user's saved links.\n")
+	b.WriteString("Reply in the SAME language as the user's last message — if they write in Italian, reply in Italian; in French, in French; etc. Match the user's language exactly.\n")
+	b.WriteString("Be concise. When you use a source, cite it inline like [src:<id>].\n")
+	b.WriteString("If the sources don't answer the question, say so plainly in the user's language.\n\n")
 
 	if len(citations) > 0 {
-		b.WriteString("Sources:\n")
+		b.WriteString("Sources / Fonti:\n")
 		for _, c := range citations {
 			fmt.Fprintf(&b, "[src:%d] %s\n%s\n\n", c.LinkID, c.Title, c.Snippet)
 		}
 	} else {
-		b.WriteString("No saved sources matched this question.\n\n")
+		b.WriteString("(no saved sources matched this question / nessuna fonte salvata corrisponde a questa domanda)\n\n")
 	}
 
 	if len(history) > 0 {
-		b.WriteString("Conversation so far:\n")
+		b.WriteString("Conversation so far / Conversazione finora:\n")
 		// history is oldest-first; skip the very last entry which IS the
 		// current user message we just persisted.
 		end := len(history)

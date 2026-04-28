@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/archive"
@@ -173,46 +174,16 @@ func (w *Worker) processIndex(ctx context.Context, l storage.Link) {
 		return // nothing to chunk; refetch needed
 	}
 
-	// 1) Chunk + insert.
-	chunks := w.chunkFn(l.ContentMD, chunking.Config{
-		TargetTokens:  w.cfgCh.TargetTokens,
-		OverlapTokens: w.cfgCh.OverlapTokens,
-		MinTokens:     w.cfgCh.MinTokens,
-	})
-	if len(chunks) == 0 {
-		w.logger.Printf("worker: no chunks produced for %d", l.ID)
-		return
-	}
-	chunkIDs, err := w.store.ReplaceChunks(ctx, l.ID, chunks)
-	if err != nil {
-		w.logger.Printf("worker: insert chunks %d: %v", l.ID, err)
-		return
-	}
-
-	// 2) Embed all chunks. On embed failure we leave the link at `fetched`
-	// so the next tick retries — the embeddings stay NULL, search falls back
-	// to BM25, and the UI shows a "needs reindex" badge by virtue of
-	// status != summarized.
-	res, err := w.llm.Embed(ctx, chunks, &llm.EmbedOptions{BatchSize: w.cfgWk.EmbedBatchSize})
-	if err != nil {
-		w.logger.Printf("worker: embed %d: %v", l.ID, err)
-		return
-	}
-	if len(res.Vectors) != len(chunkIDs) {
-		w.logger.Printf("worker: embed length mismatch on %d: %d vs %d", l.ID, len(res.Vectors), len(chunkIDs))
-		return
-	}
-	for i, id := range chunkIDs {
-		if err := w.store.SetChunkEmbedding(ctx, id, embed.Encode(res.Vectors[i])); err != nil {
-			w.logger.Printf("worker: persist embedding chunk %d: %v", id, err)
-		}
-	}
-
-	// 3) Summarise + tag. Existing tags help the LLM bias toward reuse.
+	// 1) Summarise + tag FIRST. Auto-tags don't depend on embeddings, so
+	//    even if the embed endpoint is down (auth, network) the user still
+	//    gets a TL;DR and tags. BM25 search keeps working without vectors.
 	existing, _ := w.store.ListTopTagSlugs(ctx, 50)
 	sum, err := w.summary.Summarize(ctx, l.Title, l.ContentMD, existing)
 	if err != nil {
 		w.logger.Printf("worker: summarize %d: %v", l.ID, err)
+		if isPermanentLLMError(err) {
+			_ = w.store.MarkLinkFailed(ctx, l.ID, truncErr(err))
+		}
 		return
 	}
 	if err := w.store.UpdateLinkSummary(ctx, l.ID, sum.TLDR); err != nil {
@@ -229,6 +200,61 @@ func (w *Worker) processIndex(ctx context.Context, l storage.Link) {
 			w.logger.Printf("worker: attach tag %q: %v", slug, err)
 		}
 	}
+
+	// 2) Chunk + insert.
+	chunks := w.chunkFn(l.ContentMD, chunking.Config{
+		TargetTokens:  w.cfgCh.TargetTokens,
+		OverlapTokens: w.cfgCh.OverlapTokens,
+		MinTokens:     w.cfgCh.MinTokens,
+	})
+	if len(chunks) == 0 {
+		w.logger.Printf("worker: no chunks produced for %d", l.ID)
+		return
+	}
+	chunkIDs, err := w.store.ReplaceChunks(ctx, l.ID, chunks)
+	if err != nil {
+		w.logger.Printf("worker: insert chunks %d: %v", l.ID, err)
+		return
+	}
+
+	// 3) Embed chunks (best-effort). On failure search falls back to BM25
+	//    and the UI shows the link as summarised; the next tick retries
+	//    unless the error is auth-permanent.
+	res, err := w.llm.Embed(ctx, chunks, &llm.EmbedOptions{BatchSize: w.cfgWk.EmbedBatchSize})
+	if err != nil {
+		w.logger.Printf("worker: embed %d: %v", l.ID, err)
+		if isPermanentLLMError(err) {
+			// Stop the retry storm — surface as failed so the UI is honest.
+			_ = w.store.MarkLinkFailed(ctx, l.ID, "embed: "+truncErr(err))
+		}
+		return
+	}
+	if len(res.Vectors) != len(chunkIDs) {
+		w.logger.Printf("worker: embed length mismatch on %d: %d vs %d", l.ID, len(res.Vectors), len(chunkIDs))
+		return
+	}
+	for i, id := range chunkIDs {
+		if err := w.store.SetChunkEmbedding(ctx, id, embed.Encode(res.Vectors[i])); err != nil {
+			w.logger.Printf("worker: persist embedding chunk %d: %v", id, err)
+		}
+	}
+}
+
+// isPermanentLLMError matches HTTP-status-bearing errors from the LLM
+// backends that won't recover on retry: auth (401), forbidden (403),
+// not-found (404), unprocessable (422). The backends format errors like
+// "litellm embed: status 401: ..." — we just substring-match.
+func isPermanentLLMError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, code := range []string{"status 401", "status 403", "status 404", "status 422"} {
+		if strings.Contains(msg, code) {
+			return true
+		}
+	}
+	return false
 }
 
 // truncErr keeps the persisted error message short — full stack traces in

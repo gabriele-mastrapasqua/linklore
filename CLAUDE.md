@@ -79,9 +79,13 @@ When working in this repo, remember:
 
 ## Where the LLM is used
 
+Default backend: **LiteLLM in front of vLLM on the DGX** at
+`http://192.168.1.94:8000/v1` — same stack graphrag uses, materially
+faster than Ollama for our workload. Ollama is the fallback only.
+
 | Phase | What | Model | Required? |
 |-------|------|-------|-----------|
-| Ingest (per link) | Embedding (summary + content head) | nomic-embed-text | Yes |
-| Ingest (per link) | TL;DR + auto-tags (JSON) | qwen3:4b (or vLLM equivalent) | Yes |
-| Search | Query embedding | nomic-embed-text | Yes (for hybrid) |
-| Chat | RAG answer (streaming) | qwen3:4b | Yes (for chat only) |
+| Ingest (per link) | Chunk embeddings | nomic-embed | Yes |
+| Ingest (per link) | TL;DR + auto-tags (JSON) | qwen36-chat | Yes |
+| Search | Query embedding | nomic-embed | Yes (for hybrid; degrades to BM25-only if absent) |
+| Chat | RAG answer (streaming) | qwen36-chat | Yes (for chat only) |

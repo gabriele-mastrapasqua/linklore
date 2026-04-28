@@ -1,0 +1,35 @@
+{{define "link_header"}}
+<div id="link-header-{{.Link.ID}}"
+     {{if and (ne .Link.Status "summarized") (ne .Link.Status "failed")}}
+     hx-get="/links/{{.Link.ID}}/header" hx-trigger="every 2s" hx-swap="outerHTML"
+     {{end}}>
+	<div class="badges" style="margin-top:.4rem">
+		<span class="badge {{.Link.Status}}">{{.Link.Status}}</span>
+		{{if .Link.ContentLang}}<span class="badge">{{.Link.ContentLang}}</span>{{end}}
+		{{if .Link.FetchError}}<span class="badge failed" title="{{.Link.FetchError}}">error</span>{{end}}
+		{{if .Action}}
+		<span class="badge" style="background:#dbeafe;color:#1d4ed8">
+			↻ {{.Action}} queued · {{.At}}
+		</span>
+		{{end}}
+	</div>
+	{{if .Link.Summary}}
+	<p style="margin-top:.75rem">{{.Link.Summary}}</p>
+	{{end}}
+	<div class="actions" style="margin-top:.6rem">
+		{{if .Link.ContentMD}}<a href="/links/{{.Link.ID}}/read">reader mode</a>{{end}}
+		<button hx-post="/links/{{.Link.ID}}/refetch"
+		        hx-target="#link-header-{{.Link.ID}}" hx-swap="outerHTML"
+		        hx-disabled-elt="this"
+		        title="re-fetch the URL and re-run the whole pipeline">
+			refetch
+		</button>
+		<button hx-post="/links/{{.Link.ID}}/reindex"
+		        hx-target="#link-header-{{.Link.ID}}" hx-swap="outerHTML"
+		        hx-disabled-elt="this"
+		        title="re-run summary + chunks + embeddings without re-fetching">
+			reindex
+		</button>
+	</div>
+</div>
+{{end}}

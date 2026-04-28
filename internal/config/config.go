@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -85,20 +86,27 @@ func Default() Config {
 	return Config{
 		Server:   Server{Addr: "127.0.0.1:8080"},
 		Database: Database{Path: "./data/linklore.db"},
+		// Default to litellm (in front of vLLM on the DGX) — same stack
+		// graphrag uses, materially faster than Ollama for our workload.
+		// API key default is "sk-local": that's the master key the DGX
+		// Spark gateway is configured with, per graphrag's config comment
+		// ("APIKey defaults to sk-local in our infra"). Real keys live
+		// in .env / process env and override this.
 		LLM: LLM{
-			Backend: "ollama",
-			Ollama: Ollama{
-				Host:           "http://localhost:11434",
-				Model:          "qwen3:4b",
-				EmbedModel:     "nomic-embed-text",
-				NumCtx:         8192,
-				TimeoutSeconds: 120,
-			},
+			Backend: "litellm",
 			LiteLLM: LiteLLM{
-				BaseURL:        "http://localhost:4000/v1",
-				Model:          "qwen3-4b",
+				BaseURL:        "http://192.168.1.94:8000/v1",
+				Model:          "qwen36-chat",
+				EmbedModel:     "nomic-embed",
+				APIKey:         "sk-local",
+				TimeoutSeconds: 600,
+			},
+			Ollama: Ollama{
+				Host:           "http://192.168.1.94:11434",
+				Model:          "qwen3.6:35b",
 				EmbedModel:     "nomic-embed-text",
-				TimeoutSeconds: 120,
+				NumCtx:         32768,
+				TimeoutSeconds: 600,
 			},
 		},
 		Worker:   Worker{Concurrency: 4, EmbedBatchSize: 32, FetchTimeoutSeconds: 15},
@@ -111,18 +119,52 @@ func Default() Config {
 
 // Load reads a YAML config from path, falls back to defaults for missing
 // fields, then applies env overrides. An empty path returns Default()+env.
+//
+// Before everything else it tries to load a .env file from (in order):
+//
+//  1. ./.env
+//  2. <dir of the config file>/.env (when path != "")
+//
+// Anything already set in the process env wins, so a one-shot
+// `LITELLM_API_KEY=… ./linklore serve` still overrides the .env file.
 func Load(path string) (Config, error) {
+	// .env is best-effort: parsing failures are fatal, "no such file" is fine.
+	if err := LoadDotEnv(".env"); err != nil {
+		return Config{}, err
+	}
+	if path != "" {
+		dir := path
+		if i := strings.LastIndexAny(dir, "/\\"); i >= 0 {
+			dir = dir[:i]
+		} else {
+			dir = "."
+		}
+		if err := LoadDotEnv(dir + "/.env"); err != nil {
+			return Config{}, err
+		}
+	}
+
 	cfg := Default()
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return Config{}, fmt.Errorf("read config %s: %w", path, err)
 		}
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
+		// Expand ${VAR} / $VAR refs in the YAML against the (now loaded) env
+		// so api_key: "${LITELLM_API_KEY}" lands in the parsed struct directly.
+		expanded := os.ExpandEnv(string(data))
+		if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
 	applyEnv(&cfg)
+	// LiteLLM gateway in our infra accepts "sk-local" as a master key when
+	// no real key is supplied. Falling back here means a fresh checkout
+	// works against the DGX Spark out of the box; users with an actual
+	// per-account key just set LITELLM_API_KEY and override this.
+	if cfg.LLM.LiteLLM.APIKey == "" {
+		cfg.LLM.LiteLLM.APIKey = "sk-local"
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -153,8 +195,6 @@ func applyEnv(c *Config) {
 			c.Worker.Concurrency = n
 		}
 	}
-	// Expand $VAR refs left in YAML (e.g. api_key: "$LITELLM_API_KEY")
-	c.LLM.LiteLLM.APIKey = os.ExpandEnv(c.LLM.LiteLLM.APIKey)
 }
 
 func (c Config) Validate() error {

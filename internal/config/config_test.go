@@ -14,8 +14,8 @@ func TestDefault(t *testing.T) {
 	if c.Server.Addr != "127.0.0.1:8080" {
 		t.Errorf("default addr = %q, want 127.0.0.1:8080", c.Server.Addr)
 	}
-	if c.LLM.Backend != "ollama" {
-		t.Errorf("default backend = %q, want ollama", c.LLM.Backend)
+	if c.LLM.Backend != "litellm" {
+		t.Errorf("default backend = %q, want litellm", c.LLM.Backend)
 	}
 }
 
@@ -117,7 +117,8 @@ func TestLoad_envExpandInYaml(t *testing.T) {
 	t.Setenv("LITELLM_API_KEY", "from-env")
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.yaml")
-	body := "llm:\n  litellm:\n    api_key: \"$LITELLM_API_KEY\"\n"
+	// Both $VAR and ${VAR} forms must work — graphrag uses ${VAR}.
+	body := "llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +128,112 @@ func TestLoad_envExpandInYaml(t *testing.T) {
 	}
 	if c.LLM.LiteLLM.APIKey != "from-env" {
 		t.Errorf("api key not expanded: %q", c.LLM.LiteLLM.APIKey)
+	}
+}
+
+func TestLoad_dotEnvFile(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, ".env")
+	body := []byte(`# comment line
+LITELLM_API_KEY="from-dotenv"
+export LINKLORE_ADDR=':9991'
+LINKLORE_DB_PATH=/tmp/from-dotenv.db
+`)
+	if err := os.WriteFile(envFile, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	yamlPath := filepath.Join(dir, "c.yaml")
+	yaml := "llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"
+	if err := os.WriteFile(yamlPath, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c, err := Load(yamlPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.LLM.LiteLLM.APIKey != "from-dotenv" {
+		t.Errorf("api key from .env: %q", c.LLM.LiteLLM.APIKey)
+	}
+	if c.Server.Addr != ":9991" {
+		t.Errorf("addr from .env: %q", c.Server.Addr)
+	}
+	if c.Database.Path != "/tmp/from-dotenv.db" {
+		t.Errorf("db path from .env: %q", c.Database.Path)
+	}
+}
+
+func TestLoad_processEnvBeatsDotEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("LITELLM_API_KEY", "from-shell")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"),
+		[]byte("LITELLM_API_KEY=from-dotenv\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	yamlPath := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(yamlPath,
+		[]byte("llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(yamlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LLM.LiteLLM.APIKey != "from-shell" {
+		t.Errorf("expected shell to win: got %q", c.LLM.LiteLLM.APIKey)
+	}
+}
+
+func TestLoadDotEnv_quotedValuesAndComments(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	body := `# header
+KEY1="hello world"
+KEY2='single quoted'
+KEY3=plain
+# blank below
+
+KEY4="with #hash inside"
+`
+	p := filepath.Join(dir, ".env")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadDotEnv(p); err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+	cases := map[string]string{
+		"KEY1": "hello world",
+		"KEY2": "single quoted",
+		"KEY3": "plain",
+		"KEY4": "with #hash inside",
+	}
+	for k, want := range cases {
+		if got := os.Getenv(k); got != want {
+			t.Errorf("%s = %q, want %q", k, got, want)
+		}
+	}
+	for _, k := range []string{"KEY1", "KEY2", "KEY3", "KEY4"} {
+		_ = os.Unsetenv(k)
+	}
+}
+
+func TestLoadDotEnv_missingFileIsOK(t *testing.T) {
+	if err := LoadDotEnv("/no/such/.env"); err != nil {
+		t.Errorf("missing file should be silent, got: %v", err)
+	}
+}
+
+func TestLoadDotEnv_malformedLineFails(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".env")
+	if err := os.WriteFile(p, []byte("no equals sign here\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadDotEnv(p); err == nil {
+		t.Error("expected parse error")
 	}
 }
 

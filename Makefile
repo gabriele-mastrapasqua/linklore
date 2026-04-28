@@ -1,7 +1,7 @@
 .PHONY: build run dev install uninstall \
         test test-race test-pkg test-cover bench \
         fmt vet lint tidy check \
-        smoke smoke-up smoke-down clean reset-db \
+        smoke smoke-up smoke-down clean reset-db env-template \
         help
 
 BIN      := bin/linklore
@@ -110,6 +110,13 @@ smoke: smoke-up ## end-to-end smoke against http://$(ADDR)
 	@$(MAKE) -s smoke-down
 
 # ---- housekeeping ----
+
+env-template: ## copy .env.example → .env (skips if .env already exists)
+	@if [ -f .env ]; then \
+		echo ".env already exists — leaving it alone"; \
+	else \
+		cp .env.example .env && echo "wrote .env (now edit and fill LITELLM_API_KEY)"; \
+	fi
 
 reset-db: ## delete the local sqlite database (data/linklore.db*)
 	@find data -maxdepth 1 -name 'linklore.db*' -delete 2>/dev/null || true

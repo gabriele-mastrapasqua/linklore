@@ -96,6 +96,11 @@ func runServe(args []string) {
 		// Non-fatal: server still works for CRUD; worker idle until backend reachable.
 		log.Printf("llm backend disabled: %v — UI runs in BM25-only / no-summary mode", backendErr)
 	}
+	if cfg.LLM.Backend == "litellm" {
+		log.Printf("llm: litellm gateway %s (model=%s, embed=%s, key=%s)",
+			cfg.LLM.LiteLLM.BaseURL, cfg.LLM.LiteLLM.Model, cfg.LLM.LiteLLM.EmbedModel,
+			maskKey(cfg.LLM.LiteLLM.APIKey))
+	}
 	var eng *search.Engine
 	if backend != nil {
 		eng = search.New(store, backend)
@@ -196,6 +201,18 @@ func newLLMBackend(cfg config.Config) (llm.Backend, error) {
 	default:
 		return nil, fmt.Errorf("unknown llm.backend %q", cfg.LLM.Backend)
 	}
+}
+
+// maskKey shows just enough of the API key in logs to confirm it loaded
+// without leaking the full value.
+func maskKey(k string) string {
+	if k == "" {
+		return "(empty)"
+	}
+	if len(k) <= 4 {
+		return "***"
+	}
+	return k[:3] + "***" + k[len(k)-2:]
 }
 
 func runReindex(args []string) {

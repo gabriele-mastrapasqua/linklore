@@ -63,6 +63,24 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 .badge.summarized { background: #ecfdf5; color: var(--ok); }
 .badge.failed     { background: #fef2f2; color: var(--danger); }
 
+/* HTMX request feedback: dim + spinner-cursor while a request is in flight,
+   so refetch/reindex/etc clearly show that something is happening. */
+.htmx-request {
+	opacity: 0.55;
+	cursor: wait !important;
+}
+button[disabled], .htmx-request button { cursor: wait !important; }
+.htmx-request::after {
+	content: "…";
+	margin-left: .25rem;
+	display: inline-block;
+	animation: linklore-pulse 0.9s ease-in-out infinite;
+}
+@keyframes linklore-pulse {
+	0%, 100% { opacity: .35; }
+	50%      { opacity: 1; }
+}
+
 .actions { display: flex; gap: 0.4rem; }
 .actions button, .actions a {
 	background: none; border: 1px solid var(--border); padding: 0.25rem 0.5rem;

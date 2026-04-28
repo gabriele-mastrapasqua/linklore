@@ -302,6 +302,51 @@ func TestListLinksByTag(t *testing.T) {
 	}
 }
 
+func TestCollectionStats(t *testing.T) {
+	s := openMem(t)
+	ctx := context.Background()
+	c, _ := s.CreateCollection(ctx, "c", "C", "")
+	a, _ := s.CreateLink(ctx, c.ID, "https://x/1") // pending
+	b, _ := s.CreateLink(ctx, c.ID, "https://x/2") // → summarized
+	d, _ := s.CreateLink(ctx, c.ID, "https://x/3") // → failed
+
+	_ = s.UpdateLinkExtraction(ctx, b.ID, "T", "d", "", "body", "en", "")
+	_ = s.UpdateLinkSummary(ctx, b.ID, "tldr")
+	_ = s.MarkLinkFailed(ctx, d.ID, "boom")
+	_ = a // keep at pending
+
+	cs, err := s.CollectionStatsByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs.Total != 3 || cs.Summarized != 1 || cs.InProgress != 1 || cs.Failed != 1 {
+		t.Errorf("stats: %+v", cs)
+	}
+
+	all, err := s.ListCollectionsWithStats(ctx)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("list: err=%v len=%d", err, len(all))
+	}
+	if all[0].Summarized != 1 {
+		t.Errorf("Summarized = %d (want 1)", all[0].Summarized)
+	}
+
+	gc, err := s.LinkStatusCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gc.Ready != 1 || gc.InProgress != 1 || gc.Failed != 1 {
+		t.Errorf("global counts: %+v", gc)
+	}
+}
+
+func TestCollectionStatsByID_NotFound(t *testing.T) {
+	s := openMem(t)
+	if _, err := s.CollectionStatsByID(context.Background(), 9999); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestFTS_LinksAndChunks(t *testing.T) {
 	s := openMem(t)
 	ctx := context.Background()

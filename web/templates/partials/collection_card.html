@@ -2,5 +2,10 @@
 <div class="card" id="collection-{{.ID}}">
 	<h3 style="margin:0 0 .25rem 0"><a href="/c/{{.Slug}}">{{.Name}}</a></h3>
 	<div class="muted" style="font-size:.85rem">/{{.Slug}}{{if .Description}} · {{.Description}}{{end}}</div>
+	<div class="badges" style="margin-top:.4rem">
+		<span class="badge">{{.Total}} link{{if ne .Total 1}}s{{end}}</span>
+		{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
+		{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
+	</div>
 </div>
 {{end}}

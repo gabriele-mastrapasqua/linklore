@@ -255,17 +255,17 @@ database:
   path: "./data/linklore.db"
 
 llm:
-  backend: "ollama"          # ollama | litellm
-  ollama:
-    host: "http://192.168.1.94:11434"   # DGX
-    model: "qwen3:4b"
-    embed_model: "nomic-embed-text"
-    num_ctx: 8192
-    timeout_seconds: 120
+  backend: "litellm"         # litellm | ollama
   litellm:
-    base_url: "http://192.168.1.94:4000/v1"   # vLLM via LiteLLM proxy
-    model: "qwen3-4b"
+    base_url: "http://192.168.1.94:8000/v1"   # vLLM via LiteLLM proxy on DGX
+    model: "qwen36-chat"
+    embed_model: "nomic-embed"
     api_key: "$LITELLM_API_KEY"
+    timeout_seconds: 600
+  ollama:
+    host: "http://192.168.1.94:11434"   # fallback
+    model: "qwen3.6:35b"
+    embed_model: "nomic-embed-text"
 
 worker:
   concurrency: 4

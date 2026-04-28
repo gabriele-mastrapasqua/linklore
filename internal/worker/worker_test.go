@@ -131,21 +131,50 @@ func TestWorker_fetchFailureMarksFailed(t *testing.T) {
 	}
 }
 
-func TestWorker_embedFailureLeavesAtFetched(t *testing.T) {
-	backend := &fake.Backend{
-		// Generate works (canned JSON), but Embed fails — simulate by
-		// wrapping the fake with a custom backend that errs on Embed.
-	}
+func TestWorker_embedFailureKeepsSummaryAndTags(t *testing.T) {
+	backend := &fake.Backend{}
 	br := &embedFailingBackend{inner: backend}
 	w, st, colID := newWorker(t, &stubFetcher{body: fixtureHTML}, br)
 	l, _ := st.CreateLink(context.Background(), colID, "https://example.com/x")
 
 	_ = w.tick(context.Background())
 	got, _ := st.GetLink(context.Background(), l.ID)
-	// Extraction succeeded so status flipped to fetched; embed failed so
-	// it didn't progress to summarized. Worker will retry next tick.
-	if got.Status != storage.StatusFetched {
-		t.Errorf("status = %q (expected stuck at fetched)", got.Status)
+	// Pipeline order: summary+tag first, embed last. So even when embed
+	// errors, the user still gets the TL;DR and auto-tags; only the
+	// chunk embeddings stay NULL → search degrades to BM25.
+	if got.Status != storage.StatusSummarized {
+		t.Errorf("status = %q (expected summarized despite embed failure)", got.Status)
+	}
+	if got.Summary == "" {
+		t.Errorf("summary lost after embed failure")
+	}
+	tags, _ := st.ListTagsByLink(context.Background(), got.ID)
+	if len(tags) == 0 {
+		t.Errorf("auto-tags lost after embed failure")
+	}
+	chunks, _ := st.ListChunksByLink(context.Background(), got.ID)
+	for _, c := range chunks {
+		if len(c.Embedding) != 0 {
+			t.Errorf("chunk %d unexpectedly has embedding", c.ID)
+		}
+	}
+}
+
+func TestWorker_authErrorMarksFailed(t *testing.T) {
+	// Backend that returns "litellm embed: status 401: …" — our
+	// isPermanentLLMError must catch it and mark the link failed instead
+	// of looping the retry storm.
+	br := &authFailingBackend{}
+	w, st, colID := newWorker(t, &stubFetcher{body: fixtureHTML}, br)
+	l, _ := st.CreateLink(context.Background(), colID, "https://example.com/x")
+
+	_ = w.tick(context.Background())
+	got, _ := st.GetLink(context.Background(), l.ID)
+	if got.Status != storage.StatusFailed {
+		t.Errorf("status = %q (expected failed on 401)", got.Status)
+	}
+	if got.FetchError == "" {
+		t.Errorf("expected error message persisted")
 	}
 }
 
@@ -196,6 +225,20 @@ func TestWorker_endToEnd_fromHTTPFetcher(t *testing.T) {
 	if got.Status != storage.StatusSummarized {
 		t.Errorf("status = %q", got.Status)
 	}
+}
+
+// authFailingBackend simulates a litellm 401 on every call. Both Generate
+// and Embed return errors that match isPermanentLLMError.
+type authFailingBackend struct{}
+
+func (authFailingBackend) Generate(context.Context, string, *llm.GenerateOptions) (*llm.GenerateResult, error) {
+	return nil, errors.New("litellm chat: status 401: auth required")
+}
+func (authFailingBackend) GenerateStream(context.Context, string, *llm.GenerateOptions) (<-chan llm.StreamChunk, error) {
+	return nil, errors.New("not used")
+}
+func (authFailingBackend) Embed(context.Context, []string, *llm.EmbedOptions) (*llm.EmbedResult, error) {
+	return nil, errors.New("litellm embed: status 401: auth required")
 }
 
 // embedFailingBackend wraps another backend and always errors on Embed.

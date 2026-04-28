@@ -1,9 +1,11 @@
 {{define "link_row"}}
-<div class="card link-row" id="link-{{.ID}}">
+<div class="card link-row" id="link-{{.ID}}"
+     {{if and (ne .Status "summarized") (ne .Status "failed")}}
+     hx-get="/links/{{.ID}}/row" hx-trigger="every 2s" hx-swap="outerHTML"
+     {{end}}>
 	<div class="meta">
 		<div class="title">
-			{{if .Title}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a>
-			{{else}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a>{{end}}
+			<a href="/links/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
 		</div>
 		<div class="url">{{.URL}}</div>
 		{{if .Summary}}<div class="summary">{{.Summary}}</div>{{end}}
@@ -14,7 +16,7 @@
 		</div>
 	</div>
 	<div class="actions">
-		<a href="/links/{{.ID}}">open</a>
+		<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">open link ↗</a>
 		<button hx-delete="/links/{{.ID}}" hx-target="#link-{{.ID}}" hx-swap="outerHTML"
 		        hx-confirm="Delete this link?" class="danger">delete</button>
 	</div>

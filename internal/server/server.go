@@ -76,6 +76,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
+	mux.HandleFunc("GET /links/{id}/row", s.handleLinkRow)
+	mux.HandleFunc("GET /links/{id}/header", s.handleLinkHeader)
 	mux.HandleFunc("GET /links/{id}/read", s.handleReaderMode)
 	mux.HandleFunc("POST /links/{id}/refetch", s.handleRefetch)
 	mux.HandleFunc("POST /links/{id}/reindex", s.handleReindex)
@@ -84,6 +86,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /search", s.handleSearchPage)
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
+
+	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
 
 	mux.HandleFunc("GET /chat", s.handleChatPage)
 	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
@@ -103,7 +107,7 @@ func (s *Server) Handler() http.Handler {
 // ---- handlers ----
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	cols, err := s.store.ListCollections(r.Context())
+	cols, err := s.store.ListCollectionsWithStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,7 +134,8 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.renderFragment(w, "collection_card", col)
+	// Wrap in a stat with zero counts so the card template renders correctly.
+	s.renderFragment(w, "collection_card", storage.CollectionStat{Collection: *col})
 }
 
 func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
@@ -145,10 +150,12 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
 	s.renderPage(w, "links", map[string]any{
 		"Title":      col.Name,
 		"Collection": col,
 		"Links":      links,
+		"Stats":      stats,
 	})
 }
 
@@ -211,6 +218,23 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleLinkRow returns a single link_row fragment. Used by the HTMX
+// auto-refresh on rows whose status is still pending/fetched, so the user
+// sees the badge flip to "summarized" without a manual refresh.
+func (s *Server) handleLinkRow(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderFragment(w, "link_row", link)
+}
+
 func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -230,29 +254,20 @@ func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRefetch(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "bad id", http.StatusBadRequest)
-		return
-	}
-	if s.worker == nil {
-		http.Error(w, "worker disabled", http.StatusServiceUnavailable)
-		return
-	}
-	// Reset to pending so the next worker tick re-fetches; ProcessOne picks
-	// it up immediately too.
-	if err := s.store.MarkLinkPending(r.Context(), id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	go func() {
-		_ = s.worker.ProcessOne(context.Background(), id)
-	}()
-	link, _ := s.store.GetLink(r.Context(), id)
-	s.renderFragment(w, "link_row", link)
+	s.runReprocess(w, r, "refetch", s.store.MarkLinkPending)
 }
 
 func (s *Server) handleReindex(w http.ResponseWriter, r *http.Request) {
+	s.runReprocess(w, r, "reindex", s.store.MarkLinkFetched)
+}
+
+// runReprocess shares the body of refetch and reindex: flip status, kick
+// off ProcessOne in the background, and return the updated link_header
+// fragment with an "↻ <action> queued" badge so the user sees that the
+// click landed. The header polls itself until the worker reaches a
+// terminal state.
+func (s *Server) runReprocess(w http.ResponseWriter, r *http.Request, action string,
+	flip func(context.Context, int64) error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
@@ -262,17 +277,39 @@ func (s *Server) handleReindex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "worker disabled", http.StatusServiceUnavailable)
 		return
 	}
-	// Drop status back to fetched so the index pass re-runs (chunk + embed
-	// + summarize + tags) without re-fetching the upstream URL.
-	if err := s.store.MarkLinkFetched(r.Context(), id); err != nil {
+	if err := flip(r.Context(), id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	go func() {
 		_ = s.worker.ProcessOne(context.Background(), id)
 	}()
-	link, _ := s.store.GetLink(r.Context(), id)
-	s.renderFragment(w, "link_row", link)
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderFragment(w, "link_header", map[string]any{
+		"Link":   link,
+		"Action": action,
+		"At":     time.Now().Format("15:04:05"),
+	})
+}
+
+// handleLinkHeader is the polling endpoint the link_header fragment hits
+// every 2s while the link's status is non-terminal.
+func (s *Server) handleLinkHeader(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderFragment(w, "link_header", map[string]any{"Link": link})
 }
 
 func (s *Server) handleAddUserTag(w http.ResponseWriter, r *http.Request) {
@@ -452,6 +489,20 @@ func firstNonEmpty(xs ...string) string {
 	return ""
 }
 
+func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
+	n, err := s.store.CountInProgress(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if n == 0 {
+		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">idle</span>`))
+		return
+	}
+	fmt.Fprintf(w, `<span class="badge pending">processing %d</span>`, n)
+}
+
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	results := s.runSearch(r.Context(), q, 0, 20)
@@ -486,12 +537,18 @@ func (s *Server) runSearch(ctx context.Context, q string, collectionID int64, li
 	return res
 }
 
-func (s *Server) handleChatPage(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	if s.chat == nil {
 		http.Error(w, "chat unavailable: LLM backend not configured", http.StatusServiceUnavailable)
 		return
 	}
-	s.renderPage(w, "chat", map[string]any{"Title": "Chat"})
+	counts, _ := s.store.LinkStatusCounts(r.Context())
+	s.renderPage(w, "chat", map[string]any{
+		"Title":      "Chat",
+		"Ready":      counts.Ready,
+		"InProgress": counts.InProgress,
+		"Failed":     counts.Failed,
+	})
 }
 
 // handleChatStream POST {message, session_id?, collection_id?} — server-sent

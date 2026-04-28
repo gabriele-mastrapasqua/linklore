@@ -107,12 +107,13 @@ func truncateBody(body string, max int) string {
 func buildPrompt(title, body string, existing []string, maxTags int) string {
 	var b strings.Builder
 	b.WriteString("You are a precise summariser for a personal link library.\n")
-	b.WriteString("Read the document below and respond with ONE valid JSON object — no prose, no code fences.\n\n")
+	b.WriteString("Write the tldr in the SAME language as the document (Italian doc → Italian tldr; English → English; etc.). Tags stay in lowercase ASCII regardless.\n")
+	b.WriteString("Respond with ONE valid JSON object — no prose, no code fences.\n\n")
 	b.WriteString("Schema:\n")
-	b.WriteString(`{"tldr": "<= 60 words explaining what this is and why it matters", "tags": ["slug-1", "slug-2", ...]}`)
+	b.WriteString(`{"tldr": "<= 60 words explaining what this is and why it matters, in the document's language", "tags": ["slug-1", "slug-2", ...]}`)
 	b.WriteString("\n\nRules:\n")
 	b.WriteString("- tldr: at most 60 words, plain prose, no markdown, no quotes around it.\n")
-	b.WriteString(fmt.Sprintf("- tags: between 1 and %d short topical labels (lowercase, hyphenated).\n", maxTags))
+	b.WriteString(fmt.Sprintf("- tags: between 1 and %d short topical labels (lowercase, hyphenated, ASCII).\n", maxTags))
 	if len(existing) > 0 {
 		b.WriteString("- Prefer REUSING the existing tag slugs below over inventing near-duplicates:\n  ")
 		// Cap injected list so the prompt doesn't blow up on very large taxonomies.

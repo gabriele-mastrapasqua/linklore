@@ -2,6 +2,15 @@
 <section class="card">
 	<h2 style="margin:0">Chat with your library</h2>
 	<small class="muted">Ask questions; answers are grounded on your saved links and cite sources inline as <code>[src:id]</code>.</small>
+	<div class="badges" style="margin-top:.4rem">
+		{{if eq .Ready 0}}
+		<span class="badge failed">no summarised links yet — add a link or click reindex on a failed one</span>
+		{{else}}
+		<span class="badge summarized">{{.Ready}} link{{if ne .Ready 1}}s{{end}} ready for chat</span>
+		{{end}}
+		{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
+		{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
+	</div>
 </section>
 
 <div id="chat-log" class="card" style="min-height:200px"></div>
@@ -37,10 +46,13 @@ async function chatSubmit(ev) {
 	chatAppend('you', msg);
 	inp.value = '';
 
-	const fd = new FormData();
-	fd.set('message', msg);
-	fd.set('session_id', document.getElementById('chat-session').value);
-	fd.set('collection_id', document.getElementById('chat-collection').value);
+	// urlencoded so Go's r.ParseForm() works (FormData is multipart, which
+	// would need ParseMultipartForm — keep the server side simple).
+	const body = new URLSearchParams({
+		message: msg,
+		session_id: document.getElementById('chat-session').value,
+		collection_id: document.getElementById('chat-collection').value,
+	});
 
 	const sourcesEl = document.getElementById('chat-sources');
 	const sourcesList = document.getElementById('chat-sources-list');
@@ -48,7 +60,11 @@ async function chatSubmit(ev) {
 	sourcesEl.hidden = true;
 
 	const ansEl = chatAppend('linklore', '');
-	const resp = await fetch('/chat/stream', { method: 'POST', body: fd });
+	const resp = await fetch('/chat/stream', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+		body,
+	});
 	if (!resp.ok || !resp.body) {
 		ansEl.textContent = '[error: ' + resp.status + ']';
 		return false;

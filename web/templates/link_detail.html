@@ -3,19 +3,7 @@
 	<div><a href="/c/{{.Collection.Slug}}">← {{.Collection.Name}}</a></div>
 	<h2 style="margin:.4rem 0 0">{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</h2>
 	<div class="url"><a href="{{.Link.URL}}" target="_blank" rel="noopener">{{.Link.URL}}</a></div>
-	<div class="badges" style="margin-top:.4rem">
-		<span class="badge {{.Link.Status}}">{{.Link.Status}}</span>
-		{{if .Link.ContentLang}}<span class="badge">{{.Link.ContentLang}}</span>{{end}}
-		{{if .Link.FetchError}}<span class="badge failed" title="{{.Link.FetchError}}">error</span>{{end}}
-	</div>
-	{{if .Link.Summary}}
-	<p style="margin-top:.75rem">{{.Link.Summary}}</p>
-	{{end}}
-	<div class="actions" style="margin-top:.6rem">
-		{{if .Link.ContentMD}}<a href="/links/{{.Link.ID}}/read">reader mode</a>{{end}}
-		<button hx-post="/links/{{.Link.ID}}/refetch" hx-swap="none">refetch</button>
-		<button hx-post="/links/{{.Link.ID}}/reindex" hx-swap="none">reindex</button>
-	</div>
+	{{template "link_header" (dict "Link" .Link)}}
 </section>
 
 <section class="card">

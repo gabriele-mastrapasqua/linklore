@@ -2,6 +2,13 @@
 <section class="card">
 	<h2 style="margin:0">{{.Collection.Name}}</h2>
 	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}</div>
+	<div class="badges" style="margin-top:.4rem">
+		<span class="badge">{{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}}</span>
+		{{if gt .Stats.Summarized 0}}<span class="badge summarized">{{.Stats.Summarized}} ready</span>{{end}}
+		{{if gt .Stats.InProgress 0}}<span class="badge pending">{{.Stats.InProgress}} processing</span>{{end}}
+		{{if gt .Stats.Failed 0}}<span class="badge failed">{{.Stats.Failed}} failed · click reindex to retry</span>{{end}}
+		<a href="/c/{{.Collection.Slug}}/feed.xml" class="badge" style="text-decoration:none">RSS</a>
+	</div>
 	<form class="inline" style="margin-top:.75rem"
 	      hx-post="/c/{{.Collection.Slug}}/links"
 	      hx-target="#links-list" hx-swap="afterbegin"

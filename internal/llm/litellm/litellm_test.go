@@ -26,6 +26,23 @@ func TestNew_validation(t *testing.T) {
 	}
 }
 
+func TestChat_modelDefault_isConfigModel(t *testing.T) {
+	// When GenerateOptions.Model is empty, the request must carry the
+	// model from the Backend config (e.g. "qwen36-chat") — that's what
+	// drives the user toward the fast vLLM model on the gateway.
+	b, ts := newServer(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"model":"qwen-vllm"`) {
+			t.Errorf("expected default model in payload: %s", body)
+		}
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	})
+	defer ts.Close()
+	if _, err := b.Generate(context.Background(), "x", nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestChat_OK_authHeader(t *testing.T) {
 	b, ts := newServer(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {

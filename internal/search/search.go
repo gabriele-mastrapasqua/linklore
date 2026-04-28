@@ -77,6 +77,15 @@ func (e *Engine) SearchLinks(ctx context.Context, query string, collectionID int
 		return nil, fmt.Errorf("chunks fts: %w", err)
 	}
 
+	// Tag matches: any link whose tag slug or name prefix-matches the query
+	// gets a small synthetic FTS score so it surfaces alongside text hits.
+	// Use the original (un-sanitised) query so users can search "go" or
+	// "machine-learning" and hit the tag directly.
+	tagLinkIDs, err := e.store.SearchLinksByTagPrefix(ctx, query, 50)
+	if err != nil {
+		return nil, fmt.Errorf("tag prefix: %w", err)
+	}
+
 	// Group BM25 scores per link: keep the best (lowest BM25 → biggest signal).
 	type agg struct {
 		bestBM25 float64 // smallest seen → best
@@ -94,6 +103,12 @@ func (e *Engine) SearchLinks(ctx context.Context, query string, collectionID int
 	}
 	for _, h := range chunkHits {
 		consider(h.LinkID, h.BM25, h.Snippet)
+	}
+	// Tag matches don't have a real BM25 score; assign a soft constant so
+	// they sit alongside genuine text hits without dominating them.
+	const tagSyntheticBM25 = -2.0
+	for _, id := range tagLinkIDs {
+		consider(id, tagSyntheticBM25, "matched via tag: "+query)
 	}
 	if len(byLink) == 0 {
 		return nil, nil

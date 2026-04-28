@@ -107,6 +107,74 @@ func TestStream_propagatesLLMError(t *testing.T) {
 	}
 }
 
+// End-to-end: Prepare → Stream → Persist, with the chunk we seeded as
+// the only candidate. Asserts that the model's tokens reach the caller in
+// order, that citations include the seeded link, and that the assistant
+// reply lands in chat_messages.
+func TestE2E_PrepareStreamPersist(t *testing.T) {
+	svc, colID := newChatFixture(t)
+
+	turn, err := svc.Prepare(context.Background(), 0, colID, "what is rust ownership")
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if len(turn.Sources) == 0 {
+		t.Fatalf("expected at least one cited source")
+	}
+	gotID := turn.Sources[0].LinkID
+	if gotID == 0 {
+		t.Errorf("source has no link id: %+v", turn.Sources[0])
+	}
+
+	var captured []string
+	final, err := svc.Stream(context.Background(), turn.SessionID, turn.Prompt,
+		func(t string) error { captured = append(captured, t); return nil })
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if len(captured) < 2 {
+		t.Errorf("expected multiple streamed chunks, got %d", len(captured))
+	}
+	if final != strings.Join(captured, "") {
+		t.Errorf("final = %q, captured = %q", final, strings.Join(captured, ""))
+	}
+
+	msgs, _ := svc.store.RecentChatMessages(context.Background(), turn.SessionID, 10)
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %d, want 2 (user + assistant)", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "what is rust ownership" {
+		t.Errorf("user msg: %+v", msgs[0])
+	}
+	if msgs[1].Role != "assistant" {
+		t.Errorf("assistant msg role: %v", msgs[1].Role)
+	}
+}
+
+// E2E across two turns to verify history reuse + incremental persistence.
+func TestE2E_TwoTurnConversation(t *testing.T) {
+	svc, colID := newChatFixture(t)
+
+	t1, _ := svc.Prepare(context.Background(), 0, colID, "first question")
+	if _, err := svc.Stream(context.Background(), t1.SessionID, t1.Prompt, func(string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	t2, err := svc.Prepare(context.Background(), t1.SessionID, colID, "follow up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(t2.Prompt, "first question") {
+		t.Errorf("history missing in turn 2 prompt")
+	}
+	if _, err := svc.Stream(context.Background(), t2.SessionID, t2.Prompt, func(string) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := svc.store.RecentChatMessages(context.Background(), t1.SessionID, 10)
+	if len(msgs) != 4 {
+		t.Errorf("expected 4 persisted messages across 2 turns, got %d", len(msgs))
+	}
+}
+
 func TestPrompt_includesHistoryWithoutCurrentDuplicated(t *testing.T) {
 	svc, colID := newChatFixture(t)
 	// First turn.

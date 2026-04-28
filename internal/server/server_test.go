@@ -15,6 +15,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabrielemastrapasqua/linklore/internal/worker"
 )
 
 func newTestServer(t *testing.T) (*httptest.Server, *storage.Store) {
@@ -355,6 +356,126 @@ func TestBookmarkletPageAndAPI(t *testing.T) {
 	}
 }
 
+func TestCollectionPage_showsCounters(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "ai", "AI", "")
+	a, _ := st.CreateLink(context.Background(), col.ID, "https://x/1")
+	b, _ := st.CreateLink(context.Background(), col.ID, "https://x/2")
+	c, _ := st.CreateLink(context.Background(), col.ID, "https://x/3")
+	_ = st.UpdateLinkExtraction(context.Background(), a.ID, "T", "d", "", "body", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), a.ID, "tldr")
+	_ = st.MarkLinkFailed(context.Background(), b.ID, "boom")
+	_ = c
+
+	code, body := get(t, ts, "/c/ai")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	for _, want := range []string{"3 links", "1 ready", "1 processing", "1 failed"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing counter %q in body", want)
+		}
+	}
+}
+
+func TestChatPage_emptyLibraryHint(t *testing.T) {
+	st, _ := storage.Open(context.Background(), ":memory:")
+	t.Cleanup(func() { _ = st.Close() })
+	srv, err := New(config.Default(), st, nil,
+		chat.New(st, search.New(st, nil), &fake.Backend{}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	code, body := get(t, ts, "/chat")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if !strings.Contains(body, "no summarised links yet") {
+		t.Errorf("expected empty-library hint: %s", body)
+	}
+}
+
+func TestRefetchReindex_returnsFragmentWithQueuedBadge(t *testing.T) {
+	st, err := storage.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID, "T", "d", "", "body", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "tldr")
+
+	// Real worker with a stub fetcher so ProcessOne doesn't blow up if it
+	// runs synchronously fast enough to be visible from the test.
+	wk := worker.New(st, &fake.Backend{GenerateText: `{"tldr":"x","tags":["x"]}`, EmbedDim: 4},
+		stubReindexFetcher{body: "<html><title>x</title><body>plenty of body text here for readability to munch through plenty of body text here</body></html>"},
+		config.Default(), worker.Options{})
+
+	srv, err := New(config.Default(), st, nil, nil, wk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	for _, path := range []string{"/links/" + i64s(l.ID) + "/refetch", "/links/" + i64s(l.ID) + "/reindex"} {
+		code, body := postForm(t, ts, path, url.Values{})
+		if code != 200 {
+			t.Fatalf("%s status=%d body=%s", path, code, body)
+		}
+		// The fragment must contain the polling target id and a "queued"
+		// badge so the user gets visual feedback.
+		if !strings.Contains(body, "link-header-") {
+			t.Errorf("%s: missing header anchor: %s", path, body)
+		}
+		if !strings.Contains(body, "queued") {
+			t.Errorf("%s: missing 'queued' badge: %s", path, body)
+		}
+	}
+}
+
+// stubReindexFetcher serves canned HTML for the worker without going to network.
+type stubReindexFetcher struct{ body string }
+
+func (s stubReindexFetcher) Fetch(_ context.Context, _ string) (string, error) { return s.body, nil }
+
+func TestLinkHeader_pollsUntilTerminal(t *testing.T) {
+	st, _ := storage.Open(context.Background(), ":memory:")
+	t.Cleanup(func() { _ = st.Close() })
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://x")
+
+	srv, err := New(config.Default(), st, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// status=pending → fragment should carry hx-trigger="every 2s"
+	code, body := get(t, ts, "/links/"+i64s(l.ID)+"/header")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if !strings.Contains(body, `hx-trigger="every 2s"`) {
+		t.Errorf("expected polling attribute in pending header: %s", body)
+	}
+
+	// flip to summarized → polling attribute must disappear.
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "ok")
+	code, body = get(t, ts, "/links/"+i64s(l.ID)+"/header")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if strings.Contains(body, `hx-trigger="every 2s"`) {
+		t.Errorf("polling should have stopped on summarized: %s", body)
+	}
+}
+
 func TestRefetchReindex_503WhenNoWorker(t *testing.T) {
 	ts, st := newTestServer(t)
 	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
@@ -372,6 +493,108 @@ func TestChat_disabled503(t *testing.T) {
 	code, _ := get(t, ts, "/chat")
 	if code != 503 {
 		t.Errorf("status = %d (expected 503 when chat is nil)", code)
+	}
+}
+
+func TestChat_e2e_SSE_frameOrderAndCitations(t *testing.T) {
+	st, err := storage.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// Seed one summarised link with a chunk so RetrieveChunks finds it.
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://blog/rust")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"Rust ownership", "ownership rules", "", "Rust uses ownership for safety.", "en", "")
+	_ = st.UpdateLinkSummary(context.Background(), l.ID, "primer on rust ownership")
+	_, _ = st.InsertChunks(context.Background(), l.ID,
+		[]string{"Rust uses ownership for compile-time memory safety."})
+
+	streamer := &fake.Backend{
+		StreamChunks: []llm.StreamChunk{
+			{Text: "Rust "}, {Text: "uses "}, {Text: "ownership"},
+			{Text: " [src:"}, {Text: "1]"}, {Done: true},
+		},
+		EmbedDim: 8,
+	}
+	eng := search.New(st, streamer)
+	chatSvc := chat.New(st, eng, streamer)
+
+	srv, err := New(config.Default(), st, eng, chatSvc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/chat/stream",
+		strings.NewReader("message=rust+ownership&collection_id="+i64s(col.ID)))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+
+	// Parse SSE frames into (event, data) pairs.
+	body, _ := io.ReadAll(resp.Body)
+	var events []struct{ Event, Data string }
+	for _, block := range strings.Split(string(body), "\n\n") {
+		if strings.TrimSpace(block) == "" {
+			continue
+		}
+		var ev, da string
+		for _, ln := range strings.Split(block, "\n") {
+			if strings.HasPrefix(ln, "event: ") {
+				ev = strings.TrimPrefix(ln, "event: ")
+			} else if strings.HasPrefix(ln, "data: ") {
+				da += strings.TrimPrefix(ln, "data: ")
+			}
+		}
+		events = append(events, struct{ Event, Data string }{ev, da})
+	}
+
+	// Required ordering: session first, then ≥1 source, then ≥1 token, then done.
+	wantSeq := []string{"session", "source", "token"}
+	posInSeq := 0
+	var sawDone bool
+	var allTokens []string
+	for _, e := range events {
+		if posInSeq < len(wantSeq) && e.Event == wantSeq[posInSeq] {
+			posInSeq++
+		}
+		if e.Event == "token" {
+			allTokens = append(allTokens, e.Data)
+		}
+		if e.Event == "done" {
+			sawDone = true
+		}
+	}
+	if posInSeq < len(wantSeq) {
+		t.Errorf("missing required event sequence (got through %d/%d): %+v", posInSeq, len(wantSeq), events)
+	}
+	if !sawDone {
+		t.Errorf("no done event in stream:\n%s", body)
+	}
+	answer := strings.Join(allTokens, "")
+	if !strings.Contains(answer, "ownership") {
+		t.Errorf("answer missing keyword: %q", answer)
+	}
+	if !strings.Contains(answer, "[src:") {
+		t.Errorf("citation tag missing in answer: %q", answer)
+	}
+
+	// Persistence: user + assistant rows.
+	for _, sess := range []int64{1} {
+		msgs, _ := st.RecentChatMessages(context.Background(), sess, 10)
+		if len(msgs) != 2 {
+			t.Errorf("session %d msgs = %d (want 2)", sess, len(msgs))
+		}
 	}
 }
 

@@ -192,6 +192,101 @@ func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	return out, rows.Err()
 }
 
+// CollectionStat is a Collection with link counts attached.
+type CollectionStat struct {
+	Collection
+	Total      int // all links
+	Summarized int // status=summarized — usable in RAG/chat
+	InProgress int // pending or fetched (LLM hasn't finished)
+	Failed     int // status=failed
+}
+
+// ListCollectionsWithStats is what the home page renders. One query,
+// counts via CASE/WHEN per collection.
+func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
+		       COUNT(l.id)                                                  AS total,
+		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END)           AS summarized,
+		       COUNT(CASE WHEN l.status IN ('pending','fetched') THEN 1 END) AS in_progress,
+		       COUNT(CASE WHEN l.status = 'failed' THEN 1 END)               AS failed
+		  FROM collections c
+		  LEFT JOIN links l ON l.collection_id = c.id
+		 GROUP BY c.id
+		 ORDER BY c.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CollectionStat
+	for rows.Next() {
+		var cs CollectionStat
+		var ts int64
+		if err := rows.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description, &ts,
+			&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
+			return nil, err
+		}
+		cs.CreatedAt = time.Unix(ts, 0).UTC()
+		out = append(out, cs)
+	}
+	return out, rows.Err()
+}
+
+// CollectionStatsByID returns the same counts but for a single collection.
+// Used by the per-collection page.
+func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionStat, error) {
+	var cs CollectionStat
+	var ts int64
+	row := s.db.QueryRowContext(ctx, `
+		SELECT c.id, c.slug, c.name, COALESCE(c.description,''), c.created_at,
+		       COUNT(l.id),
+		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END),
+		       COUNT(CASE WHEN l.status IN ('pending','fetched') THEN 1 END),
+		       COUNT(CASE WHEN l.status = 'failed' THEN 1 END)
+		  FROM collections c
+		  LEFT JOIN links l ON l.collection_id = c.id
+		 WHERE c.id = ?
+		 GROUP BY c.id`, id)
+	if err := row.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description, &ts,
+		&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return CollectionStat{}, ErrNotFound
+		}
+		return CollectionStat{}, err
+	}
+	cs.CreatedAt = time.Unix(ts, 0).UTC()
+	return cs, nil
+}
+
+// CountInProgress returns total links across all collections that are still
+// being processed by the worker. Drives the topbar "processing N" badge.
+func (s *Store) CountInProgress(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM links WHERE status IN ('pending','fetched')`).Scan(&n)
+	return n, err
+}
+
+// LinkStatusCounts returns global ready/in-progress/failed counters across
+// all collections. Used by the chat page so the user sees how many links
+// are actually retrievable before asking a question.
+type LinkStatusCounts struct {
+	Ready      int
+	InProgress int
+	Failed     int
+}
+
+func (s *Store) LinkStatusCounts(ctx context.Context) (LinkStatusCounts, error) {
+	var c LinkStatusCounts
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(CASE WHEN status = 'summarized' THEN 1 END),
+			COUNT(CASE WHEN status IN ('pending','fetched') THEN 1 END),
+			COUNT(CASE WHEN status = 'failed' THEN 1 END)
+		FROM links`).Scan(&c.Ready, &c.InProgress, &c.Failed)
+	return c, err
+}
+
 func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM collections WHERE id = ?`, id)
 	return err
@@ -628,6 +723,39 @@ func (s *Store) FindTagBySlug(ctx context.Context, slug string) (*Tag, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// SearchLinksByTagPrefix returns link IDs whose tag slug or display name
+// starts with q (case-insensitive). Used by the search engine so the
+// global search bar finds links via their tags too, not just titles.
+func (s *Store) SearchLinksByTagPrefix(ctx context.Context, q string, limit int) ([]int64, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	pat := strings.ToLower(q) + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT lt.link_id
+		  FROM tags t
+		  JOIN link_tags lt ON lt.tag_id = t.id
+		 WHERE LOWER(t.slug) LIKE ? OR LOWER(t.name) LIKE ?
+		 LIMIT ?`, pat, pat, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // ListLinksByTag is used by the tag-cloud filter. Slug-keyed.
