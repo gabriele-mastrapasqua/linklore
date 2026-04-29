@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 )
@@ -68,6 +69,47 @@ func TestCreateLink_classifiesYoutubeAsVideo(t *testing.T) {
 	links, _ := st.ListLinksByCollection(context.Background(), 1, 10, 0)
 	if len(links) != 1 || links[0].Kind != "video" {
 		t.Errorf("kind = %q (want video)", links[0].Kind)
+	}
+}
+
+// Regression: clicking the type-filter chip on a feed-backed
+// collection used to invoke s.feedImport.RefreshOne synchronously
+// inside handleListLinks. When the upstream feed was dead (e.g. a
+// YouTube channel returning 404), the gofeed parser blocked for up
+// to 30 seconds before the page rendered — the user saw the UI
+// hang. We now skip auto-refresh entirely whenever the request
+// carries a querystring (kind/layout filters are pure view-state)
+// and run any actual refresh in a detached goroutine.
+//
+// This test asserts the contract by registering a feed handler that
+// blocks for a long time and checking that GET /c/:slug?kind=… still
+// returns immediately.
+func TestKindFilter_doesNotBlockOnFeedImporter(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "feed", "Feed", "")
+
+	// Stand up a handler that hangs for 5 seconds. If the request
+	// goroutine ever waited for it, this test would fail to finish
+	// within the 1-second deadline below.
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(5 * time.Second)
+	}))
+	t.Cleanup(slow.Close)
+	st.SetCollectionFeed(context.Background(), col.ID, slow.URL)
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://www.youtube.com/watch?v=x")
+
+	done := make(chan int, 1)
+	go func() {
+		code, _ := get(t, ts, "/c/feed?kind=video")
+		done <- code
+	}()
+	select {
+	case code := <-done:
+		if code != 200 {
+			t.Errorf("status = %d", code)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatalf("page render blocked on slow feed (expected immediate response when ?kind= is set)")
 	}
 }
 

@@ -497,16 +497,22 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Auto-refresh feed on entry when the collection is feed-backed and
-	// hasn't been polled recently. We do it inline (not in a goroutine)
-	// so the rendered list already reflects the new entries — without
-	// blocking too long: the importer has its own 30s timeout.
-	if s.feedImport != nil && col.FeedURL != "" {
+	// hasn't been polled recently. Skipped when the request carries any
+	// querystring (kind/layout filter clicks) — those are pure
+	// view-state changes and should NEVER block on an upstream fetch.
+	// Skipped fully when the gofeed call is in flight too: the refresh
+	// runs in a detached goroutine so even a hung 30s upstream can't
+	// freeze the page render.
+	if s.feedImport != nil && col.FeedURL != "" && r.URL.RawQuery == "" {
 		stale := col.LastCheckedAt == nil || time.Since(*col.LastCheckedAt) > 15*time.Minute
 		if stale {
-			if _, ferr := s.feedImport.RefreshOne(r.Context(), col.ID); ferr != nil {
-				log.Printf("auto-refresh feed for %s: %v", col.Slug, ferr)
-			}
-			col, _ = s.store.GetCollectionBySlug(r.Context(), slug)
+			go func(colID int64, slug string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if _, ferr := s.feedImport.RefreshOne(ctx, colID); ferr != nil {
+					log.Printf("auto-refresh feed for %s: %v", slug, ferr)
+				}
+			}(col.ID, col.Slug)
 		}
 	}
 	links, err := s.store.ListLinksByCollection(r.Context(), col.ID, 200, 0)

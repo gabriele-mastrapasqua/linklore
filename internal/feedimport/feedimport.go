@@ -236,12 +236,16 @@ func itemDate(it *gofeed.Item) time.Time {
 	return time.Time{}
 }
 
-// refresh is the shared implementation for both entry points.
+// refresh is the shared implementation for both entry points. On
+// upstream failure we still bump last_checked_at so the throttle
+// window kicks in — without that, every page load on a dead-feed
+// collection would re-trigger the 30s parse and freeze the UI.
 func (i *Importer) refresh(ctx context.Context, col *storage.Collection) (*Result, error) {
 	feedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	feed, err := i.parser.ParseURLWithContext(col.FeedURL, feedCtx)
 	if err != nil {
+		_ = i.store.MarkCollectionFeedChecked(ctx, col.ID)
 		return nil, fmt.Errorf("parse feed %s: %w", col.FeedURL, err)
 	}
 	r := &Result{CollectionID: col.ID}

@@ -251,3 +251,32 @@ func TestRefreshOne_badFeedReturnsError(t *testing.T) {
 		t.Error("expected error on 500 from feed server")
 	}
 }
+
+// Regression: a dead upstream used to leave last_checked_at unchanged,
+// so the auto-refresh in handleListLinks fired on every page load and
+// blocked the request goroutine for ~30s — clicking a type filter
+// looked like the UI was hanging. We now mark-checked even on parse
+// failure so the 15-minute throttle activates after a single failed
+// attempt.
+func TestRefreshOne_marksCheckedEvenOnFailure(t *testing.T) {
+	st := openMem(t)
+	col, _ := st.CreateCollection(context.Background(), "dead", "Dead", "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	st.SetCollectionFeed(context.Background(), col.ID, srv.URL)
+
+	got, _ := st.GetCollectionBySlugByID(context.Background(), col.ID)
+	if got.LastCheckedAt != nil {
+		t.Fatal("precondition: LastCheckedAt should start nil")
+	}
+
+	if _, err := New(st).RefreshOne(context.Background(), col.ID); err == nil {
+		t.Fatal("expected error on 404 from feed server")
+	}
+	got, _ = st.GetCollectionBySlugByID(context.Background(), col.ID)
+	if got.LastCheckedAt == nil {
+		t.Error("LastCheckedAt not bumped on failure — every page load will re-fire the slow upstream")
+	}
+}
