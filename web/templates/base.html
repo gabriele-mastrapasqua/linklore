@@ -5,13 +5,17 @@
 	<title>{{.Title}} · linklore</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-	<meta property="og:title" content="linklore">
-	<meta property="og:description" content="Bookmarks you actually own">
+	<link rel="apple-touch-icon" href="/static/favicon.svg">
+	<meta name="description" content="Linklore — local-first bookmark manager. Your library, not theirs.">
+	<meta property="og:title" content="linklore — bookmarks you actually own">
+	<meta property="og:description" content="Local-first bookmark manager with full-text search, semantic search and a private RAG chat over everything you've saved.">
 	<meta property="og:type" content="website">
+	<meta property="og:image" content="/static/favicon.svg">
+	<meta name="theme-color" content="#7c3aed">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=4">
+	<link rel="stylesheet" href="/static/app.css?v=5">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -48,26 +52,28 @@
 		<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
 	</div>
 	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
-	<nav>
-		<a href="/">collections</a>
-		<a href="/tags">tags</a>
-		<a href="/duplicates">dupes</a>
-		<a href="/checks" title="dead-link checker">checks</a>
-		<a href="/bookmarklet" title="Bookmarklet" aria-label="Bookmarklet">📎<span class="sr-only">Bookmarklet</span></a>
-		<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
-		<a href="/chat" class="ai-link">✦ chat</a>
-		<a href="/settings" title="Settings" aria-label="Settings">⚙<span class="sr-only">Settings</span></a>
-		<button hx-post="/preferences/previews" hx-swap="none" title="toggle image previews"
-		        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
-			previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
-		</button>
-		<form hx-post="/preferences/theme" hx-swap="none" style="display:inline;margin:0">
-			<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
-			<button type="submit" title="cycle theme: auto → light → dark"
-			        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
-				theme: <strong>{{.Theme}}</strong>
+	<nav class="topbar-nav">
+		<div class="topbar-nav-main">
+			<a href="/">collections</a>
+			<a href="/tags">tags</a>
+			<a href="/duplicates">dupes</a>
+			<a href="/checks" title="dead-link checker">checks</a>
+			<a href="/bookmarklet" title="Bookmarklet" aria-label="Bookmarklet">📎<span class="sr-only">Bookmarklet</span></a>
+		</div>
+		<div class="topbar-nav-side">
+			<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
+			<a href="/chat" class="ai-link">✦ chat</a>
+			<a href="/settings" title="Settings" aria-label="Settings">⚙<span class="sr-only">Settings</span></a>
+			<button class="pref-btn" hx-post="/preferences/previews" hx-swap="none" title="toggle image previews">
+				previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
 			</button>
-		</form>
+			<form hx-post="/preferences/theme" hx-swap="none" style="display:inline;margin:0">
+				<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
+				<button class="pref-btn" type="submit" title="cycle theme: auto → light → dark">
+					theme: <strong>{{.Theme}}</strong>
+				</button>
+			</form>
+		</div>
 	</nav>
 </header>
 <div class="layout">
