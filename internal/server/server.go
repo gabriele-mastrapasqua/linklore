@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 	"github.com/gabrielemastrapasqua/linklore/internal/tags"
+	"github.com/gabrielemastrapasqua/linklore/internal/urlnorm"
 	"github.com/gabrielemastrapasqua/linklore/internal/worker"
 	"github.com/gabrielemastrapasqua/linklore/web"
 )
@@ -78,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /{$}", s.handleHome)
 	mux.HandleFunc("POST /collections", s.handleCreateCollection)
+	mux.HandleFunc("POST /collections/prune", s.handleDeleteEmptyCollections)
 	mux.HandleFunc("DELETE /c/{slug}", s.handleDeleteCollection)
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
@@ -117,6 +120,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /chat", s.handleChatPage)
 	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
 
+	mux.HandleFunc("GET /duplicates", s.handleDuplicates)
+	mux.HandleFunc("POST /duplicates/delete", s.handleDuplicatesDelete)
 	mux.HandleFunc("GET /tags", s.handleTagsPage)
 	mux.HandleFunc("GET /tags/{slug}", s.handleTagDetail)
 	mux.HandleFunc("POST /tags/merge", s.handleMergeTags)
@@ -174,6 +179,94 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// handleDuplicates groups every link by its normalised URL and renders
+// the groups that have more than one member. Each group has a one-shot
+// "delete duplicates" button that wipes everything except the oldest
+// surviving link (lowest id wins — that's almost always the original
+// save). Cheap enough to run synchronously: ListAllLinks streams the
+// whole table and grouping happens in Go.
+func (s *Server) handleDuplicates(w http.ResponseWriter, r *http.Request) {
+	all, err := s.store.ListAllLinks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	collections, _ := s.store.ListCollections(r.Context())
+	colByID := map[int64]storage.Collection{}
+	for _, c := range collections {
+		colByID[c.ID] = c
+	}
+	type group struct {
+		Key         string
+		Links       []storage.Link
+		Collections []storage.Collection
+	}
+	groups := map[string]*group{}
+	for _, l := range all {
+		k := urlnorm.Normalize(l.URL)
+		if k == "" {
+			continue
+		}
+		g, ok := groups[k]
+		if !ok {
+			g = &group{Key: k}
+			groups[k] = g
+		}
+		g.Links = append(g.Links, l)
+	}
+	out := make([]*group, 0, len(groups))
+	for _, g := range groups {
+		if len(g.Links) <= 1 {
+			continue
+		}
+		seen := map[int64]bool{}
+		for _, l := range g.Links {
+			if !seen[l.CollectionID] {
+				seen[l.CollectionID] = true
+				if c, ok := colByID[l.CollectionID]; ok {
+					g.Collections = append(g.Collections, c)
+				}
+			}
+		}
+		out = append(out, g)
+	}
+	// Largest groups first so the worst offenders surface.
+	sort.Slice(out, func(i, j int) bool { return len(out[i].Links) > len(out[j].Links) })
+	s.renderPageRq(w, r, "duplicates", map[string]any{
+		"Title":  "Duplicates",
+		"Groups": out,
+		"Total":  len(out),
+	})
+}
+
+// handleDuplicatesDelete wipes every link in the comma-separated `ids`
+// list except the one named `keep_id`. Returns redirects/refresh per
+// HTMX so the duplicates page re-renders with the cleaned-up groups.
+func (s *Server) handleDuplicatesDelete(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	keepID, _ := strconv.ParseInt(strings.TrimSpace(r.PostForm.Get("keep_id")), 10, 64)
+	ids, err := parseBulkIDs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, id := range ids {
+		if id == keepID {
+			continue
+		}
+		_ = s.store.DeleteLink(r.Context(), id)
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/duplicates")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/duplicates", http.StatusSeeOther)
+}
+
 // handleSetLayout flips a collection between list/grid/headlines/
 // moodboard view modes. Persists the choice; the actual class swap
 // happens client-side (a tiny script driven by hx-on::after-request)
@@ -194,6 +287,33 @@ func (s *Server) handleSetLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDeleteEmptyCollections sweeps every collection that has zero
+// links and isn't feed-backed (we don't want to lose a freshly-added
+// RSS subscription that hasn't pulled its first batch yet) and deletes
+// them. Returns to the home page so the user sees the cleaner list.
+func (s *Server) handleDeleteEmptyCollections(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.store.ListCollectionsWithStats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	deleted := 0
+	for _, cs := range stats {
+		if cs.Total == 0 && cs.FeedURL == "" {
+			if err := s.store.DeleteCollection(r.Context(), cs.ID); err == nil {
+				deleted++
+			}
+		}
+	}
+	log.Printf("collections: pruned %d empty", deleted)
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleDeleteCollection wipes the collection and every link inside

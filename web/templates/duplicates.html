@@ -1,0 +1,50 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0 0 .25rem 0">Duplicates</h2>
+	<div class="muted" style="font-size:.9rem">
+		{{if eq .Total 0}}
+			No duplicates found. URLs are normalised (case-folded host,
+			no <code>www.</code>, trailing slash, fragment, or tracker
+			params like <code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>).
+		{{else}}
+			{{.Total}} duplicate group{{if ne .Total 1}}s{{end}} found.
+			Click <strong>Keep this one</strong> on the link you want to
+			keep — the others get deleted.
+		{{end}}
+	</div>
+</section>
+
+{{range $g := .Groups}}
+<section class="card" style="margin-top:.75rem">
+	<div class="muted" style="font-size:.85rem;margin-bottom:.4rem">
+		<code>{{$g.Key}}</code> · {{len $g.Links}} copies
+	</div>
+	{{range $l := $g.Links}}
+		<div class="dup-row" style="display:flex;align-items:flex-start;gap:.75rem;padding:.4rem 0;border-top:1px solid var(--border)">
+			<div style="flex:1">
+				<div class="title">
+					<span class="kind-icon kind-{{$l.Kind}}"></span>
+					<a href="/links/{{$l.ID}}">{{if $l.Title}}{{$l.Title}}{{else}}{{$l.URL}}{{end}}</a>
+				</div>
+				<div class="muted" style="font-size:.8rem;word-break:break-all">{{$l.URL}}</div>
+				<div class="badges" style="margin-top:.25rem">
+					<span class="badge {{$l.Status}}">{{$l.Status}}</span>
+					<span class="badge">id={{$l.ID}}</span>
+					<span class="badge">collection {{$l.CollectionID}}</span>
+				</div>
+			</div>
+			<form hx-post="/duplicates/delete" hx-swap="none">
+				<input type="hidden" name="keep_id" value="{{$l.ID}}">
+				{{range $other := $g.Links}}
+					<input type="hidden" name="ids" value="{{$other.ID}}">
+				{{end}}
+				<button type="submit" class="seg-opt active"
+				        hx-confirm="Keep link {{$l.ID}} and delete the {{len $g.Links}} other{{if ne (len $g.Links) 2}}s{{end}}?">
+					Keep this one
+				</button>
+			</form>
+		</div>
+	{{end}}
+</section>
+{{end}}
+{{end}}

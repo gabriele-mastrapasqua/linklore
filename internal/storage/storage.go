@@ -1142,6 +1142,33 @@ func (s *Store) SearchLinksByTagPrefix(ctx context.Context, q string, limit int)
 	return out, rows.Err()
 }
 
+// ListAllLinks streams every link in the database. Used by the
+// duplicates view (small enough to scan in Go) and the planned
+// global filters.
+func (s *Store) ListAllLinks(ctx context.Context) ([]Link, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, collection_id, url,
+		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
+		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
+		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
+		   FROM links ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		l, err := scanLink(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
+}
+
 // ListLinksByTag is used by the tag-cloud filter. Slug-keyed.
 func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]Link, error) {
 	if limit <= 0 {
