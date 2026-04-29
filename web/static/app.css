@@ -1,17 +1,22 @@
 :root {
 	--gap: 1rem;
-	--border: #e2e2e2;
+	--border: #e4e4e7;
 	--muted: #6b7280;
 	--bg: #fafafa;
 	--card: #ffffff;
 	--text: #111111;
 	--accent: #2563eb;
+	--accent-ai: #8b5cf6;          /* violet — every AI-touched UI element */
 	--danger: #b91c1c;
 	--ok: #15803d;
 	--warn: #b45309;
 	--code-bg: #f4f4f6;
 	--badge-bg: #eef;
 	--badge-fg: #224;
+	--radius: 10px;
+	--shadow-card: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+	--ff-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--ff-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 /* Dark palette: applied either explicitly via [data-theme="dark"] or
@@ -29,25 +34,49 @@
 		--card: #1a1d23;
 		--text: #ecf0f6;
 		--accent: #7bb3ff;
+		--accent-ai: #c4b5fd;
 		--code-bg: #1f2329;
 		--badge-bg: #2a3450;
 		--badge-fg: #d6def0;
+		--shadow-card: 0 0 0 1px rgba(255,255,255,.02);
 	}
 }
 :root[data-theme="dark"] {
 	--border: #2a2f37;
-	--muted: #b1bcca;          /* was #94a3b8 — too gray, hard to read on dark */
+	--muted: #b1bcca;
 	--bg: #0f1115;
 	--card: #1a1d23;
 	--text: #ecf0f6;
-	--accent: #7bb3ff;          /* slightly lighter for link contrast */
+	--accent: #7bb3ff;
+	--accent-ai: #c4b5fd;
 	--code-bg: #1f2329;
-	--badge-bg: #2a3450;        /* nudged toward blue so text reads cleanly */
+	--badge-bg: #2a3450;
 	--badge-fg: #d6def0;
+	--shadow-card: 0 0 0 1px rgba(255,255,255,.02);
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+body {
+	margin: 0; color: var(--text); background: var(--bg);
+	font-family: var(--ff-sans);
+	font-feature-settings: "cv11", "ss01", "ss03";
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+code, kbd, pre, .url { font-family: var(--ff-mono); font-feature-settings: normal; }
+
+/* AI affordances: anything that talks to / surfaces the LLM is tinted
+   violet so users can spot it at a glance. */
+.ai-link { color: var(--accent-ai) !important; }
+.ai-link:hover { filter: brightness(1.1); }
+.ai-chip {
+	display: inline-flex; align-items: center; gap: .25rem;
+	padding: .1rem .45rem; border-radius: 999px;
+	background: color-mix(in srgb, var(--accent-ai) 15%, transparent);
+	color: var(--accent-ai);
+	font-size: .75rem; font-weight: 500;
+}
+.sparkle { color: var(--accent-ai); font-weight: 600; }
 
 /* All anchors derive from the active palette so dark mode doesn't fall
    back to the browser's default deep-blue (unreadable on a near-black
@@ -137,8 +166,9 @@ main {
 }
 
 .card {
-	background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+	background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
 	padding: 1rem; margin-bottom: 0.75rem;
+	box-shadow: var(--shadow-card);
 }
 
 form.inline { display: flex; gap: 0.5rem; flex-wrap: wrap; }
