@@ -1,8 +1,13 @@
 # Linklore — Implementation Plan
 
-Local-first link/bookmark manager. Go + SQLite (WAL + FTS5 + BLOB embeddings) + HTMX UI + LLM (Ollama / LiteLLM+vLLM on DGX) for summary, auto-tags, and RAG chat over saved links and collections.
+Local-first link/bookmark manager. Go + SQLite (WAL + FTS5 + BLOB embeddings) + HTMX UI + optional LLM (Ollama / OpenAI-compatible gateway) for summary, auto-tags, and RAG chat over saved links and collections.
 
-Reference: graphrag (`/Users/gabrielemastrapasqua/source/personal/graphrag/`) — reuse the LLM backend, SQLite, config patterns. **Do NOT reuse the graph layer**: linklore is FTS5 + vector cosine + plain SQL, no PPR/graph traversal.
+Linklore is FTS5 + vector cosine + plain SQL — no graph traversal, no
+PPR, no entity-extraction pipeline. The plan below was written with one
+eye on a sister project that does have a graph layer; references to
+"the reference repo" in older sections of this plan point at that
+sister project's patterns (interface shapes, config-loader layout,
+SQLite setup) and not at any feature linklore should adopt.
 
 ---
 
@@ -31,9 +36,9 @@ Reference: graphrag (`/Users/gabrielemastrapasqua/source/personal/graphrag/`) �
 cmd/
   linklore/             # single binary: serve | ingest-url | reindex
 internal/
-  config/               # YAML + env override (copy graphrag/internal/config)
+  config/               # YAML + env override (reference-repo pattern)
   storage/              # SQLite WAL + FTS5 + migrations
-  llm/                  # Backend iface + ollama, litellm (copy graphrag/internal/llm)
+  llm/                  # Backend iface + ollama, litellm (reference-repo pattern)
   extract/              # HTTP fetch + readability + html→md
   summarize/            # LLM TL;DR + auto-tags
   embed/                # embedding service (BLOB) + cosine
@@ -54,20 +59,20 @@ data/
 
 | Concern | Library | Notes |
 |---|---|---|
-| SQLite | `github.com/mattn/go-sqlite3` | Same as graphrag. WAL + FTS5 already supported. |
+| SQLite | `github.com/mattn/go-sqlite3` | Stdlib + the listed library. WAL + FTS5 already supported. |
 | Readability | `github.com/go-shiori/go-readability` | Mozilla Readability port. |
 | HTML→MD | `github.com/JohannesKaufmann/html-to-markdown/v2` | Cleaner than passing raw HTML to LLM. |
 | HTML query (og:tags) | `github.com/PuerkitoBio/goquery` | For `<meta property="og:*">`. |
 | MD→HTML (reader mode) | `github.com/gomarkdown/markdown` | Render `content_md` for reader view. |
 | HTML sanitize (reader mode) | `github.com/microcosm-cc/bluemonday` | Strict policy on rendered MD. |
 | RSS export (per collection) | `github.com/gorilla/feeds` | Phase 8, optional but cheap. |
-| YAML | `gopkg.in/yaml.v3` | Same as graphrag. |
-| HTTP router | stdlib `net/http.ServeMux` (Go 1.22+) | No chi/gin. Same as graphrag. |
-| Templates | stdlib `html/template` | Same as graphrag. |
+| YAML | `gopkg.in/yaml.v3` | Stdlib + the listed library. |
+| HTTP router | stdlib `net/http.ServeMux` (Go 1.22+) | No chi/gin. Stdlib + the listed library. |
+| Templates | stdlib `html/template` | Stdlib + the listed library. |
 
-**No external services**: no Jina Reader, no third-party APIs. Everything runs against the local DGX (Ollama / LiteLLM+vLLM) or on-host. SPA/paywall fallback via optional `chromedp` only, off by default.
+**No external services**: no Jina Reader, no third-party APIs. Everything runs against the local Ollama daemon or any OpenAI-compatible gateway or on-host. SPA/paywall fallback via optional `chromedp` only, off by default.
 
-LLM/embeddings: copy `internal/llm/backend.go`, `internal/llm/ollama/ollama.go`, `internal/llm/litellm/litellm.go` from graphrag. Same `Backend` interface (`Generate`, `GenerateStream`, `Embed`).
+LLM/embeddings: implement an llm.Backend interface and two backend packages. Same `Backend` interface (`Generate`, `GenerateStream`, `Embed`).
 
 ---
 
@@ -160,7 +165,7 @@ CREATE INDEX idx_links_read_at    ON links(read_at);
 CREATE INDEX idx_chat_msgs_session ON chat_messages(session_id, id);
 ```
 
-Embeddings stored as BLOB (`[]float32` little-endian, same as graphrag `internal/vector/vector.go`). Cosine computed in Go — fine up to ~50k chunks on a laptop.
+Embeddings stored as BLOB (`[]float32` little-endian, encoded inline; no separate vector helper). Cosine computed in Go — fine up to ~50k chunks on a laptop.
 
 ### Chunking strategy
 - Split `content_md` by heading + paragraph; pack into ~800-token windows with ~100-token overlap.
@@ -187,7 +192,7 @@ Embeddings stored as BLOB (`[]float32` little-endian, same as graphrag `internal
 
 **Failure**: `status=failed`, `fetch_error` populated. UI shows retry button → `POST /links/:id/refetch`. If only LLM/embed failed (extraction OK), status stays `fetched` and a separate "needs reindex" badge shows in UI; the worker retries with backoff.
 
-**Concurrency**: worker pool, `errgroup.WithContext().SetLimit(N)` (copy graphrag pipeline pattern). Default N=4. LLM/embed batched at the Ollama level (batch size 32 for embeddings).
+**Concurrency**: worker pool, `errgroup.WithContext().SetLimit(N)` (errgroup.WithContext().SetLimit(N)). Default N=4. LLM/embed batched at the Ollama level (batch size 32 for embeddings).
 
 ---
 
@@ -206,7 +211,7 @@ Embeddings stored as BLOB (`[]float32` little-endian, same as graphrag `internal
 4. `llm.GenerateStream` → forward NDJSON chunks to client as SSE.
 5. Persist `chat_messages` after stream completes.
 
-Same streaming pattern as graphrag `internal/llm/ollama/ollama.go:183-206` (`json.NewDecoder` over `resp.Body`).
+Streaming pattern (`json.NewDecoder` over `resp.Body`).
 
 ---
 
@@ -257,14 +262,14 @@ database:
 llm:
   backend: "litellm"         # litellm | ollama
   litellm:
-    base_url: "http://192.168.1.94:8000/v1"   # vLLM via LiteLLM proxy on DGX
-    model: "qwen36-chat"
+    base_url: "http://localhost:4000/v1"   # vLLM via OpenAI-compatible gateway
+    model: "qwen3:14b"
     embed_model: "nomic-embed"
     api_key: "$LITELLM_API_KEY"
     timeout_seconds: 600
   ollama:
-    host: "http://192.168.1.94:11434"   # fallback
-    model: "qwen3.6:35b"
+    host: "http://localhost:11434"   # local Ollama daemon
+    model: "qwen3:14b"
     embed_model: "nomic-embed-text"
 
 worker:
@@ -293,7 +298,7 @@ ui:
   reader_width: "narrow"
 ```
 
-Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACKEND`, `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LINKLORE_ADDR`. Pattern from graphrag `internal/config/config.go:244-310`.
+Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACKEND`, `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `LINKLORE_ADDR`. Standard env-override pattern.
 
 ---
 
@@ -320,7 +325,7 @@ Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACK
 - [ ] Worker queue: pending → fetched. Status transitions visible in UI (HTMX poll on row).
 
 ### Phase 4 — LLM summary + auto-tags (1-2 days)
-- [ ] Copy `internal/llm/{backend.go,ollama,litellm}` from graphrag, drop unused MLX/openai.
+- [ ] Implement `internal/llm/{backend.go,ollama,litellm}` against the documented Backend interface.
 - [ ] `internal/summarize`: prompt template returning strict JSON `{tldr, tags[]}`. Inject top-50 existing tag slugs + "prefer reuse" instruction. Retry on parse fail (max 2).
 - [ ] **Tag normalization** (`internal/tags`): slugify, lowercase, drop trailing 's', Levenshtein ≤1 dedupe vs existing slugs, cap at 5 tags/link, hard cap 200 active tags globally (over the cap → mark "needs merge", surface in `/tags`).
 - [ ] `/tags` page + `POST /tags/merge` (HTMX).
@@ -354,7 +359,7 @@ Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACK
 
 ### Phase 8 — Ops & extras (optional)
 - [ ] Dockerfile + docker-compose with Ollama on host network.
-- [ ] Prometheus `/metrics` (request count + LLM latency, copy graphrag metric keys).
+- [ ] Prometheus `/metrics` (request count + LLM latency, standard request_count + latency_seconds keys).
 - [ ] Backups: `sqlite3 .backup` cron.
 - [ ] **RSS export** `/c/:slug/feed.xml` (`gorilla/feeds`): subscribe to your own collection from any reader.
 
@@ -382,7 +387,7 @@ Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACK
 
 ## 10. Open questions
 
-1. **DGX endpoint**: confirm whether linklore should default to `litellm+vllm` (faster per user) or `ollama`. Plan supports both via config; default = `litellm` if available, fallback `ollama`.
+1. **Default backend**: `none` ships in the binary so a fresh `go install` boots without trying to reach any private gateway. Users opt into `ollama` or `litellm` via configs/config.yaml or env vars.
 2. **Content_md size cap**: truncate to ~16k chars before sending to LLM for the *summary* call (qwen3:4b at 8k num_ctx). Head+tail strategy. Chunks bypass this — they're already ≤800 tokens each.
 3. **Deletion**: hard delete or soft? Hard for v1 (FK cascades). Snapshot files cleaned by a periodic GC sweep matching missing `archive_path`.
 4. **Headless fallback**: keep `chromedp` opt-in (off by default). Enable manually when a specific source needs it; revisit if too many manual pastes pile up.
@@ -513,7 +518,7 @@ Don't do this all at once. Order:
 
 ## 12. LLM-optionality + hardcoded-config audit (do before Phase 9)
 
-Linklore must run cleanly with **no LLM at all**, and must not bake the user's DGX endpoints into the binary. Today most of this works (worker probes health, search has BM25 fallback, chat handler returns 503 cleanly, link_detail shows a friendly banner when LLM is down) — but several rough edges remain.
+Linklore must run cleanly with **no LLM at all**, and must not bake any private gateway into the binary. Today most of this works (worker probes health, search has BM25 fallback, chat handler returns 503 cleanly, link_detail shows a friendly banner when LLM is down) — but several rough edges remain.
 
 ### 12.1 Make the LLM truly optional
 
@@ -524,18 +529,18 @@ Linklore must run cleanly with **no LLM at all**, and must not bake the user's D
 - [ ] **Branch the "LLM not configured" hint on `cfg.LLM.Backend`** so Ollama users don't see "set LITELLM_API_KEY" — they should see "set OLLAMA_HOST / llm.ollama.host" (`internal/server/server.go:401-413`).
 - [ ] **Add `none` / `disabled` as a valid `llm.backend` value** in `Validate()` (`internal/config/config.go:200-211`); have the rest of the stack treat it as nil-backend so users can opt out cleanly without setting env vars to provoke an error.
 
-### 12.2 Strip DGX-specific defaults from the binary
+### 12.2 Strip private-gateway defaults from the binary
 
-These are baked into `config.Default()` and shipped with `go build`. A fresh `go install` of linklore on someone else's machine currently auto-targets `192.168.1.94`.
+These are baked into `config.Default()` and shipped with `go build`. A fresh `go install` of linklore on someone else's machine currently auto-targets `localhost`.
 
-- [ ] `internal/config/config.go:98` — `BaseURL: "http://192.168.1.94:8000/v1"` → default `""`. Force the user to set `llm.litellm.base_url` (or `LITELLM_BASE_URL`); empty value → backend disabled.
-- [ ] `internal/config/config.go:99` — `Model: "qwen36-chat"` → default `""`.
+- [ ] `internal/config/config.go:98` — `BaseURL: "http://localhost:4000/v1"` → default `""`. Force the user to set `llm.litellm.base_url` (or `LITELLM_BASE_URL`); empty value → backend disabled.
+- [ ] `internal/config/config.go:99` — `Model: "qwen3:14b"` → default `""`.
 - [ ] `internal/config/config.go:100` — `EmbedModel: "nomic-embed"` → default `""`.
 - [ ] `internal/config/config.go:101, 165-167` — `APIKey: "sk-local"` magic default duplicated in two places. Drop the default; only set it inside the `Backend == "litellm"` branch as a single named constant (`const litellmDefaultAPIKey = "sk-local"`) referenced once.
-- [ ] `internal/config/config.go:105` — `Host: "http://192.168.1.94:11434"` → `http://localhost:11434` (matches `CLAUDE.md`).
-- [ ] `internal/config/config.go:106` — `Model: "qwen3.6:35b"` → default `""`.
+- [ ] `internal/config/config.go:105` — `Host: "http://localhost:11434"` → `http://localhost:11434` (matches `CLAUDE.md`).
+- [ ] `internal/config/config.go:106` — `Model: "qwen3:14b"` → default `""`.
 - [ ] `internal/config/config.go:107` — `EmbedModel: "nomic-embed-text"` → default `""`.
-- [ ] `configs/config.yaml:14-28` — match the new neutral defaults; keep DGX values commented out as `# example for vLLM on a remote box:`.
+- [ ] `configs/config.yaml:14-28` — match the new neutral defaults; keep private values out of the shipped file.
 
 ### 12.3 Lift remaining hardcoded tuning into config
 
@@ -570,7 +575,7 @@ These should all hold in a `LINKLORE_LLM_BACKEND=none` (or LLM offline) run:
 4. Search works against title/URL/content via FTS5 only; semantic-search results are simply absent (not an error).
 5. `/chat` shows a friendly "chat unavailable — configure an LLM backend" page.
 6. The link detail page shows the orange "no summary yet, configure LLM" banner with the actual probe error.
-7. No DGX-specific URL or API key appears in any default config dump.
+7. No private URL or API key appears in any default config dump.
 
 ---
 

@@ -4,27 +4,29 @@ server:
 database:
   path: "./data/linklore.db"
 
-# LLM backend defaults to LiteLLM in front of vLLM on the DGX (the same
-# stack graphrag uses): http://192.168.1.94:8000/v1 + model "qwen36-chat"
-# + embed model "nomic-embed". Generate/embed requests stay well under
-# vLLM's continuous-batching throughput, which is much faster than Ollama.
+# LLM backend. Set to "none" to run without an LLM (search degrades to
+# BM25-only, chat is disabled, ingestion still fetches + extracts).
+# "ollama" talks to a local Ollama daemon; "litellm" talks to any
+# LiteLLM-compatible OpenAI gateway (LiteLLM itself, llama.cpp's
+# server, vLLM, etc).
 llm:
-  backend: "litellm"           # litellm | ollama
+  backend: "none"              # none | ollama | litellm
+
   litellm:
-    base_url: "http://192.168.1.94:8000/v1"
-    model: "qwen36-chat"
-    embed_model: "nomic-embed"
-    # ${LITELLM_API_KEY} expands at load time against process env + the
-    # optional .env file. When empty (or unset), the config falls back to
-    # "sk-local" — the DGX Spark gateway accepts that as its master key,
-    # same default graphrag uses. Set the env var if you ever switch to
-    # a per-account key.
+    # LiteLLM / OpenAI-compatible gateway. Empty base_url disables this
+    # backend cleanly. Override with LITELLM_BASE_URL.
+    base_url: ""
+    model: ""
+    embed_model: ""
+    # Optional master key. Override with LITELLM_API_KEY env var.
     api_key: "${LITELLM_API_KEY}"
     timeout_seconds: 600
+
   ollama:
-    host: "http://192.168.1.94:11434"
-    model: "qwen3.6:35b"
-    embed_model: "nomic-embed-text"
+    # Default Ollama runs on localhost. Override with OLLAMA_HOST.
+    host: "http://localhost:11434"
+    model: ""
+    embed_model: ""
     num_ctx: 32768
     timeout_seconds: 600
 

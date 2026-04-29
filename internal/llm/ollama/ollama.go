@@ -1,6 +1,6 @@
 // Package ollama implements llm.Backend against an Ollama server. It speaks
 // the /api/generate (NDJSON streaming) and /api/embed endpoints — the same
-// pattern graphrag/internal/llm/ollama uses.
+// conventional Ollama JSON-streaming pattern.
 package ollama
 
 import (

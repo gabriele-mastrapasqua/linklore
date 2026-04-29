@@ -185,7 +185,7 @@ small).
   observe whether `/search/live` returns rows. Capture the actual
   request payload (browser devtools / server log).
 - [ ] Verify `SearchLinksFTS` runs against the right candidate set —
-  currently it ignores `collection_id` filter (graphrag-style scoping
+  currently it ignores `collection_id` filter (server-side scoping
   applies only to `chunks_fts`). Decide:
   - keep it global and rely on the search page filter, or
   - add an optional `collectionID > 0` clause to `SearchLinksFTS`.

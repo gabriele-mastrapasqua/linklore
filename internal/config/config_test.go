@@ -16,8 +16,8 @@ func TestDefault(t *testing.T) {
 	}
 	// Defaults are intentionally NEUTRAL: a fresh `go install` should
 	// not auto-target anyone's private gateway. Backend defaults to
-	// "none" (degraded mode); the shipped configs/config.yaml flips it
-	// back to "litellm" with the project-specific values.
+	// "none" (degraded mode) — users opt into ollama or litellm via
+	// configs/config.yaml or env vars.
 	if c.LLM.Backend != "none" {
 		t.Errorf("default backend = %q, want none", c.LLM.Backend)
 	}
@@ -127,7 +127,7 @@ func TestLoad_envExpandInYaml(t *testing.T) {
 	t.Setenv("LITELLM_API_KEY", "from-env")
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.yaml")
-	// Both $VAR and ${VAR} forms must work — graphrag uses ${VAR}.
+	// Both $VAR and ${VAR} forms must work — the standard config-loader convention.
 	body := "llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

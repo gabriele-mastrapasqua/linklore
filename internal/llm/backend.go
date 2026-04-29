@@ -1,6 +1,6 @@
 // Package llm defines the Backend abstraction over local LLM endpoints
-// (Ollama, LiteLLM+vLLM). The interface intentionally mirrors graphrag's so
-// patterns and prompts stay portable. Linklore uses three operations:
+// (Ollama, any OpenAI-compatible gateway). Three operations are
+// enough for the rest of the codebase:
 //
 //   - Generate         — one-shot text completion (e.g. summary JSON).
 //   - GenerateStream   — token-by-token completion (RAG chat).

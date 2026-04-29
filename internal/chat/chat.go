@@ -223,7 +223,7 @@ func (s *Service) Stream(ctx context.Context, sessionID int64, prompt string, cb
 // buildPrompt composes the system + sources + history + user-question prompt.
 //
 // Language: the assistant must reply in the SAME language as the user. We
-// state this explicitly so qwen36-chat doesn't default to English when the
+// state this explicitly so qwen3:14b doesn't default to English when the
 // user writes in Italian / French / etc. The system text is bilingual on
 // purpose so the model lock-step matches whatever side it picks.
 func buildPrompt(userMsg string, citations []Citation, history []storage.ChatMessage) string {

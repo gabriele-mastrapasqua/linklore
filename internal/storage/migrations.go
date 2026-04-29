@@ -2,7 +2,7 @@ package storage
 
 // migrations is the canonical schema. Every statement is idempotent
 // (`CREATE ... IF NOT EXISTS`) so running them at every startup is safe.
-// Mirrors graphrag's inline migration pattern in storage/sqlite.go.
+// Inline-migration pattern: every CREATE is idempotent.
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS collections (
 		id              INTEGER PRIMARY KEY,

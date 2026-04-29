@@ -1,6 +1,6 @@
 // Package embed handles the BLOB encoding for chunk embeddings and
 // in-memory cosine similarity. We deliberately store float32 little-endian
-// blobs and compute cosine in Go (same approach as graphrag) — fine up to
+// blobs and compute cosine in Go (small enough scale) — fine up to
 // ~50k chunks; if and when we outgrow it we plug in sqlite-vec.
 package embed
 

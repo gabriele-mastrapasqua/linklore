@@ -1,5 +1,13 @@
 # Linklore
 
+[![test](https://github.com/gabrielemastrapasqua/linklore/actions/workflows/test.yml/badge.svg)](https://github.com/gabrielemastrapasqua/linklore/actions/workflows/test.yml)
+[![release](https://github.com/gabrielemastrapasqua/linklore/actions/workflows/release.yml/badge.svg)](https://github.com/gabrielemastrapasqua/linklore/actions/workflows/release.yml)
+[![coverage](https://img.shields.io/badge/coverage-75.2%25-brightgreen)](#tests--coverage)
+[![go report](https://goreportcard.com/badge/github.com/gabrielemastrapasqua/linklore)](https://goreportcard.com/report/github.com/gabrielemastrapasqua/linklore)
+[![go version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![local-first](https://img.shields.io/badge/local--first-✓-success)](#privacy)
+
 A local-first bookmark manager you actually own. Save links into collections,
 read them in a calm reader pane, search across the whole library with
 full-text + semantic search, and chat with a local LLM that grounds its

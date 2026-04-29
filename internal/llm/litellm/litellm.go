@@ -80,7 +80,7 @@ type embedResp struct {
 
 // Healthcheck does a HEAD/GET on /v1/models. Cheap (returns metadata
 // only), and the master key already has access to it, so this is what
-// graphrag uses too. A non-2xx response or any transport error counts
+// the OpenAI gateway protocol uses. A non-2xx response or any transport error counts
 // as "down".
 func (b *Backend) Healthcheck(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.BaseURL+"/models", nil)

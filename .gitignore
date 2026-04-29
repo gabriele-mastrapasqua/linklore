@@ -1,12 +1,18 @@
 /bin/
-/data/*.db
-/data/*.db-shm
-/data/*.db-wal
-/data/*.bak-*
-/data/*.before-*
-/data/snapshots/
+/dist/
+# Local database, snapshots, and any user-generated content. The
+# directory itself is recreated at boot via os.MkdirAll, so we ignore
+# the whole tree without keeping a .gitkeep around.
+/data/
 *.test
 *.out
 coverage.html
+coverage.out
 .DS_Store
 .env
+.claude/
+.idea/
+.vscode/
+*.swp
+.tmp/
+node_modules/

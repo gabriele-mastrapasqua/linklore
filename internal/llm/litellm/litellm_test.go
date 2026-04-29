@@ -28,7 +28,7 @@ func TestNew_validation(t *testing.T) {
 
 func TestChat_modelDefault_isConfigModel(t *testing.T) {
 	// When GenerateOptions.Model is empty, the request must carry the
-	// model from the Backend config (e.g. "qwen36-chat") — that's what
+	// model from the Backend config (e.g. "qwen3:14b") — that's what
 	// drives the user toward the fast vLLM model on the gateway.
 	b, ts := newServer(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
