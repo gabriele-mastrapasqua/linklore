@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      # mattn/go-sqlite3 needs cgo + a C toolchain. ubuntu/macos runners
+      # already carry one; windows-latest ships mingw via the chocolatey
+      # mingw32 package — already on the image.
+      - name: go test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -tags=sqlite_fts5 -race -count=1 ./...
+
+      - name: coverage
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go test -tags=sqlite_fts5 -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1

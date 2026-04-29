@@ -1,0 +1,157 @@
+name: release
+
+# Triggered by:
+#   1. pushing a v* tag — produces a published GitHub Release with the
+#      five platform binaries attached as Release Assets.
+#   2. clicking the "Run workflow" button on the Actions tab — same
+#      build matrix, artifacts uploaded for download but no Release
+#      is created (set `create_release: true` to override).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a draft GitHub Release with the binaries (otherwise just upload as workflow artifacts)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runs-on: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cc: ""
+            ext: ""
+          - target: linux-arm64
+            runs-on: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            ext: ""
+          - target: darwin-amd64
+            runs-on: macos-latest
+            goos: darwin
+            goarch: amd64
+            cc: ""
+            ext: ""
+          - target: darwin-arm64
+            runs-on: macos-latest
+            goos: darwin
+            goarch: arm64
+            cc: ""
+            ext: ""
+          - target: windows-amd64
+            runs-on: windows-latest
+            goos: windows
+            goarch: amd64
+            cc: ""
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # for `git describe` in version-stamping
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      # Cross-compile to linux/arm64 from ubuntu/amd64 needs the
+      # aarch64 GNU toolchain. The other matrix rows build natively.
+      - name: install aarch64 toolchain
+        if: matrix.target == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: derive version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CC:    ${{ matrix.cc }}
+        run: |
+          mkdir -p dist
+          out="dist/linklore-${{ steps.version.outputs.version }}-${{ matrix.target }}${{ matrix.ext }}"
+          go build -tags=sqlite_fts5 -trimpath \
+            -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o "$out" ./cmd/linklore
+          ls -lh "$out"
+          # Print embedded sha256 so users can verify downloads against the workflow log.
+          if command -v sha256sum >/dev/null; then sha256sum "$out"; else shasum -a 256 "$out"; fi
+
+      - name: package archive
+        shell: bash
+        run: |
+          cd dist
+          name="linklore-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            7z a "${name}.zip" "${name}${{ matrix.ext }}" ../README.md ../LICENSE ../configs/config.yaml
+          else
+            tar -czf "${name}.tar.gz" "${name}${{ matrix.ext }}" -C .. README.md LICENSE configs/config.yaml
+          fi
+          ls -lh
+
+      - name: upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linklore-${{ matrix.target }}
+          path: |
+            dist/linklore-*-${{ matrix.target }}*
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release == true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: collect artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: list artifacts
+        run: ls -lh dist/
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          # When triggered by a tag push, use the tag verbatim. When
+          # triggered manually, draft a release named after the latest
+          # commit so the user can edit before publishing.
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('manual-{0}', github.sha) }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Manual build {0}', github.run_number) }}
+          draft: ${{ github.ref_type != 'tag' }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
