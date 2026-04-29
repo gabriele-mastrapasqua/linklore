@@ -127,7 +127,7 @@ header.topbar nav a:hover { color: var(--text); }
 .topbar-search {
 	flex: 1; max-width: 480px; position: relative;
 }
-.topbar-search input[type="search"] { width: 100%; padding-right: 2rem; }
+.topbar-search input[type="search"] { width: 100%; padding-right: 4.5rem; }
 .topbar-kbd {
 	position: absolute; right: .5rem; top: 50%; transform: translateY(-50%);
 	padding: .05rem .4rem; font: 500 .75rem var(--ff-mono);
@@ -135,6 +135,16 @@ header.topbar nav a:hover { color: var(--text); }
 	border: 1px solid var(--border); border-radius: var(--radius-sm);
 	pointer-events: none;
 }
+.topbar-ask {
+	position: absolute; right: 2rem; top: 50%; transform: translateY(-50%);
+	width: 22px; height: 22px; display: inline-flex;
+	align-items: center; justify-content: center;
+	border-radius: var(--radius-sm); font-size: 1rem; line-height: 1;
+	color: var(--accent-ai); background: color-mix(in srgb, var(--accent-ai) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--accent-ai) 25%, transparent);
+	text-decoration: none;
+}
+.topbar-ask:hover { background: color-mix(in srgb, var(--accent-ai) 22%, transparent); }
 
 /* Worker-status dot: solid grey when idle; pulsing violet when busy. */
 .status-dot {
@@ -534,6 +544,95 @@ body.density-no-title   .link-row .title   { display: none; }
 	padding: .75rem 1rem; border-radius: var(--radius-md); line-height: 1.45;
 	border: 1px solid var(--border); background: var(--card);
 }
+
+/* Right-pane preview drawer. Slides in from the right edge; the
+   article uses its own sepia/light/dark palette independent of the
+   site theme so the user can switch into reading mode without
+   flipping everything else. Width/font controls flip data-attrs. */
+.drawer-backdrop {
+	position: fixed; inset: 0; background: rgba(0,0,0,.35);
+	z-index: 90; opacity: 0; transition: opacity .2s ease;
+}
+.drawer-backdrop.drawer-open { opacity: 1; }
+
+.drawer {
+	position: fixed; top: 0; right: 0; height: 100vh;
+	width: min(720px, 92vw);
+	background: var(--card); color: var(--text);
+	border-left: 1px solid var(--border);
+	box-shadow: -8px 0 24px rgba(0,0,0,.18);
+	z-index: 100;
+	transform: translateX(100%);
+	transition: transform .22s ease;
+	overflow-y: auto; padding: var(--space-4) var(--space-6);
+}
+.drawer.drawer-open { transform: translateX(0); }
+
+.drawer-head {
+	display: flex; align-items: flex-start; gap: var(--space-3);
+	margin-bottom: var(--space-3);
+}
+.drawer-title {
+	flex: 1; font-size: 1.15rem; font-weight: 600; line-height: 1.35;
+	display: flex; align-items: center; gap: var(--space-2);
+}
+.drawer-title .preview-favicon { width: 18px; height: 18px; flex-shrink: 0; }
+.drawer-deeplink { color: var(--text); text-decoration: none; }
+.drawer-deeplink:hover { color: var(--accent); }
+.drawer-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+
+.drawer-toolbar {
+	display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+	padding: var(--space-2) 0;
+	border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+	font-size: .8rem; margin-bottom: var(--space-3);
+}
+.drawer-toolbar .muted { font-size: .8rem; }
+
+.drawer-meta { font-size: .8rem; margin-bottom: var(--space-3); }
+.drawer-meta .drawer-url { color: var(--muted); word-break: break-all; }
+
+.drawer-summary {
+	background: color-mix(in srgb, var(--accent-ai) 8%, var(--card));
+	border: 1px solid color-mix(in srgb, var(--accent-ai) 22%, var(--border));
+	border-radius: var(--radius-md); padding: var(--space-3);
+	margin-bottom: var(--space-4);
+}
+.drawer-summary p { margin: var(--space-2) 0 0; line-height: 1.55; }
+
+.drawer-loading { padding: 2rem; text-align: center; }
+
+/* Reader article: width / font-size / theme are driven by data-attrs
+   on .drawer (set by drawer.js + persisted to localStorage). */
+.drawer-article {
+	font-size: 1rem; line-height: 1.65;
+	max-width: 68ch; margin: 0 auto;
+}
+.drawer-article h1, .drawer-article h2, .drawer-article h3 { line-height: 1.3; margin-top: 1.5em; }
+.drawer-article p, .drawer-article li { margin: .8em 0; }
+.drawer-article a { color: var(--accent); }
+.drawer-article img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+.drawer-article pre { background: var(--code-bg); padding: var(--space-3); border-radius: var(--radius-md); overflow-x: auto; }
+.drawer-article code { font-family: var(--ff-mono); font-size: .9em; }
+
+.drawer[data-size="s"] .drawer-article { font-size: .9rem; }
+.drawer[data-size="m"] .drawer-article { font-size: 1rem; }
+.drawer[data-size="l"] .drawer-article { font-size: 1.15rem; }
+
+.drawer[data-width="narrow"] .drawer-article { max-width: 56ch; }
+.drawer[data-width="medium"] .drawer-article { max-width: 68ch; }
+.drawer[data-width="wide"]   .drawer-article { max-width: 88ch; }
+
+/* Theme overrides for the article only. The drawer-head and toolbar
+   keep the site palette so controls stay legible. */
+.drawer[data-theme="light"] .drawer-article { color: #111; background: transparent; }
+.drawer[data-theme="dark"]  .drawer-article { color: #ecf0f6; }
+.drawer[data-theme="sepia"] .drawer-article { color: #4b3c1f; }
+.drawer[data-theme="sepia"] {
+	--drawer-paper: #f6efe1;
+}
+.drawer[data-theme="sepia"] .drawer-article { background: var(--drawer-paper); padding: 1rem 1.25rem; border-radius: var(--radius-md); }
+.drawer[data-theme="sepia"] .drawer-article a { color: #2563eb; }
 
 /* Toasts. Stacked bottom-right; slide in from below. */
 .toasts {

@@ -1,0 +1,62 @@
+{{define "preview_drawer"}}
+<header class="drawer-head">
+	<div class="drawer-title">
+		{{if .Link.FaviconURL}}<img src="{{.Link.FaviconURL}}" alt="" class="preview-favicon" loading="lazy" referrerpolicy="no-referrer">{{end}}
+		<a href="/links/{{.Link.ID}}" class="drawer-deeplink"
+		   title="open the full link page">
+			{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}
+		</a>
+	</div>
+	<div class="drawer-actions">
+		<a class="seg-opt" href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer"
+		   title="open original">↗ open</a>
+		{{$q := printf "What's interesting about \"%s\"?" (or .Link.Title .Link.URL)}}
+		<a class="seg-opt ai-link" href="/chat?ask={{$q | urlquery}}&link={{.Link.ID}}"
+		   title="ask the LLM about this link">✦ ask</a>
+		<button type="button" class="seg-opt" onclick="linklore.drawerClose()" title="close (esc)">✕</button>
+	</div>
+</header>
+
+<div class="drawer-toolbar">
+	<span class="muted">size:</span>
+	<div class="seg-switch">
+		<button type="button" class="seg-opt" onclick="linklore.drawerSize('s')">S</button>
+		<button type="button" class="seg-opt active" onclick="linklore.drawerSize('m')">M</button>
+		<button type="button" class="seg-opt" onclick="linklore.drawerSize('l')">L</button>
+	</div>
+	<span class="muted">width:</span>
+	<div class="seg-switch">
+		<button type="button" class="seg-opt" onclick="linklore.drawerWidth('narrow')">narrow</button>
+		<button type="button" class="seg-opt active" onclick="linklore.drawerWidth('medium')">medium</button>
+		<button type="button" class="seg-opt" onclick="linklore.drawerWidth('wide')">wide</button>
+	</div>
+	<span class="muted">theme:</span>
+	<div class="seg-switch">
+		<button type="button" class="seg-opt" onclick="linklore.drawerTheme('light')">light</button>
+		<button type="button" class="seg-opt active" onclick="linklore.drawerTheme('sepia')">sepia</button>
+		<button type="button" class="seg-opt" onclick="linklore.drawerTheme('dark')">dark</button>
+	</div>
+</div>
+
+<div class="drawer-meta muted">
+	<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" class="drawer-url">{{.Link.URL}}</a>
+	{{if .Link.ContentLang}} · {{.Link.ContentLang}}{{end}}
+	{{if .Link.FetchedAt}} · saved {{.Link.FetchedAt.Format "2006-01-02"}}{{end}}
+</div>
+
+{{if .Link.Summary}}
+<div class="drawer-summary">
+	<strong class="sparkle">✦ TL;DR</strong>
+	<p>{{.Link.Summary}}</p>
+</div>
+{{end}}
+
+<article class="drawer-article">
+{{if .Article}}
+	{{.Article}}
+{{else}}
+	<p class="muted">No reader-mode content yet — the worker may not have finished extracting this link.
+	   <a href="/links/{{.Link.ID}}">Open the full page</a> for status and reindex options.</p>
+{{end}}
+</article>
+{{end}}

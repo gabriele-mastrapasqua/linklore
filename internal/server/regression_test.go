@@ -6,6 +6,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -476,6 +477,57 @@ func TestLooksLikeFeedURL(t *testing.T) {
 		if looksLikeFeedURL(u) {
 			t.Errorf("looksLikeFeedURL(%q) = true, want false", u)
 		}
+	}
+}
+
+// ---------- preview drawer ----------
+
+func TestPreview_unknownLink404s(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, _ := get(t, ts, "/links/9999/preview")
+	if code != 404 {
+		t.Errorf("status %d", code)
+	}
+}
+
+func TestPreview_renders(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/p")
+	if err := st.UpdateLinkExtraction(context.Background(), l.ID,
+		"Title Here", "desc", "", "## Heading\n\nBody paragraph.", "en", ""); err != nil {
+		t.Fatal(err)
+	}
+	code, body := get(t, ts, fmt.Sprintf("/links/%d/preview", l.ID))
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	for _, want := range []string{
+		"drawer-head", "drawer-toolbar", "drawer-article",
+		"Title Here", "✦ ask", "drawerSize",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("preview body missing %q", want)
+		}
+	}
+}
+
+func TestBase_topbarHasAskButton(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `class="topbar-ask`) {
+		t.Errorf("topbar ✦ ask button missing")
+	}
+}
+
+func TestBase_drawerScaffoldPresent(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `id="drawer"`) {
+		t.Errorf("drawer scaffold missing")
+	}
+	if !strings.Contains(body, `id="drawer-content"`) {
+		t.Errorf("drawer content host missing")
 	}
 }
 

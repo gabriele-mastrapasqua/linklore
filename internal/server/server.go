@@ -103,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /links/{id}/row", s.handleLinkRow)
 	mux.HandleFunc("GET /links/{id}/header", s.handleLinkHeader)
 	mux.HandleFunc("GET /links/{id}/read", s.handleReaderMode)
+	mux.HandleFunc("GET /links/{id}/preview", s.handlePreview)
 	mux.HandleFunc("POST /links/{id}/refetch", s.handleRefetch)
 	mux.HandleFunc("POST /links/{id}/reindex", s.handleReindex)
 	mux.HandleFunc("POST /links/{id}/note", s.handleSaveNote)
@@ -826,6 +827,27 @@ func (s *Server) handleLinkRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderFragment(w, "link_row", link)
+}
+
+// handlePreview returns the article rendered for the slide-in drawer
+// — just the inner content, no chrome — so HTMX can swap it into the
+// global #drawer-content target. The full /links/:id/read page stays
+// as the deep link.
+func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	link, err := s.store.GetLink(r.Context(), id)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	s.renderFragment(w, "preview_drawer", map[string]any{
+		"Link":    link,
+		"Article": reader.Render(link.ContentMD),
+	})
 }
 
 func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {

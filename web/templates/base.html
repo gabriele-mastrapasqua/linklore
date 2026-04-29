@@ -16,6 +16,7 @@
 	<script src="/static/views.js" defer></script>
 	<script src="/static/keys.js" defer></script>
 	<script src="/static/toasts.js" defer></script>
+	<script src="/static/drawer.js" defer></script>
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
@@ -23,6 +24,7 @@
 	<div class="topbar-search">
 		<input type="search" name="q" placeholder="search…"
 		       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
+		<a class="topbar-ask ai-link" href="/chat" title="Ask the LLM (✦)">✦</a>
 		<kbd class="topbar-kbd" title="press / to focus">/</kbd>
 	</div>
 	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
@@ -53,5 +55,10 @@
 		{{template "content" .}}
 	</main>
 </div>
+
+<aside id="drawer" class="drawer" hidden>
+	<div id="drawer-content"></div>
+</aside>
+<div id="drawer-backdrop" class="drawer-backdrop" hidden onclick="linklore.drawerClose()"></div>
 </body>
 </html>{{end}}
