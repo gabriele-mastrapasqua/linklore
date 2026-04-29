@@ -1530,6 +1530,8 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 		"Failed":     counts.Failed,
 		"Backend":    s.cfg.LLM.Backend,
 		"Model":      s.activeModelName(),
+		"Ask":        strings.TrimSpace(r.URL.Query().Get("ask")),
+		"LinkID":     strings.TrimSpace(r.URL.Query().Get("link")),
 	}
 	if s.chat == nil {
 		data["Disabled"] = true

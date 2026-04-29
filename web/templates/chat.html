@@ -37,10 +37,18 @@
 		</aside>
 	</div>
 
+	<div class="chat-prompts">
+		<button type="button" class="ai-chip" onclick="chatFill('Summarize the key ideas across all summarised links.')">✦ summarize collection</button>
+		<button type="button" class="ai-chip" onclick="chatFill('What topics do I save the most? Group them.')">✦ topic patterns</button>
+		<button type="button" class="ai-chip" onclick="chatFill('Suggest tag merges and renames to consolidate the tag pool.')">✦ tag cleanup</button>
+		<button type="button" class="ai-chip" onclick="chatFill('Find broken or stale links and explain why.')">✦ broken or stale</button>
+	</div>
+
 	<form id="chat-form" class="chat-input-bar" onsubmit="return chatSubmit(event)">
-		<input id="chat-input" type="text" name="message" placeholder="ask…" autocomplete="off" required>
+		<input id="chat-input" type="text" name="message" placeholder="ask…" autocomplete="off" required value="{{.Ask}}">
 		<input id="chat-session" type="hidden" name="session_id" value="0">
 		<input id="chat-collection" type="hidden" name="collection_id" value="0">
+		<input id="chat-link" type="hidden" name="link_id" value="{{.LinkID}}">
 		<button type="submit">Send</button>
 	</form>
 </div>
@@ -98,6 +106,8 @@ async function chatSubmit(ev) {
 		session_id: document.getElementById('chat-session').value,
 		collection_id: document.getElementById('chat-collection').value,
 	});
+	var linkEl = document.getElementById('chat-link');
+	if (linkEl && linkEl.value) body.set('link_id', linkEl.value);
 
 	const sourcesEl = document.getElementById('chat-sources');
 	const sourcesList = document.getElementById('chat-sources-list');
@@ -159,6 +169,21 @@ async function chatSubmit(ev) {
 	}
 	return false;
 }
+
+// Canned-prompt chips: paste the suggested question into the input.
+function chatFill(text) {
+	var inp = document.getElementById('chat-input');
+	if (!inp) return;
+	inp.value = text;
+	inp.focus();
+}
+
+// If the page loaded with a pre-filled ?ask=, give the input focus
+// so the user can edit and hit Enter immediately.
+document.addEventListener('DOMContentLoaded', function () {
+	var inp = document.getElementById('chat-input');
+	if (inp && inp.value) inp.focus();
+});
 </script>
 {{end}}
 {{end}}

@@ -35,6 +35,9 @@
 			<input type="checkbox" class="bulk-select" data-link-id="{{.ID}}">
 		</label>
 		<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">open link ↗</a>
+		{{$q := printf "What's interesting about \"%s\"?" (or .Title .URL)}}
+		<a href="/chat?ask={{$q | urlquery}}&link={{.ID}}"
+		   class="ai-link" title="open chat scoped to this link">✦ ask</a>
 		<button hx-delete="/links/{{.ID}}" hx-target="#link-{{.ID}}" hx-swap="outerHTML"
 		        class="danger">delete</button>
 	</div>

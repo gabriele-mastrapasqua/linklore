@@ -71,10 +71,18 @@ code, kbd, pre, .url { font-family: var(--ff-mono); font-feature-settings: norma
 .ai-link:hover { filter: brightness(1.1); }
 .ai-chip {
 	display: inline-flex; align-items: center; gap: .25rem;
-	padding: .1rem .45rem; border-radius: 999px;
-	background: color-mix(in srgb, var(--accent-ai) 15%, transparent);
+	padding: .25rem .65rem; border-radius: 999px;
+	background: color-mix(in srgb, var(--accent-ai) 12%, transparent);
 	color: var(--accent-ai);
-	font-size: .75rem; font-weight: 500;
+	font-size: .8rem; font-weight: 500;
+	border: 1px solid color-mix(in srgb, var(--accent-ai) 25%, transparent);
+	cursor: pointer;
+}
+.ai-chip:hover { background: color-mix(in srgb, var(--accent-ai) 20%, transparent); }
+
+.chat-prompts {
+	display: flex; gap: .4rem; flex-wrap: wrap;
+	padding: .5rem .75rem 0; margin-bottom: .25rem;
 }
 .sparkle { color: var(--accent-ai); font-weight: 600; }
 
