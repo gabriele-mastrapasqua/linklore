@@ -27,6 +27,11 @@
 			couldn't detect a feed for <code>{{.DiscoverFrom}}</code> ({{.DiscoverErr}})
 		</div>
 	{{end}}
+	{{if .RefreshErr}}
+		<div class="muted" style="margin-top:.4rem;font-size:.85rem;color:var(--danger)">
+			refresh failed: {{.RefreshErr}}
+		</div>
+	{{end}}
 
 	<form class="inline" style="margin-top:.5rem"
 	      hx-post="/c/{{.Collection.Slug}}/feed/save"

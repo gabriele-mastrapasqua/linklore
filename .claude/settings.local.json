@@ -99,7 +99,32 @@
       "Bash(perl -i -pe ' *)",
       "Bash(grep -nE 'New\\\\\\(config\\\\.Default\\\\\\(\\\\\\), st, .*[^,] *\\\\\\)$' internal/server/server_test.go)",
       "Bash(curl -sN --max-time 1 http://127.0.0.1:8080/events)",
-      "Bash(disown)"
+      "Bash(disown)",
+      "Bash(git stash *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST -d 'ids=' http://127.0.0.1:8080/links/bulk/delete)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST -d 'ids=999' http://127.0.0.1:8080/links/bulk/move)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST -d 'ids=abc&collection_id=1' http://127.0.0.1:8080/links/bulk/move)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST -d 'ids=99999' http://127.0.0.1:8080/links/bulk/delete)",
+      "Bash(ps -p 79446,79632 -o pid,etime,command)",
+      "Bash(ps *)",
+      "Bash(curl -s http://127.0.0.1:8080/c/ai)",
+      "Bash(kill 79446)",
+      "Bash(lsof -nP -i :8080 -sTCP:LISTEN)",
+      "Bash(curl -s -X POST http://127.0.0.1:8080/c/ai-video/feed/refresh -i)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' -o /dev/null -w '%{http_code}\\\\n' 'https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA')",
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' 'https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA')",
+      "Bash(curl -s -A Go-http-client/1.1 -o /dev/null -w '%{http_code}\\\\n' 'https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA')",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' 'https://www.youtube.com/feeds/videos.xml?channel_id=UCLKPca3kwwd-B59HNr-_lvA')",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' -o /dev/null -w '%{http_code}\\\\n' https://www.youtube.com/@aiDotEngineer/videos)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' https://www.youtube.com/@aiDotEngineer/videos)",
+      "Bash(curl -sL -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' -o /tmp/yt.html -w 'code=%{http_code} url=%{url_effective}\\\\n' https://www.youtube.com/@aiDotEngineer/videos)",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' -o /dev/null -w '%{http_code}\\\\n' 'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw')",
+      "Bash(curl -sLI -A 'Mozilla/5.0 \\(Macintosh; Intel Mac OS X 14_5\\) AppleWebKit/605.1.15 \\(KHTML, like Gecko\\) Version/17.5 Safari/605.1.15' -o /dev/null -w '%{http_code} %{url_effective}\\\\n' https://www.youtube.com/channel/UCLKPca3kwwd-B59HNr-_lvA)",
+      "Bash(curl -sL -A \"Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/130.0.0.0 Safari/537.36\" -o /dev/null -w \"%{http_code}\\\\n\" \"https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw\")",
+      "Bash(curl -sL --http2 -o /dev/null -w \"%{http_code}\\\\n\" \"https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw\")",
+      "Bash(curl -sLI -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64; rv:120.0\\) Gecko/20100101 Firefox/120.0' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8' -H 'Accept-Language: en-US,en;q=0.5' -H 'Accept-Encoding: gzip, deflate, br' 'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw')",
+      "Bash(xargs -r kill)",
+      "Bash(curl -s -X POST http://127.0.0.1:8080/c/ai-video/feed/refresh)"
     ]
   }
 }

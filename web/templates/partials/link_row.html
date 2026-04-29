@@ -30,9 +30,12 @@
 	</div>
 	{{end}}
 	<div class="actions">
+		<label class="bulk-select-wrap" title="select for bulk actions">
+			<input type="checkbox" class="bulk-select" data-link-id="{{.ID}}">
+		</label>
 		<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">open link ↗</a>
 		<button hx-delete="/links/{{.ID}}" hx-target="#link-{{.ID}}" hx-swap="outerHTML"
-		        hx-confirm="Delete this link?" class="danger">delete</button>
+		        class="danger">delete</button>
 	</div>
 </div>
 {{end}}

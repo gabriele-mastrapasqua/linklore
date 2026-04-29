@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -219,6 +220,22 @@ func (i *Importer) PollAll(ctx context.Context) ([]Result, error) {
 	return out, nil
 }
 
+// itemDate returns the best timestamp for sorting a feed item:
+// PublishedParsed first, UpdatedParsed as a fallback. Items missing
+// both get the zero time so they sort to the bottom (= oldest).
+func itemDate(it *gofeed.Item) time.Time {
+	if it == nil {
+		return time.Time{}
+	}
+	if it.PublishedParsed != nil {
+		return *it.PublishedParsed
+	}
+	if it.UpdatedParsed != nil {
+		return *it.UpdatedParsed
+	}
+	return time.Time{}
+}
+
 // refresh is the shared implementation for both entry points.
 func (i *Importer) refresh(ctx context.Context, col *storage.Collection) (*Result, error) {
 	feedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -228,12 +245,15 @@ func (i *Importer) refresh(ctx context.Context, col *storage.Collection) (*Resul
 		return nil, fmt.Errorf("parse feed %s: %w", col.FeedURL, err)
 	}
 	r := &Result{CollectionID: col.ID}
-	// gofeed returns items newest-first. We insert from oldest to
-	// newest so the newest entry ends up with the highest order_idx
-	// — and thus appears at the top of the collection page (which
-	// orders by order_idx DESC, created_at DESC).
-	for idx := len(feed.Items) - 1; idx >= 0; idx-- {
-		item := feed.Items[idx]
+	// Sort items oldest-first by published/updated date so that
+	// inserting in this order gives the newest entry the highest
+	// order_idx — collection view sorts order_idx DESC. Items with
+	// no date sink to the bottom (treated as oldest).
+	items := append([]*gofeed.Item(nil), feed.Items...)
+	sort.SliceStable(items, func(i, j int) bool {
+		return itemDate(items[i]).Before(itemDate(items[j]))
+	})
+	for _, item := range items {
 		if item == nil || strings.TrimSpace(item.Link) == "" {
 			continue
 		}

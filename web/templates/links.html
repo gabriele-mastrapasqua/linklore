@@ -30,6 +30,27 @@
 
 {{template "collection_feed" (dict "Collection" .Collection)}}
 
+<div id="bulk-bar" class="bulk-bar" hidden>
+	<span class="bulk-count"><strong id="bulk-count">0</strong> selected</span>
+	<form class="inline" hx-post="/links/bulk/move" hx-swap="none"
+	      onsubmit="return linklore.bulkPopulate(this)">
+		<input type="hidden" name="ids" class="bulk-ids">
+		<select name="collection_id" required>
+			<option value="" disabled selected>Move to…</option>
+			{{range .AllCollections}}
+				{{if ne .ID $.Collection.ID}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+			{{end}}
+		</select>
+		<button type="submit">Move</button>
+	</form>
+	<form class="inline" hx-post="/links/bulk/delete" hx-swap="none"
+	      onsubmit="return linklore.bulkPopulate(this)">
+		<input type="hidden" name="ids" class="bulk-ids">
+		<button type="submit" class="danger">Delete</button>
+	</form>
+	<button type="button" class="link-button" onclick="linklore.bulkClear()">clear</button>
+</div>
+
 <div id="links-list">
 	<div id="links-empty"{{if .Links}} hidden{{end}}>
 		<div class="empty">No links yet.</div>

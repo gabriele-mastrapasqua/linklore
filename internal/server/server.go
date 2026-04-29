@@ -87,6 +87,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /c/{slug}/feed/discover", s.handleDiscoverFeed) // legacy alias
 	mux.HandleFunc("POST /c/{slug}/feed/refresh", s.handleRefreshFeed)
 	mux.HandleFunc("DELETE /links/{id}", s.handleDeleteLink)
+	mux.HandleFunc("POST /links/bulk/delete", s.handleBulkDelete)
+	mux.HandleFunc("POST /links/bulk/move", s.handleBulkMove)
 	mux.HandleFunc("POST /links/{id}/move", s.handleMoveLink)
 	mux.HandleFunc("POST /links/{id}/reorder", s.handleReorderLink)
 	mux.HandleFunc("GET /links/{id}", s.handleLinkDetail)
@@ -204,11 +206,13 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
+	allCollections, _ := s.store.ListCollections(r.Context())
 	s.renderPageRq(w, r, "links", map[string]any{
-		"Title":      col.Name,
-		"Collection": col,
-		"Links":      links,
-		"Stats":      stats,
+		"Title":          col.Name,
+		"Collection":     col,
+		"Links":          links,
+		"Stats":          stats,
+		"AllCollections": allCollections,
 	})
 }
 
@@ -530,6 +534,123 @@ func (s *Server) handleMoveLink(w http.ResponseWriter, r *http.Request) {
 	if dst != nil {
 		s.writeCollectionStatsOOB(w, r.Context(), dst)
 	}
+}
+
+// handleBulkDelete removes every link whose id is listed in the "ids"
+// form field (comma-separated). Responds with one OOB row-removal per
+// id and one OOB stats refresh per affected collection.
+func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
+	ids, err := parseBulkIDs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	affected := map[int64]struct{}{}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	for _, id := range ids {
+		link, gerr := s.store.GetLink(r.Context(), id)
+		if gerr != nil {
+			continue
+		}
+		if derr := s.store.DeleteLink(r.Context(), id); derr != nil {
+			continue
+		}
+		affected[link.CollectionID] = struct{}{}
+		fmt.Fprintf(w, `<div id="link-%d" hx-swap-oob="outerHTML"></div>`, id)
+	}
+	for cid := range affected {
+		col, _ := s.store.GetCollectionBySlugByID(r.Context(), cid)
+		if col == nil {
+			continue
+		}
+		s.writeCollectionStatsOOB(w, r.Context(), col)
+		stats, _ := s.store.CollectionStatsByID(r.Context(), cid)
+		if stats.Total == 0 {
+			s.writeEmptyStateOOB(w, false)
+		}
+	}
+}
+
+// handleBulkMove moves every link in "ids" to the destination
+// collection. Same OOB pattern as handleBulkDelete: rows on the source
+// page disappear, source + destination stats refresh.
+func (s *Server) handleBulkMove(w http.ResponseWriter, r *http.Request) {
+	ids, err := parseBulkIDs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	dstID, err := strconv.ParseInt(strings.TrimSpace(r.PostForm.Get("collection_id")), 10, 64)
+	if err != nil || dstID <= 0 {
+		http.Error(w, "collection_id required", http.StatusBadRequest)
+		return
+	}
+	if _, err := s.store.GetCollectionBySlugByID(r.Context(), dstID); err != nil {
+		s.notFound(w, err)
+		return
+	}
+	affected := map[int64]struct{}{dstID: {}}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	for _, id := range ids {
+		link, gerr := s.store.GetLink(r.Context(), id)
+		if gerr != nil {
+			continue
+		}
+		if link.CollectionID == dstID {
+			continue
+		}
+		if merr := s.store.MoveLink(r.Context(), id, dstID); merr != nil {
+			continue
+		}
+		affected[link.CollectionID] = struct{}{}
+		fmt.Fprintf(w, `<div id="link-%d" hx-swap-oob="outerHTML"></div>`, id)
+	}
+	emptied := false
+	for cid := range affected {
+		col, _ := s.store.GetCollectionBySlugByID(r.Context(), cid)
+		if col == nil {
+			continue
+		}
+		s.writeCollectionStatsOOB(w, r.Context(), col)
+		stats, _ := s.store.CollectionStatsByID(r.Context(), cid)
+		if cid != dstID && stats.Total == 0 {
+			emptied = true
+		}
+	}
+	if emptied {
+		s.writeEmptyStateOOB(w, false)
+	}
+}
+
+// parseBulkIDs reads the "ids" form field — accepts both repeated
+// "ids=1&ids=2" and comma-separated "ids=1,2,3" — and returns the
+// parsed int64 slice. Empty input is an error so handlers can bail
+// before doing any DB work.
+func parseBulkIDs(r *http.Request) ([]int64, error) {
+	if err := r.ParseForm(); err != nil {
+		return nil, err
+	}
+	raw := r.PostForm["ids"]
+	var parts []string
+	for _, v := range raw {
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				parts = append(parts, p)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("ids required")
+	}
+	out := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("bad id %q: %w", p, err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // handleReorderLink reorders a link relative to a pivot, optionally
@@ -905,25 +1026,29 @@ func (s *Server) handleDiscoverFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRefreshFeed triggers a one-shot poll. Result + freshly-rendered
-// feed card are returned so the user sees "X added · Y skipped".
+// feed card are returned so the user sees "X added · Y skipped". On
+// upstream errors (e.g. the feed host returns 404) we re-render the
+// card with the error message inline instead of erroring out — that
+// way HTMX still swaps the fragment and the user sees what went wrong.
 func (s *Server) handleRefreshFeed(w http.ResponseWriter, r *http.Request) {
 	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		s.notFound(w, err)
 		return
 	}
+	data := map[string]any{"Collection": col}
 	res, err := s.feedImport.RefreshOne(r.Context(), col.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		data["RefreshErr"] = err.Error()
+	} else {
+		data["LastResult"] = res
+		data["JustRefresh"] = true
 	}
 	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
-	s.renderFragment(w, "collection_feed", map[string]any{
-		"Collection":   updated,
-		"LastResult":   res,
-		"JustRefresh":  true,
-	})
-	// Stats refresh OOB so the link counter updates without a page reload.
+	if updated != nil {
+		data["Collection"] = updated
+	}
+	s.renderFragment(w, "collection_feed", data)
 	if updated != nil {
 		s.writeCollectionStatsOOB(w, r.Context(), updated)
 	}

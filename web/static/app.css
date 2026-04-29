@@ -212,6 +212,42 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 .actions button:hover, .actions a:hover { color: var(--text); border-color: var(--muted); }
 .actions button.danger { color: var(--danger); }
 
+.bulk-select-wrap {
+	display: inline-flex; align-items: center; justify-content: center;
+	cursor: pointer; padding: 0.35rem;
+	border: 1px solid var(--border); border-radius: 8px;
+	background: var(--bg);
+	transition: border-color .12s ease, background .12s ease, transform .08s ease;
+}
+.bulk-select-wrap:hover { border-color: var(--accent); background: var(--card); }
+.bulk-select-wrap:active { transform: scale(0.96); }
+.bulk-select {
+	width: 22px; height: 22px; cursor: pointer; accent-color: var(--accent);
+	margin: 0;
+}
+/* Highlight the row when its checkbox is on. The :has selector is
+   widely supported in 2026; degrades to no-highlight on older engines. */
+.link-row:has(.bulk-select:checked) {
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Sticky bar that appears once at least one row is selected. */
+.bulk-bar {
+	position: sticky; top: 0; z-index: 5;
+	display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+	background: var(--card); border: 1px solid var(--accent);
+	border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.bulk-bar .bulk-count { color: var(--muted); }
+.bulk-bar .bulk-count strong { color: var(--text); }
+.bulk-bar form.inline { margin: 0; flex: 0 1 auto; }
+.bulk-bar select {
+	background: var(--bg); color: var(--text); border: 1px solid var(--border);
+	border-radius: 6px; padding: 0.25rem 0.4rem; font-size: 0.85rem;
+}
+
 .muted { color: var(--muted); }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
 
