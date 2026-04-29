@@ -4,10 +4,14 @@
 	<meta charset="utf-8">
 	<title>{{.Title}} · linklore</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+	<meta property="og:title" content="linklore">
+	<meta property="og:description" content="Bookmarks you actually own">
+	<meta property="og:type" content="website">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=3">
+	<link rel="stylesheet" href="/static/app.css?v=4">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -22,7 +26,21 @@
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
-	<h1><a href="/">linklore</a></h1>
+	<h1>
+		<a href="/" class="brand" title="Bookmarks you actually own">
+			<svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+				<defs>
+					<linearGradient id="bm" x1="0" y1="0" x2="0" y2="1">
+						<stop offset="0%" stop-color="#7c3aed"/>
+						<stop offset="100%" stop-color="#2563eb"/>
+					</linearGradient>
+				</defs>
+				<path d="M16 3 C 9 13, 5 18, 5 22 a11 11 0 0 0 22 0 c 0 -4 -4 -9 -11 -19 z" fill="url(#bm)"/>
+				<path d="M14 14 v8 h6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+			</svg>
+			<span class="brand-word">linklore</span>
+		</a>
+	</h1>
 	<div class="topbar-search">
 		<input type="search" name="q" placeholder="search…"
 		       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
@@ -30,13 +48,14 @@
 		<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
 	</div>
 	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
-	<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load" hx-swap="innerHTML"></span>
 	<nav>
 		<a href="/">collections</a>
-		<a href="/chat" class="ai-link">✦ chat</a>
 		<a href="/tags">tags</a>
 		<a href="/duplicates">dupes</a>
-		<a href="/bookmarklet">+</a>
+		<a href="/bookmarklet" title="Bookmarklet" aria-label="Bookmarklet">📎<span class="sr-only">Bookmarklet</span></a>
+		<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
+		<a href="/chat" class="ai-link">✦ chat</a>
+		<a href="/settings" title="Settings" aria-label="Settings">⚙<span class="sr-only">Settings</span></a>
 		<button hx-post="/preferences/previews" hx-swap="none" title="toggle image previews"
 		        style="background:none;border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.8rem;cursor:pointer;color:var(--muted)">
 			previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>

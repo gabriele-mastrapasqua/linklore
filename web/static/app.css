@@ -127,7 +127,7 @@ header.topbar nav a:hover { color: var(--text); }
 .topbar-search {
 	flex: 1; max-width: 480px; position: relative;
 }
-.topbar-search input[type="search"] { width: 100%; padding-right: 4.5rem; }
+.topbar-search input[type="search"] { width: 100%; padding-right: 5.2rem; }
 .topbar-kbd {
 	position: absolute; right: .5rem; top: 50%; transform: translateY(-50%);
 	padding: .05rem .4rem; font: 500 .75rem var(--ff-mono);
@@ -136,7 +136,7 @@ header.topbar nav a:hover { color: var(--text); }
 	pointer-events: none;
 }
 .topbar-ask {
-	position: absolute; right: 2rem; top: 50%; transform: translateY(-50%);
+	position: absolute; right: 2.4rem; top: 50%; transform: translateY(-50%);
 	width: 22px; height: 22px; display: inline-flex;
 	align-items: center; justify-content: center;
 	border-radius: var(--radius-sm); font-size: 1rem; line-height: 1;
@@ -145,6 +145,33 @@ header.topbar nav a:hover { color: var(--text); }
 	text-decoration: none;
 }
 .topbar-ask:hover { background: color-mix(in srgb, var(--accent-ai) 22%, transparent); }
+
+/* Inline brand: gradient mark (mini favicon) + wordmark. */
+.topbar h1 .brand {
+	display: inline-flex; align-items: center; gap: .45rem;
+	color: var(--text); text-decoration: none;
+}
+.topbar h1 .brand-mark { width: 22px; height: 22px; display: block; }
+.topbar h1 .brand-word { font-weight: 700; letter-spacing: -.01em; }
+
+/* Compact status pill used by /healthz/llm. The ::before dot uses
+   currentColor so the dot tracks status-ok / status-err automatically. */
+.status-pill {
+	display: inline-flex; align-items: center; gap: .25rem;
+	padding: .15rem .5rem; border-radius: 999px;
+	font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+	border: 1px solid;
+}
+.status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-pill.status-ok  { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.status-pill.status-err { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* Visually-hidden text that screen readers still announce. Used on
+   topbar icon-only links so each one keeps an accessible name. */
+.sr-only {
+	position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+	overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
 /* Worker-status dot: solid grey when idle; pulsing violet when busy. */
 .status-dot {
@@ -1060,8 +1087,10 @@ img.thumb { width: 96px; height: 64px; object-fit: cover; border-radius: 4px; }
    Toggled globally with body.previews-off. We never download these —
    the <img src> points straight to the upstream host, so the browser
    handles caching and we keep storage tiny. */
-.body.previews-off .preview,
-body.previews-off .preview { display: none !important; }
+/* Favicons are metadata, not previews — keep them visible even when
+   the user toggled the bigger image previews off. */
+.body.previews-off .preview:not(.preview-favicon),
+body.previews-off  .preview:not(.preview-favicon) { display: none !important; }
 
 .preview-favicon {
 	width: 16px; height: 16px;

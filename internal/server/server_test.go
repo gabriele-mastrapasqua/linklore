@@ -939,9 +939,12 @@ func TestLLMHealth_endpoint(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status: %d", code)
 	}
-	// No worker → "no LLM" badge.
-	if !strings.Contains(body, "no LLM") {
-		t.Errorf("expected 'no LLM' when worker is nil, got %q", body)
+	// No worker → red status-pill with "no worker" tooltip.
+	if !strings.Contains(body, `class="status-pill status-err"`) {
+		t.Errorf("expected status-pill markup when worker is nil, got %q", body)
+	}
+	if !strings.Contains(body, ">LLM<") {
+		t.Errorf("expected pill content 'LLM', got %q", body)
 	}
 }
 

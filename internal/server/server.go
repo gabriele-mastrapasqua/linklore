@@ -1779,27 +1779,29 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleLLMHealth returns "ok" when the worker reports a healthy LLM,
-// "down: <reason>" otherwise. UI / topbar polls this every few seconds.
+// handleLLMHealth renders a small pill in the topbar reflecting the
+// current backend health: green when healthy, red (with the error in
+// title=) when the worker can't reach the model. The fragment is
+// poll-friendly — handler is cheap, output is a single span.
 func (s *Server) handleLLMHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if s.worker == nil {
-		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">no LLM</span>`))
+		_, _ = w.Write([]byte(`<span class="status-pill status-err" title="no LLM worker configured">LLM</span>`))
 		return
 	}
 	healthy, err, _ := s.worker.LLMHealth()
 	if healthy {
-		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">LLM ok</span>`))
+		_, _ = w.Write([]byte(`<span class="status-pill status-ok" title="LLM backend reachable">LLM</span>`))
 		return
 	}
 	msg := "offline"
 	if err != nil {
 		msg = err.Error()
-		if len(msg) > 80 {
-			msg = msg[:80] + "…"
+		if len(msg) > 200 {
+			msg = msg[:200] + "…"
 		}
 	}
-	fmt.Fprintf(w, `<span class="badge failed" title="%s">LLM offline</span>`, htmlEscape(msg))
+	fmt.Fprintf(w, `<span class="status-pill status-err" title="%s">LLM</span>`, htmlEscape(msg))
 }
 
 func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {

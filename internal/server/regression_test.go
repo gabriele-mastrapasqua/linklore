@@ -726,7 +726,190 @@ func TestSidebar_alwaysContainsCollectionsAnchor(t *testing.T) {
 	}
 }
 
+// ---------- LLM status pill ----------
+
+func TestLLMHealth_rendersStatusPill(t *testing.T) {
+	// /healthz/llm must return a `.status-pill` span (one of status-ok
+	// or status-err depending on backend reachability). The test server
+	// has no worker so we expect status-err, but either pill class
+	// satisfies the contract that the topbar gets a stylable widget.
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/healthz/llm")
+	if code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if !strings.Contains(body, `class="status-pill `) {
+		t.Errorf("expected `.status-pill` markup, got: %q", body)
+	}
+	if !strings.Contains(body, `status-ok`) && !strings.Contains(body, `status-err`) {
+		t.Errorf("expected status-ok or status-err class, got: %q", body)
+	}
+	if !strings.Contains(body, `>LLM<`) {
+		t.Errorf("expected pill text `LLM`, got: %q", body)
+	}
+}
+
+// ---------- /search/live is links-only ----------
+
+// Top-bar live search must surface ONLY link results — no segmented
+// switches (.seg-opt), no "create collection" affordance, no collection
+// listings. The fragment is rendered as the user types, so anything
+// extra would push real hits off-screen.
+func TestSearchLive_linksOnly_noSegOptOrCreateCollection(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://example.com/p")
+	code, body := get(t, ts, "/search/live?q=anything")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if strings.Contains(body, `class="seg-opt"`) || strings.Contains(body, `class="seg-opt `) {
+		t.Errorf("/search/live should not render seg-opt switches, got: %q", body)
+	}
+	for _, bad := range []string{"create collection", "Create collection", "new collection", "collection-card"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("/search/live should not surface collections (%q): %q", bad, body)
+		}
+	}
+}
+
+// ---------- favicon link in <head> ----------
+
+func TestBase_includesFaviconLink(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, `/static/favicon.svg`) {
+		t.Errorf("base.html missing favicon link, body excerpt: %s", excerpt(body, "favicon", 80))
+	}
+}
+
+func TestStatic_faviconServed(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/static/favicon.svg")
+	if code != 200 {
+		t.Errorf("favicon status %d", code)
+	}
+	if !strings.Contains(body, "<svg") {
+		t.Errorf("favicon body not SVG: %q", body)
+	}
+}
+
+// ---------- topbar reorder + bookmarklet glyph ----------
+
+func TestBase_topbarHasBookmarkletGlyphAndSettings(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `📎`) {
+		t.Errorf("topbar bookmarklet glyph missing")
+	}
+	if !strings.Contains(body, `href="/settings"`) {
+		t.Errorf("topbar settings link missing")
+	}
+	// The LLM status span sits between bookmarklet and chat in the new
+	// order. Check both that the span exists and that it triggers the
+	// new pill endpoint.
+	if !strings.Contains(body, `id="llm-status"`) {
+		t.Errorf("llm-status span missing from topbar")
+	}
+}
+
 // Avoid an unused-import warning when the `time` import is only used
 // indirectly (e.g. by sub-test helpers in features_test.go); calling
 // time.Now() here keeps the import alive without changing semantics.
 var _ = time.Now
+
+// ---------- /api/links auto-default-collection ----------
+
+func TestAPILinks_autoCreatesDefaultCollection(t *testing.T) {
+	// Bookmarklet POSTs without a "collection" field. The handler
+	// should auto-create the canonical "default" collection on first
+	// hit and stash the link inside it.
+	ts, st := newTestServer(t)
+	resp, err := ts.Client().PostForm(ts.URL+"/api/links",
+		url.Values{"url": {"https://example.com/x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	col, err := st.GetCollectionBySlug(context.Background(), "default")
+	if err != nil {
+		t.Fatalf("default collection not created: %v", err)
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), col.ID, 10, 0)
+	if len(links) != 1 {
+		t.Errorf("default has %d link(s), want 1", len(links))
+	}
+}
+
+func TestAPILinks_secondCallReusesDefault(t *testing.T) {
+	// Two consecutive POSTs must NOT create two collections.
+	ts, st := newTestServer(t)
+	for _, u := range []string{"https://example.com/a", "https://example.com/b"} {
+		resp, err := ts.Client().PostForm(ts.URL+"/api/links", url.Values{"url": {u}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("status %d for %s", resp.StatusCode, u)
+		}
+	}
+	cols, _ := st.ListCollections(context.Background())
+	if len(cols) != 1 {
+		t.Fatalf("got %d collections, want exactly 1 (the auto-created default)", len(cols))
+	}
+	if cols[0].Slug != "default" {
+		t.Errorf("slug = %q, want %q", cols[0].Slug, "default")
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), cols[0].ID, 10, 0)
+	if len(links) != 2 {
+		t.Errorf("default has %d link(s), want 2", len(links))
+	}
+}
+
+// ---------- /collections page structure ----------
+
+func TestCollections_pageStructure(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, "Add a collection") {
+		t.Errorf(`expected "Add a collection" heading on /, got: %s`, excerpt(body, "card", 80))
+	}
+	if !strings.Contains(body, "Your collections") {
+		t.Errorf(`expected "Your collections" heading on /`)
+	}
+	// Import form is collapsed inside a <details>.
+	di := strings.Index(body, "<details")
+	if di < 0 {
+		t.Fatalf("no <details> wrapper for the import form")
+	}
+	dEnd := strings.Index(body[di:], "</details>")
+	if dEnd < 0 {
+		t.Fatalf("unterminated <details>")
+	}
+	detailsBlock := body[di : di+dEnd]
+	if !strings.Contains(detailsBlock, `action="/import"`) {
+		t.Errorf("import form not inside <details>")
+	}
+	// The legacy "target slug (optional)" input is gone.
+	if strings.Contains(detailsBlock, `name="collection"`) {
+		t.Errorf(`import form still has name="collection" input`)
+	}
+}
+
+// ---------- /c/:slug no cover button ----------
+
+func TestLinksPage_noCoverButton(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	_, body := get(t, ts, "/c/c")
+	if strings.Contains(body, "🖼 cover") {
+		t.Errorf("page still has 🖼 cover button")
+	}
+	if strings.Contains(body, `id="cover-`) {
+		t.Errorf("page still has cover-form (id=cover-…)")
+	}
+}
