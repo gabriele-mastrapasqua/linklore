@@ -13,6 +13,11 @@
 		        hx-confirm="Delete every collection that has 0 links and no RSS feed? RSS-backed collections are kept even if currently empty."
 		        title="Sweep all empty collections">✕ prune empty</button>
 	</div>
+	<form method="POST" action="/import" enctype="multipart/form-data" class="inline" style="margin-top:.5rem">
+		<input type="file" name="file" accept=".html,.htm" required>
+		<input type="text" name="collection" placeholder="target slug (optional — empty = group by source folder)" style="flex:1;min-width:240px">
+		<button type="submit" title="Import a Netscape Bookmark File (Chrome / Firefox / Pocket / Pinboard / Raindrop)">Import</button>
+	</form>
 </section>
 
 <div id="collections-list">

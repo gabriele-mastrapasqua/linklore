@@ -145,7 +145,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8080/duplicates)",
       "Bash(curl -s http://127.0.0.1:8080/duplicates)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST -H \"HX-Request: true\" http://127.0.0.1:8080/collections/prune)",
-      "Bash(curl -s \"http://127.0.0.1:8080/chat?ask=hello&link=42\")"
+      "Bash(curl -s \"http://127.0.0.1:8080/chat?ask=hello&link=42\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8080/c/fullone/export.html)"
     ]
   }
 }

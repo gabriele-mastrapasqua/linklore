@@ -20,6 +20,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/feed"
 	"github.com/gabrielemastrapasqua/linklore/internal/feedimport"
 	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabrielemastrapasqua/linklore/internal/netscape"
 	"github.com/gabrielemastrapasqua/linklore/internal/reader"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
@@ -122,6 +123,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /duplicates", s.handleDuplicates)
 	mux.HandleFunc("POST /duplicates/delete", s.handleDuplicatesDelete)
+	mux.HandleFunc("POST /import", s.handleImportNetscape)
+	mux.HandleFunc("GET /c/{slug}/export.html", s.handleExportNetscape)
 	mux.HandleFunc("GET /tags", s.handleTagsPage)
 	mux.HandleFunc("GET /tags/{slug}", s.handleTagDetail)
 	mux.HandleFunc("POST /tags/merge", s.handleMergeTags)
@@ -176,6 +179,132 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		"Cs": cs, "ActiveSlug": "",
 	}); err == nil {
 		fmt.Fprintf(w, "\n<div hx-swap-oob=\"beforeend:#sidebar-collections\">%s</div>", sb.String())
+	}
+}
+
+// handleImportNetscape accepts a Netscape Bookmark File upload + a
+// target collection slug (or empty to bucket each link into a
+// collection named after its source folder) and ingests each <a>
+// it finds. Existing URLs are skipped (CreateLinkIfMissing handles
+// that). Returns a JSON-ish summary line plus a redirect to the
+// imported-into collection.
+func (s *Server) handleImportNetscape(w http.ResponseWriter, r *http.Request) {
+	// 16 MB cap covers a year of Pinboard exports comfortably.
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "file required (multipart name=file)", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	slug := strings.TrimSpace(r.FormValue("collection"))
+	bookmarks, err := netscape.Parse(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("parse: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// When no collection slug is given, group by the source folder
+	// (so a Chrome export's "Toolbar" / "Other bookmarks" land in
+	// matching collections) — and fall back to "imported" when there's
+	// no folder either.
+	colCache := map[string]*storage.Collection{}
+	resolve := func(folder string) (*storage.Collection, error) {
+		key := slug
+		display := slug
+		if key == "" {
+			key = strings.ToLower(folder)
+			if key == "" {
+				key = "imported"
+			}
+			display = folder
+			if display == "" {
+				display = "imported"
+			}
+		}
+		if c, ok := colCache[key]; ok {
+			return c, nil
+		}
+		// Try to find an existing collection with this slug.
+		col, err := s.store.GetCollectionBySlug(r.Context(), key)
+		if err == storage.ErrNotFound {
+			col, err = s.store.CreateCollection(r.Context(), s.uniqueSlugFromName(r.Context(), display), display, "")
+		}
+		if err != nil {
+			return nil, err
+		}
+		colCache[key] = col
+		return col, nil
+	}
+
+	added, skipped, fail := 0, 0, 0
+	for _, b := range bookmarks {
+		col, err := resolve(b.Folder)
+		if err != nil {
+			fail++
+			continue
+		}
+		_, created, err := s.store.CreateLinkIfMissing(r.Context(), col.ID, b.URL)
+		if err != nil {
+			fail++
+			continue
+		}
+		if created {
+			added++
+		} else {
+			skipped++
+		}
+	}
+	log.Printf("import: added=%d skipped=%d failed=%d", added, skipped, fail)
+
+	// Redirect somewhere sensible: the slug-target collection if one
+	// was given, else the home page.
+	target := "/"
+	if slug != "" {
+		target = "/c/" + slug
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// handleExportNetscape streams every link in a collection as a
+// Netscape Bookmark File, suitable for re-importing into any browser
+// or bookmark manager. Tags from auto-tags + user tags are merged.
+func (s *Server) handleExportNetscape(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	links, err := s.store.ListLinksByCollection(r.Context(), col.ID, 10000, 0)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	entries := make([]netscape.WriteEntry, 0, len(links))
+	for _, l := range links {
+		ts, _ := s.store.ListTagsByLink(r.Context(), l.ID)
+		var tagNames []string
+		for _, t := range ts {
+			tagNames = append(tagNames, t.Slug)
+		}
+		entries = append(entries, netscape.WriteEntry{
+			URL: l.URL, Title: l.Title, Description: l.Summary,
+			Tags: tagNames, Folder: col.Name, AddedAt: l.CreatedAt,
+		})
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="linklore-%s.html"`, col.Slug))
+	if err := netscape.Write(w, entries); err != nil {
+		log.Printf("export %s: %v", col.Slug, err)
 	}
 }
 

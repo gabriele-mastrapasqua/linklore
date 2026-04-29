@@ -5,6 +5,8 @@
 		<button type="button" class="link-button"
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').toggleAttribute('hidden')"
 		        title="rename this collection">✎ rename</button>
+		<a class="link-button" href="/c/{{.Collection.Slug}}/export.html"
+		   title="Download as Netscape Bookmark File (Chrome/Firefox/Pinboard compatible)">↓ export</a>
 		<button type="button" class="link-button danger"
 		        hx-delete="/c/{{.Collection.Slug}}"
 		        hx-confirm="Delete collection “{{.Collection.Name}}” and all {{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}} inside it? This cannot be undone."
