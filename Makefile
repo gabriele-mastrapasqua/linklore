@@ -1,5 +1,6 @@
 .PHONY: build run dev install uninstall \
-        test test-fast test-race test-pkg test-cover bench \
+        test test-fast test-race test-pkg test-cover \
+        cover cover-summary cover-pkg cover-open bench \
         fmt vet lint tidy check \
         smoke smoke-up smoke-down clean reset-db env-template \
         help
@@ -65,10 +66,26 @@ test-pkg: ## run one package (PKG=./internal/foo, optional NAME=TestX)
 		go test -race -tags=$(TAGS) -count=1 $(PKG); \
 	fi
 
-test-cover: ## test with coverage report → ./coverage.html
+test-cover: ## test with coverage report → ./coverage.html (+ prints total)
 	go test -tags=$(TAGS) -coverprofile=coverage.out $(PKG)
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "wrote coverage.html"
+	@echo
+	@echo "=== TOTAL COVERAGE ==="
+	@go tool cover -func=coverage.out | tail -1
+
+# Aliases for muscle memory: `make cover` is the canonical short form.
+cover: test-cover ## alias for `test-cover`
+
+cover-pkg: ## per-package coverage summary (no HTML, no profile written)
+	@go test -tags=$(TAGS) -cover $(PKG) | grep -E 'coverage|^ok' | sort -t: -k2 -nr
+
+cover-summary: ## per-function coverage summary from ./coverage.out (run cover first)
+	@if [ ! -f coverage.out ]; then $(MAKE) -s cover; fi
+	go tool cover -func=coverage.out
+
+cover-open: cover ## generate ./coverage.html and open it in the default browser
+	@open coverage.html 2>/dev/null || xdg-open coverage.html 2>/dev/null || echo "open coverage.html manually"
 
 bench: ## run any benchmarks present
 	go test -tags=$(TAGS) -bench=. -benchmem $(PKG)
