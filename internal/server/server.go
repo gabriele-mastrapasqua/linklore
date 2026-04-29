@@ -73,7 +73,15 @@ func (s *Server) Handler() http.Handler {
 
 	// static assets — served from the embedded FS so the binary stays portable
 	staticFS, _ := fs.Sub(web.Static, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	staticHandler := http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))
+	// Static assets ship from embed.FS but baked into the binary at build
+	// time. We send no-store so users never look at a cached copy of CSS
+	// or JS that's older than their currently-running binary — the
+	// surface area is small enough that the bandwidth cost is fine.
+	mux.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		staticHandler.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("ok"))
