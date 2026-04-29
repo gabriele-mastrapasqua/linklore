@@ -1,0 +1,58 @@
+# linklore — easy-mode example config: everything on localhost, Ollama
+# as the LLM backend. Copy this to configs/config.yaml (or any path you
+# pass to `--config`) and adjust the model names if you have different
+# ones pulled.
+#
+#   ollama pull qwen3:14b
+#   ollama pull nomic-embed-text
+#   cp configs/config.example.yaml configs/config.yaml
+#   ./bin/linklore serve --config ./configs/config.yaml
+
+server:
+  addr: "127.0.0.1:8080"            # bind localhost-only
+
+database:
+  path: "./data/linklore.db"
+
+llm:
+  backend: "ollama"                  # none | ollama | litellm
+
+  ollama:
+    host: "http://localhost:11434"   # default Ollama port
+    model: "qwen3:14b"               # used for summary + chat
+    embed_model: "nomic-embed-text"  # used for semantic search
+    num_ctx: 32768
+    timeout_seconds: 600
+
+  # Unused when backend != "litellm" but kept so swapping is one line.
+  litellm:
+    base_url: ""
+    model: ""
+    embed_model: ""
+    api_key: "${LITELLM_API_KEY}"
+    timeout_seconds: 600
+
+worker:
+  concurrency: 4                     # parallel link extractions
+  embed_batch_size: 32
+  fetch_timeout_seconds: 15
+
+extract:
+  headless_fallback: false           # opt-in chromedp fallback
+  archive_html: false                # gzip raw HTML to data/snapshots/<id>.html.gz
+  min_readable_chars: 200            # below this → fall back to raw <body>
+
+chunking:
+  target_tokens: 800
+  overlap_tokens: 100
+  min_tokens: 40
+
+tags:
+  max_per_link: 5
+  active_cap: 200
+  reuse_distance: 1
+
+ui:
+  show_images_default: false
+  reader_font: "serif"
+  reader_width: "narrow"

@@ -138,30 +138,68 @@ linklore reindex                            # stub — re-runs summary+embed
 
 ## Configuring the LLM
 
-`configs/config.yaml`:
+The shipped `configs/config.yaml` defaults to `backend: "none"` so a
+fresh `go install` boots cleanly without trying to reach any server.
+You opt in to a backend by editing the file or by passing a different
+config path with `--config`.
+
+### Easy mode: Ollama on localhost
+
+There's a ready-made example at `configs/config.example.yaml`. Two
+shell commands to a running summary + chat pipeline:
+
+```bash
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+cp configs/config.example.yaml configs/config.yaml
+./bin/linklore serve
+```
+
+The full file (annotated) — copy this verbatim and adjust model names
+if you've pulled different ones:
+
+```yaml
+server:
+  addr: "127.0.0.1:8080"
+
+database:
+  path: "./data/linklore.db"
+
+llm:
+  backend: "ollama"
+
+  ollama:
+    host: "http://localhost:11434"
+    model: "qwen3:14b"               # used for summary + chat
+    embed_model: "nomic-embed-text"  # used for semantic search
+    num_ctx: 32768
+    timeout_seconds: 600
+```
+
+### LiteLLM / OpenAI-compatible gateway
 
 ```yaml
 llm:
-  backend: "litellm"   # litellm | ollama | none
+  backend: "litellm"
   litellm:
     base_url: "http://localhost:4000/v1"
     model: "qwen3:14b"
     embed_model: "nomic-embed-text"
-    api_key: "${LITELLM_API_KEY}"
-  ollama:
-    host: "http://localhost:11434"
-    model: "qwen3:14b"
-    embed_model: "nomic-embed-text"
-    num_ctx: 32768
+    api_key: "${LITELLM_API_KEY}"   # expanded from process env or .env
 ```
 
-### Backend options
+Any server that speaks `/chat/completions` + `/embeddings` works:
+LiteLLM itself, llama.cpp's `server`, vLLM with the OpenAI shim,
+etc. Authorisation header is set only when `api_key` is non-empty,
+so local proxies that don't require one work too.
+
+### Backend options at a glance
 
 | `llm.backend` | Use case |
 |---|---|
 | `none`     | No LLM. Search degrades to BM25-only, chat is disabled, ingestion still fetches + extracts. |
-| `ollama`   | Local Ollama (`OLLAMA_HOST` env override; default `http://localhost:11434`). Uses the new `/api/embed` endpoint (Ollama 0.2+). |
-| `litellm`  | LiteLLM-compatible OpenAI gateway. Standard `/chat/completions` + `/embeddings` endpoints. |
+| `ollama`   | Local Ollama (`OLLAMA_HOST` env override; default `http://localhost:11434`). Uses the `/api/embed` endpoint (Ollama 0.2+). |
+| `litellm`  | Any OpenAI-compatible gateway. Standard `/chat/completions` + `/embeddings` endpoints. |
 
 ### Environment overrides
 
