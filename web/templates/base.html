@@ -14,13 +14,18 @@
 	<script src="/static/lightbox.js" defer></script>
 	<script src="/static/bulk.js" defer></script>
 	<script src="/static/views.js" defer></script>
+	<script src="/static/keys.js" defer></script>
+	<script src="/static/toasts.js" defer></script>
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
 	<h1><a href="/">linklore</a></h1>
-	<input type="search" name="q" placeholder="search…"
-	       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
-	<span id="worker-status" hx-get="/worker/status" hx-trigger="load" hx-swap="innerHTML"></span>
+	<div class="topbar-search">
+		<input type="search" name="q" placeholder="search…"
+		       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
+		<kbd class="topbar-kbd" title="press / to focus">/</kbd>
+	</div>
+	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
 	<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load" hx-swap="innerHTML"></span>
 	<nav>
 		<a href="/">collections</a>

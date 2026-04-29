@@ -24,7 +24,13 @@
 
 <div id="collections-list">
 {{if not .Collections}}
-	<div class="empty">No collections yet — create your first one above.</div>
+	<div class="empty">
+		<div class="empty-glyph">🗂️</div>
+		<h3>No collections yet</h3>
+		<p>Group your saved links by topic — News, Recipes, Reading list, anything.</p>
+		<a class="empty-cta" href="#new-collection"
+		   onclick="document.querySelector('[name=name]').focus()">Create your first one</a>
+	</div>
 {{end}}
 {{range .Collections}}
 	{{template "collection_card" .}}

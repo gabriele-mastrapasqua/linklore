@@ -163,7 +163,7 @@ func TestAddAndDeleteLink(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("collection page: %d", code)
 	}
-	if !strings.Contains(body, "No links yet") {
+	if !strings.Contains(body, "No links here yet") {
 		t.Errorf("expected empty links state")
 	}
 
@@ -906,7 +906,7 @@ func TestAddLink_hidesNoLinksYet(t *testing.T) {
 	}
 	// Empty-state visible on first load.
 	_, body := get(t, ts, "/c/x")
-	if !strings.Contains(body, "No links yet") {
+	if !strings.Contains(body, "No links here yet") {
 		t.Fatalf("expected empty-state on freshly-created collection")
 	}
 	// After add, the OOB swap hides the empty-state placeholder.

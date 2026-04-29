@@ -260,6 +260,7 @@ func (s *Server) handleImportNetscape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.Printf("import: added=%d skipped=%d failed=%d", added, skipped, fail)
+	setToast(w, "ok", fmt.Sprintf("Imported %d new (%d skipped, %d failed)", added, skipped, fail))
 
 	// Redirect somewhere sensible: the slug-target collection if one
 	// was given, else the home page.
@@ -438,6 +439,7 @@ func (s *Server) handleDeleteEmptyCollections(w http.ResponseWriter, r *http.Req
 		}
 	}
 	log.Printf("collections: pruned %d empty", deleted)
+	setToast(w, "ok", fmt.Sprintf("Pruned %d empty collection%s", deleted, plural(deleted)))
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/")
 		w.WriteHeader(http.StatusOK)
@@ -969,6 +971,22 @@ func (s *Server) handleMoveLink(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// setToast emits the HX-Trigger header that the client-side toasts.js
+// listens for. JSON-encoded so HTMX dispatches a CustomEvent with the
+// detail payload intact. Call BEFORE WriteHeader / first body write.
+func setToast(w http.ResponseWriter, kind, message string) {
+	// Conservative escaping — avoid pulling in encoding/json for a
+	// fixed shape and let the message stay verbatim. Backslashes and
+	// quotes are the only chars that break the JSON.
+	escape := func(s string) string {
+		s = strings.ReplaceAll(s, `\`, `\\`)
+		return strings.ReplaceAll(s, `"`, `\"`)
+	}
+	w.Header().Set("HX-Trigger",
+		fmt.Sprintf(`{"linklore-toast":{"kind":"%s","message":"%s"}}`,
+			escape(kind), escape(message)))
+}
+
 // handleBulkDelete removes every link whose id is listed in the "ids"
 // form field (comma-separated). Responds with one OOB row-removal per
 // id and one OOB stats refresh per affected collection.
@@ -979,7 +997,7 @@ func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	affected := map[int64]struct{}{}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	deleted := 0
 	for _, id := range ids {
 		link, gerr := s.store.GetLink(r.Context(), id)
 		if gerr != nil {
@@ -989,6 +1007,14 @@ func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		affected[link.CollectionID] = struct{}{}
+		deleted++
+	}
+	setToast(w, "ok", fmt.Sprintf("Deleted %d link%s", deleted, plural(deleted)))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	for id := range affected {
+		_ = id // already counted; iterate explicit list below
+	}
+	for _, id := range ids {
 		fmt.Fprintf(w, `<div id="link-%d" hx-swap-oob="outerHTML"></div>`, id)
 	}
 	for cid := range affected {
@@ -1002,6 +1028,14 @@ func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
 			s.writeEmptyStateOOB(w, false)
 		}
 	}
+}
+
+// plural returns "s" when n != 1 — keeps message strings clean.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // handleBulkMove moves every link in "ids" to the destination
@@ -1023,7 +1057,8 @@ func (s *Server) handleBulkMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	affected := map[int64]struct{}{dstID: {}}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	moved := 0
+	movedIDs := make([]int64, 0, len(ids))
 	for _, id := range ids {
 		link, gerr := s.store.GetLink(r.Context(), id)
 		if gerr != nil {
@@ -1036,6 +1071,16 @@ func (s *Server) handleBulkMove(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		affected[link.CollectionID] = struct{}{}
+		moved++
+		movedIDs = append(movedIDs, id)
+	}
+	dstName := ""
+	if dst, _ := s.store.GetCollectionBySlugByID(r.Context(), dstID); dst != nil {
+		dstName = dst.Name
+	}
+	setToast(w, "ok", fmt.Sprintf("Moved %d link%s to %q", moved, plural(moved), dstName))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	for _, id := range movedIDs {
 		fmt.Fprintf(w, `<div id="link-%d" hx-swap-oob="outerHTML"></div>`, id)
 	}
 	emptied := false
@@ -1707,10 +1752,13 @@ func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if n == 0 {
-		_, _ = w.Write([]byte(`<span class="muted" style="font-size:.8rem">idle</span>`))
+		_, _ = w.Write([]byte(
+			`<span class="status-dot status-idle" title="worker idle"></span>`))
 		return
 	}
-	fmt.Fprintf(w, `<span class="badge pending">processing %d</span>`, n)
+	fmt.Fprintf(w,
+		`<span class="status-dot status-busy" title="worker processing %d link%s"></span>`,
+		n, plural(n))
 }
 
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {

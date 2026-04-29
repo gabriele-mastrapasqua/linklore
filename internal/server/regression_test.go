@@ -479,6 +479,79 @@ func TestLooksLikeFeedURL(t *testing.T) {
 	}
 }
 
+// ---------- toasts via HX-Trigger ----------
+
+func TestBulkDelete_emitsToast(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	a, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/a")
+	b, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/b")
+
+	resp, err := ts.Client().PostForm(ts.URL+"/links/bulk/delete",
+		url.Values{"ids": {itoa(a.ID) + "," + itoa(b.ID)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	trig := resp.Header.Get("HX-Trigger")
+	if !strings.Contains(trig, "linklore-toast") {
+		t.Errorf("missing toast trigger: %q", trig)
+	}
+	if !strings.Contains(trig, "Deleted 2 link") {
+		t.Errorf("toast message wrong: %q", trig)
+	}
+}
+
+func TestPruneEmpty_emitsToast(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "empty", "E", "")
+	c := &http.Client{
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/collections/prune", nil)
+	resp, _ := c.Do(req)
+	defer resp.Body.Close()
+	if !strings.Contains(resp.Header.Get("HX-Trigger"), "Pruned 1 empty") {
+		t.Errorf("trigger = %q", resp.Header.Get("HX-Trigger"))
+	}
+}
+
+// ---------- worker status dot ----------
+
+func TestWorkerStatus_idleDot(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/worker/status")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "status-idle") {
+		t.Errorf("expected idle dot, got: %q", body)
+	}
+}
+
+func TestWorkerStatus_busyDotWhenWorkPending(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://example.com/p")
+	_, body := get(t, ts, "/worker/status")
+	if !strings.Contains(body, "status-busy") {
+		t.Errorf("expected busy dot when 1 link is pending, got: %q", body)
+	}
+}
+
+// ---------- empty-state copy ----------
+
+func TestEmptyState_collectionsHomeShowsCTA(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, "No collections yet") {
+		t.Errorf("missing empty-state headline")
+	}
+	if !strings.Contains(body, "empty-cta") {
+		t.Errorf("missing empty-state CTA")
+	}
+}
+
 // ---------- sidebar add affordance ----------
 
 func TestSidebar_hasNewCollectionShortcut(t *testing.T) {

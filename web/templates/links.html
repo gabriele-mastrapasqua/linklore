@@ -38,8 +38,13 @@
 		<code>/feed</code>, <code>/rss</code>, …) → subscribed as RSS for the whole collection.
 	</small>
 
-	<div class="kind-filter" style="margin-top:.5rem;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
-		<span class="muted" style="font-size:.8rem">type:</span>
+</section>
+
+{{template "collection_feed" (dict "Collection" .Collection)}}
+
+<div class="filter-bar">
+	<div class="filter-row kind-filter">
+		<span class="muted">type:</span>
 		{{$slug := .Collection.Slug}}
 		{{$kf := .KindFilter}}
 		<a class="seg-opt {{if eq $kf ""}}active{{end}}" href="/c/{{$slug}}">all</a>
@@ -48,11 +53,9 @@
 			   href="/c/{{$slug}}?kind={{$name}}"><span class="kind-icon kind-{{$name}}"></span>{{$name}}</a>
 		{{end}}
 	</div>
-
-	<div class="layout-row" style="margin-top:.5rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
-		<span class="muted" style="font-size:.8rem">view:</span>
+	<div class="filter-row layout-row">
+		<span class="muted">view:</span>
 		<div id="layout-switch" class="seg-switch" data-current="{{.Collection.Layout}}">
-			{{$slug := .Collection.Slug}}
 			{{$cur := .Collection.Layout}}
 			{{range $name := list "list" "grid" "headlines" "moodboard"}}
 				<button type="button" class="seg-opt {{if eq $cur $name}}active{{end}}"
@@ -63,7 +66,7 @@
 				        onclick="linklore.setLayout('{{$name}}')">{{$name}}</button>
 			{{end}}
 		</div>
-		<span class="muted" style="font-size:.8rem;margin-left:auto">density:</span>
+		<span class="muted density-label">density:</span>
 		<button type="button" class="seg-opt density-toggle" data-density="title"
 		        onclick="linklore.toggleDensity('title')">titles</button>
 		<button type="button" class="seg-opt density-toggle" data-density="summary"
@@ -71,9 +74,7 @@
 		<button type="button" class="seg-opt density-toggle" data-density="badges"
 		        onclick="linklore.toggleDensity('badges')">badges</button>
 	</div>
-</section>
-
-{{template "collection_feed" (dict "Collection" .Collection)}}
+</div>
 
 <div id="bulk-bar" class="bulk-bar" hidden>
 	<span class="bulk-count"><strong id="bulk-count">0</strong> selected</span>
@@ -98,7 +99,11 @@
 
 <div id="links-list" class="layout-{{.Collection.Layout}}">
 	<div id="links-empty"{{if .Links}} hidden{{end}}>
-		<div class="empty">No links yet.</div>
+		<div class="empty">
+			<div class="empty-glyph">📭</div>
+			<h3>No links here yet</h3>
+			<p>Paste a URL into the field above — page or RSS feed, both work.</p>
+		</div>
 	</div>
 	{{range .Links}}
 		{{template "link_row" .}}

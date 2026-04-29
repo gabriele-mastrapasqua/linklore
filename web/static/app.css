@@ -13,8 +13,20 @@
 	--code-bg: #f4f4f6;
 	--badge-bg: #eef;
 	--badge-fg: #224;
-	--radius: 10px;
-	--shadow-card: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+	/* Geometry tokens — single source of truth for radius/shadow/spacing
+	   so a one-line change here updates every component. PLAN.md §13.5. */
+	--radius-sm: 6px;
+	--radius-md: 10px;
+	--radius-lg: 16px;
+	--radius:    var(--radius-md);
+	--shadow-1:  0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+	--shadow-2:  0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+	--shadow-card: var(--shadow-1);
+	--space-1: .25rem;
+	--space-2: .5rem;
+	--space-3: .75rem;
+	--space-4: 1rem;
+	--space-6: 1.5rem;
 	--ff-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 	--ff-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -52,7 +64,9 @@
 	--code-bg: #1f2329;
 	--badge-bg: #2a3450;
 	--badge-fg: #d6def0;
-	--shadow-card: 0 0 0 1px rgba(255,255,255,.02);
+	--shadow-1: 0 0 0 1px rgba(255,255,255,.02);
+	--shadow-2: 0 0 0 1px rgba(255,255,255,.04), 0 4px 12px rgba(0,0,0,.4);
+	--shadow-card: var(--shadow-1);
 }
 
 * { box-sizing: border-box; }
@@ -108,6 +122,36 @@ header.topbar input[type="search"] {
 }
 header.topbar nav a { color: var(--muted); text-decoration: none; margin-right: 0.75rem; }
 header.topbar nav a:hover { color: var(--text); }
+
+/* Topbar search wrapper hosts the input + the / shortcut hint. */
+.topbar-search {
+	flex: 1; max-width: 480px; position: relative;
+}
+.topbar-search input[type="search"] { width: 100%; padding-right: 2rem; }
+.topbar-kbd {
+	position: absolute; right: .5rem; top: 50%; transform: translateY(-50%);
+	padding: .05rem .4rem; font: 500 .75rem var(--ff-mono);
+	color: var(--muted); background: var(--code-bg);
+	border: 1px solid var(--border); border-radius: var(--radius-sm);
+	pointer-events: none;
+}
+
+/* Worker-status dot: solid grey when idle; pulsing violet when busy. */
+.status-dot {
+	display: inline-block; width: 10px; height: 10px;
+	border-radius: 50%; vertical-align: middle;
+}
+.status-idle { background: var(--muted); opacity: .55; }
+.status-busy {
+	background: var(--accent-ai);
+	box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ai) 55%, transparent);
+	animation: status-pulse 1.6s ease-out infinite;
+}
+@keyframes status-pulse {
+	0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ai) 60%, transparent); }
+	70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-ai) 0%, transparent); }
+	100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ai) 0%, transparent); }
+}
 
 main {
 	flex: 1;
@@ -213,8 +257,11 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 .link-row .summary { color: var(--text); opacity: 0.85; margin-top: 0.4rem; font-size: 0.95rem; }
 .link-row .badges { margin-top: 0.4rem; }
 .badge {
-	display: inline-block; padding: 0.1rem 0.5rem; border-radius: 12px;
-	font-size: 0.75rem; margin-right: 0.25rem; background: var(--badge-bg); color: var(--badge-fg);
+	display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+	font-size: .75rem; margin-right: .25rem; line-height: 1.4;
+	background: color-mix(in srgb, var(--accent) 10%, var(--card));
+	color: color-mix(in srgb, var(--accent) 70%, var(--text));
+	border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
 }
 .badge.pending    { background: #fff7ed; color: var(--warn); }
 .badge.fetched    { background: #ecfeff; color: #155e75; }
@@ -281,6 +328,37 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 	box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* Keyboard focus ring (set by keys.js when navigating with j/k). */
+.link-row.kbd-focus {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+
+/* ? overlay — full-screen dim + centred card listing every shortcut. */
+.kbd-overlay {
+	position: fixed; inset: 0; z-index: 100;
+	background: rgba(0, 0, 0, .5);
+	display: flex; align-items: center; justify-content: center;
+	cursor: pointer;
+}
+.kbd-overlay-card {
+	background: var(--card); color: var(--text);
+	border: 1px solid var(--border); border-radius: var(--radius-lg);
+	padding: var(--space-6); min-width: 320px; box-shadow: var(--shadow-2);
+	cursor: default;
+}
+.kbd-overlay h3 { margin: 0 0 var(--space-3) 0; font-size: 1rem; }
+.kbd-overlay table { border-collapse: collapse; width: 100%; margin-bottom: var(--space-2); }
+.kbd-overlay td { padding: .35rem .5rem; font-size: .9rem; }
+.kbd-overlay td:first-child { width: 30%; white-space: nowrap; }
+.kbd-overlay kbd {
+	display: inline-block; padding: .1rem .35rem;
+	background: var(--code-bg); border: 1px solid var(--border);
+	border-radius: var(--radius-sm); font: 500 .8rem var(--ff-mono);
+	color: var(--text);
+}
+
 /* Sticky bar that appears once at least one row is selected. */
 .bulk-bar {
 	position: sticky; top: 0; z-index: 5;
@@ -312,7 +390,27 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 .feed-card { background: color-mix(in srgb, var(--accent) 4%, var(--card)); }
 
 .muted { color: var(--muted); }
-.empty { padding: 2rem; text-align: center; color: var(--muted); }
+
+/* Empty states: muted glyph + headline + supporting line + CTA.
+   Centred, generous whitespace, never apologetic. */
+.empty {
+	padding: 2.5rem 1.5rem; text-align: center; color: var(--muted);
+}
+.empty .empty-glyph {
+	font-size: 2.5rem; line-height: 1; margin-bottom: var(--space-3);
+	opacity: .55;
+}
+.empty h3 {
+	margin: 0 0 var(--space-2) 0; font-size: 1.05rem;
+	color: var(--text); font-weight: 600;
+}
+.empty .empty-cta {
+	display: inline-block; margin-top: var(--space-3);
+	padding: .45rem .9rem; border-radius: var(--radius-md);
+	background: var(--accent); color: #fff; text-decoration: none;
+	font-size: .85rem; font-weight: 500;
+}
+.empty .empty-cta:hover { filter: brightness(1.1); }
 
 /* Type-classifier icon next to the title. Tinted by category so the
    eye picks up Article/Video/Image/Audio/Document/Book at a glance. */
@@ -334,6 +432,40 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 :root[data-theme="dark"] .kind-audio    { background-color: #3b2d63; }
 :root[data-theme="dark"] .kind-document { background-color: #5b4318; }
 :root[data-theme="dark"] .kind-book     { background-color: #4d3a0e; }
+
+/* Sticky filter bar: kind chips + layout switch + density toggles
+   pinned just under the topbar (56px) so they stay reachable when
+   the user scrolls a long list. */
+.filter-bar {
+	position: sticky; top: 56px; z-index: 4;
+	background: color-mix(in srgb, var(--bg) 85%, transparent);
+	backdrop-filter: blur(6px);
+	-webkit-backdrop-filter: blur(6px);
+	border-bottom: 1px solid var(--border);
+	margin: 0 calc(-1 * var(--space-4)) var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	display: flex; flex-direction: column; gap: var(--space-2);
+}
+.filter-row {
+	display: flex; align-items: center; gap: var(--space-2);
+	flex-wrap: wrap;
+}
+.filter-row .muted { font-size: .8rem; }
+.filter-row .density-label { margin-left: auto; }
+
+/* Hover lift on cards. List/headlines stay flat — they're dense by
+   design — but grid + moodboard get a small translateY + bigger
+   shadow to telegraph clickability. */
+#links-list.layout-grid .link-row,
+#links-list.layout-moodboard .link-row {
+	transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+#links-list.layout-grid .link-row:hover,
+#links-list.layout-moodboard .link-row:hover {
+	transform: translateY(-2px);
+	box-shadow: var(--shadow-2);
+	border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
 
 /* Segmented switch (view modes, density toggles). */
 .seg-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -399,9 +531,31 @@ body.density-no-badges  .link-row .badges  { display: none; }
 body.density-no-title   .link-row .title   { display: none; }
 
 .banner {
-	padding: .75rem 1rem; border-radius: 8px; line-height: 1.45;
+	padding: .75rem 1rem; border-radius: var(--radius-md); line-height: 1.45;
 	border: 1px solid var(--border); background: var(--card);
 }
+
+/* Toasts. Stacked bottom-right; slide in from below. */
+.toasts {
+	position: fixed; bottom: var(--space-4); right: var(--space-4);
+	display: flex; flex-direction: column; gap: var(--space-2);
+	z-index: 200; pointer-events: none;
+}
+.toast {
+	pointer-events: auto; cursor: pointer;
+	background: var(--card); color: var(--text);
+	border: 1px solid var(--border); border-radius: var(--radius-md);
+	box-shadow: var(--shadow-2);
+	padding: .65rem .9rem; font-size: .9rem; max-width: 380px;
+	transform: translateY(8px); opacity: 0;
+	transition: transform .2s ease, opacity .2s ease;
+}
+.toast-shown { transform: translateY(0); opacity: 1; }
+.toast-leaving { transform: translateY(-4px); opacity: 0; }
+.toast-ok      { border-color: var(--ok);     }
+.toast-error   { border-color: var(--danger); }
+.toast-info    { border-color: var(--accent); }
+.toast-ai      { border-color: var(--accent-ai); }
 .banner-warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
 .banner-info { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
 .banner strong { margin-right: .35rem; }

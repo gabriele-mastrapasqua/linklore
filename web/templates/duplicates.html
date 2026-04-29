@@ -3,9 +3,12 @@
 	<h2 style="margin:0 0 .25rem 0">Duplicates</h2>
 	<div class="muted" style="font-size:.9rem">
 		{{if eq .Total 0}}
-			No duplicates found. URLs are normalised (case-folded host,
-			no <code>www.</code>, trailing slash, fragment, or tracker
-			params like <code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>).
+			<div class="empty" style="padding:1.5rem 0">
+				<div class="empty-glyph">✨</div>
+				<h3>No duplicates found</h3>
+				<p>URLs are normalised (case-folded host, no <code>www.</code>, trailing slash, fragment,
+				   or tracker params like <code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>).</p>
+			</div>
 		{{else}}
 			{{.Total}} duplicate group{{if ne .Total 1}}s{{end}} found.
 			Click <strong>Keep this one</strong> on the link you want to
