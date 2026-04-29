@@ -251,6 +251,14 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 .muted { color: var(--muted); }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
 
+.banner {
+	padding: .75rem 1rem; border-radius: 8px; line-height: 1.45;
+	border: 1px solid var(--border); background: var(--card);
+}
+.banner-warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
+.banner-info { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.banner strong { margin-right: .35rem; }
+
 /* ChatGPT-style chat layout:
    - user messages on the right with a large left indent.
    - assistant messages on the left with a large right indent.

@@ -133,7 +133,11 @@
       "Bash(curl -s -X POST -d \"name=temp-rename-test\" http://127.0.0.1:8080/collections)",
       "Bash(curl -s -X POST -H \"HX-Request: true\" -d \"name=temp-renamed\" http://127.0.0.1:8080/c/temp-rename-test/rename -i)",
       "Bash(curl -s -X POST -d \"name=temp-final\" http://127.0.0.1:8080/c/temp-renamed/rename -i)",
-      "Bash(curl -s -X DELETE http://127.0.0.1:8080/c/temp-final -o /dev/null -w \"delete=%{http_code}\\\\n\")"
+      "Bash(curl -s -X DELETE http://127.0.0.1:8080/c/temp-final -o /dev/null -w \"delete=%{http_code}\\\\n\")",
+      "WebFetch(domain:raindrop.io)",
+      "WebFetch(domain:help.raindrop.io)",
+      "WebFetch(domain:pricing.raindrop.page)",
+      "Bash(grep -n \"</script>\\\\|^</div>\\\\|^{{end}}$\" /Users/gabrielemastrapasqua/source/personal/linklore/web/templates/chat.html)"
     ]
   }
 }

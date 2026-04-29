@@ -2,6 +2,8 @@
 /data/*.db
 /data/*.db-shm
 /data/*.db-wal
+/data/*.bak-*
+/data/*.before-*
 /data/snapshots/
 *.test
 *.out

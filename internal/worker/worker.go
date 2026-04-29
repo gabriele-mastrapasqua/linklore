@@ -96,9 +96,10 @@ func New(store *storage.Store, backend llm.Backend, fetcher Fetcher, cfg config.
 		pollInterval: opts.PollInterval,
 		logger:       opts.Logger,
 		events:       opts.Events,
-		// Optimistic default: assume the backend is healthy until a
-		// probe says otherwise. The first tick re-probes anyway.
-		llmHealthy: backend != nil,
+		// Pessimistic default: stay unhealthy until the first successful
+		// probe. Avoids attempting a Generate against an unreachable
+		// gateway during the cold-boot window before probeHealth runs.
+		llmHealthy: false,
 	}
 }
 
@@ -123,7 +124,15 @@ func (w *Worker) probeHealth(ctx context.Context) {
 	}
 	hc, ok := w.llm.(llm.HealthChecker)
 	if !ok {
-		// Backend can't be probed — trust it.
+		// Backend can't be probed — trust it. Mark healthy so the
+		// pessimistic cold-boot default doesn't permanently lock out
+		// summary/embed for backends like the test fake that don't
+		// implement HealthChecker.
+		w.healthMu.Lock()
+		w.llmHealthy = true
+		w.lastHealthAt = time.Now()
+		w.lastHealthErr = nil
+		w.healthMu.Unlock()
 		return
 	}
 	w.healthMu.RLock()

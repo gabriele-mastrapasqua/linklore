@@ -1162,11 +1162,22 @@ func TestRefetchReindex_503WhenNoWorker(t *testing.T) {
 	}
 }
 
-func TestChat_disabled503(t *testing.T) {
+func TestChat_disabledRendersBanner(t *testing.T) {
+	// Chat now renders a proper "disabled" page (200) when the backend
+	// is unconfigured, rather than a bare 503, so HTMX nav shows a
+	// styled banner instead of plain text. The /chat/stream endpoint
+	// still returns 503 — covered separately.
 	ts, _ := newTestServer(t)
-	code, _ := get(t, ts, "/chat")
-	if code != 503 {
-		t.Errorf("status = %d (expected 503 when chat is nil)", code)
+	code, body := get(t, ts, "/chat")
+	if code != 200 {
+		t.Errorf("status = %d (expected 200 with disabled banner)", code)
+	}
+	if !strings.Contains(body, "Chat is disabled") {
+		t.Errorf("expected disabled banner in body, got: %s", body)
+	}
+	codeStream, _ := postForm(t, ts, "/chat/stream", url.Values{"message": {"hi"}})
+	if codeStream != 503 {
+		t.Errorf("/chat/stream status = %d (expected 503)", codeStream)
 	}
 }
 

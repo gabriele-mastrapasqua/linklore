@@ -1,4 +1,18 @@
 {{define "content"}}
+{{if .Disabled}}
+<section class="card">
+	<h2 style="margin:0 0 .5rem 0">Chat with your library</h2>
+	<div class="banner banner-warn" style="margin-top:.75rem">
+		<strong>✦ Chat is disabled.</strong>
+		{{.DisabledHint}}
+	</div>
+	<p class="muted" style="margin-top:.75rem;font-size:.9rem">
+		Ingestion (fetch + extract) still works without an LLM. Search
+		degrades to BM25 — you can still find links by title, URL, and
+		extracted content.
+	</p>
+</section>
+{{else}}
 <div class="chat-shell">
 	<header class="chat-header">
 		<h2 style="margin:0;font-size:1.05rem">Chat with your library</h2>
@@ -146,4 +160,5 @@ async function chatSubmit(ev) {
 	return false;
 }
 </script>
+{{end}}
 {{end}}

@@ -14,8 +14,18 @@ func TestDefault(t *testing.T) {
 	if c.Server.Addr != "127.0.0.1:8080" {
 		t.Errorf("default addr = %q, want 127.0.0.1:8080", c.Server.Addr)
 	}
-	if c.LLM.Backend != "litellm" {
-		t.Errorf("default backend = %q, want litellm", c.LLM.Backend)
+	// Defaults are intentionally NEUTRAL: a fresh `go install` should
+	// not auto-target anyone's private gateway. Backend defaults to
+	// "none" (degraded mode); the shipped configs/config.yaml flips it
+	// back to "litellm" with the project-specific values.
+	if c.LLM.Backend != "none" {
+		t.Errorf("default backend = %q, want none", c.LLM.Backend)
+	}
+	if c.LLM.LiteLLM.BaseURL != "" {
+		t.Errorf("default litellm base_url = %q, want empty", c.LLM.LiteLLM.BaseURL)
+	}
+	if c.LLM.Ollama.Host != "http://localhost:11434" {
+		t.Errorf("default ollama host = %q, want http://localhost:11434", c.LLM.Ollama.Host)
 	}
 }
 

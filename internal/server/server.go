@@ -18,6 +18,7 @@ import (
 	"github.com/gabrielemastrapasqua/linklore/internal/events"
 	"github.com/gabrielemastrapasqua/linklore/internal/feed"
 	"github.com/gabrielemastrapasqua/linklore/internal/feedimport"
+	"github.com/gabrielemastrapasqua/linklore/internal/llm"
 	"github.com/gabrielemastrapasqua/linklore/internal/reader"
 	"github.com/gabrielemastrapasqua/linklore/internal/search"
 	"github.com/gabrielemastrapasqua/linklore/internal/storage"
@@ -396,11 +397,11 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 // llmHealthSnapshot returns a (healthy, message) pair for the templates.
-// When there's no worker / no backend configured, healthy=false with a
-// clear "not configured" message instead of a stack trace.
+// The hint copy is tailored to the configured backend so Ollama users
+// don't see "set LITELLM_API_KEY" and vice-versa.
 func (s *Server) llmHealthSnapshot() (bool, string) {
 	if s.worker == nil {
-		return false, "no LLM backend configured — set llm.backend + LITELLM_API_KEY in your config"
+		return false, s.llmConfigHint()
 	}
 	healthy, err, _ := s.worker.LLMHealth()
 	if healthy {
@@ -410,6 +411,19 @@ func (s *Server) llmHealthSnapshot() (bool, string) {
 		return false, "LLM gateway not yet probed — try again in a few seconds"
 	}
 	return false, err.Error()
+}
+
+// llmConfigHint produces the "how to enable the LLM" copy, varying by
+// the active backend so the user sees the right env var to set.
+func (s *Server) llmConfigHint() string {
+	switch s.cfg.LLM.Backend {
+	case llm.BackendOllama:
+		return "LLM disabled — start Ollama and set OLLAMA_HOST (or llm.ollama.host + llm.ollama.model in config.yaml)"
+	case llm.BackendLitellm:
+		return "LLM disabled — set llm.litellm.base_url + llm.litellm.model (or LITELLM_BASE_URL + LITELLM_API_KEY env vars)"
+	default:
+		return "LLM disabled — set llm.backend to ollama or litellm in config.yaml"
+	}
 }
 
 // handleLinkRow returns a single link_row fragment. Used by the HTMX
@@ -1351,29 +1365,30 @@ func (s *Server) runSearch(ctx context.Context, q string, collectionID int64, li
 }
 
 func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
-	if s.chat == nil {
-		http.Error(w, "chat unavailable: LLM backend not configured", http.StatusServiceUnavailable)
-		return
-	}
 	counts, _ := s.store.LinkStatusCounts(r.Context())
-	s.renderPageRq(w, r, "chat", map[string]any{
+	data := map[string]any{
 		"Title":      "Chat",
 		"Ready":      counts.Ready,
 		"InProgress": counts.InProgress,
 		"Failed":     counts.Failed,
 		"Backend":    s.cfg.LLM.Backend,
 		"Model":      s.activeModelName(),
-	})
+	}
+	if s.chat == nil {
+		data["Disabled"] = true
+		data["DisabledHint"] = s.llmConfigHint()
+	}
+	s.renderPageRq(w, r, "chat", data)
 }
 
 // activeModelName returns the user-facing name of whichever LLM model the
 // chat is currently calling. Useful in the UI so the user knows what's
-// generating the answer (qwen36-chat vs qwen3.6:35b vs whatever).
+// generating the answer.
 func (s *Server) activeModelName() string {
 	switch s.cfg.LLM.Backend {
-	case "litellm":
+	case llm.BackendLitellm:
 		return s.cfg.LLM.LiteLLM.Model
-	case "ollama":
+	case llm.BackendOllama:
 		return s.cfg.LLM.Ollama.Model
 	default:
 		return s.cfg.LLM.Backend

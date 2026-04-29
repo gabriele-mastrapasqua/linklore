@@ -94,38 +94,39 @@ func runServe(args []string) {
 
 	backend, backendErr := newLLMBackend(cfg)
 	if backendErr != nil {
-		// Non-fatal: server still works for CRUD; worker idle until backend reachable.
 		log.Printf("llm backend disabled: %v — UI runs in BM25-only / no-summary mode", backendErr)
 	}
-	if cfg.LLM.Backend == "litellm" {
-		log.Printf("llm: litellm gateway %s (model=%s, embed=%s, key=%s)",
-			cfg.LLM.LiteLLM.BaseURL, cfg.LLM.LiteLLM.Model, cfg.LLM.LiteLLM.EmbedModel,
-			maskKey(cfg.LLM.LiteLLM.APIKey))
-	}
-	var eng *search.Engine
 	if backend != nil {
-		eng = search.New(store, backend)
-	} else {
-		eng = search.New(store, nil)
+		switch cfg.LLM.Backend {
+		case llm.BackendLitellm:
+			log.Printf("llm: litellm gateway %s (model=%s, embed=%s, key=%s)",
+				cfg.LLM.LiteLLM.BaseURL, cfg.LLM.LiteLLM.Model, cfg.LLM.LiteLLM.EmbedModel,
+				maskKey(cfg.LLM.LiteLLM.APIKey))
+		case llm.BackendOllama:
+			log.Printf("llm: ollama %s (model=%s, embed=%s, num_ctx=%d)",
+				cfg.LLM.Ollama.Host, cfg.LLM.Ollama.Model, cfg.LLM.Ollama.EmbedModel,
+				cfg.LLM.Ollama.NumCtx)
+		}
 	}
+	eng := search.New(store, backend) // search.New tolerates nil
 
 	broker := events.New()
 
-	var wk *worker.Worker
-	if backend != nil {
-		archiveRoot := ""
-		if cfg.Extract.ArchiveHTML {
-			archiveRoot = filepath.Join(filepath.Dir(cfg.Database.Path), "snapshots")
-		}
-		ar, _ := archive.New(archiveRoot)
-		wk = worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second),
-			cfg, worker.Options{Archive: ar, Events: broker})
-		go func() {
-			if err := wk.Run(ctx); err != nil && err != context.Canceled {
-				log.Printf("worker exited: %v", err)
-			}
-		}()
+	// Worker always runs — even with no LLM backend it still drains the
+	// fetch queue (pending → fetched). Summary/embed steps short-circuit
+	// when w.llm is nil, so links land searchable via BM25-only.
+	archiveRoot := ""
+	if cfg.Extract.ArchiveHTML {
+		archiveRoot = filepath.Join(filepath.Dir(cfg.Database.Path), "snapshots")
 	}
+	ar, _ := archive.New(archiveRoot)
+	wk := worker.New(store, backend, extract.NewFetcher(time.Duration(cfg.Worker.FetchTimeoutSeconds)*time.Second),
+		cfg, worker.Options{Archive: ar, Events: broker})
+	go func() {
+		if err := wk.Run(ctx); err != nil && err != context.Canceled {
+			log.Printf("worker exited: %v", err)
+		}
+	}()
 
 	var chatSvc *chat.Service
 	if backend != nil {
@@ -182,11 +183,15 @@ func runAdd(args []string) {
 }
 
 // newLLMBackend constructs an llm.Backend from config. Returns (nil, nil)
-// when the backend is intentionally disabled — currently we always try, but
-// the caller treats a non-nil error as "degraded mode".
+// when llm.backend == "none" — caller treats this as the "no LLM"
+// degraded path (search degrades to BM25, chat is disabled, summaries
+// are skipped). A non-nil error also drops into degraded mode but with
+// a log line so the user sees why their backend didn't come up.
 func newLLMBackend(cfg config.Config) (llm.Backend, error) {
 	switch cfg.LLM.Backend {
-	case "ollama":
+	case llm.BackendNone, "":
+		return nil, nil
+	case llm.BackendOllama:
 		return ollama.New(ollama.Config{
 			Host:       cfg.LLM.Ollama.Host,
 			Model:      cfg.LLM.Ollama.Model,
@@ -194,7 +199,7 @@ func newLLMBackend(cfg config.Config) (llm.Backend, error) {
 			NumCtx:     cfg.LLM.Ollama.NumCtx,
 			Timeout:    time.Duration(cfg.LLM.Ollama.TimeoutSeconds) * time.Second,
 		})
-	case "litellm":
+	case llm.BackendLitellm:
 		return litellm.New(litellm.Config{
 			BaseURL:    cfg.LLM.LiteLLM.BaseURL,
 			Model:      cfg.LLM.LiteLLM.Model,

@@ -82,29 +82,32 @@ type UI struct {
 
 // Default returns a Config populated with sensible defaults.
 // Used as the base before YAML/env overrides.
+//
+// LLM defaults are intentionally NEUTRAL — empty model names, localhost
+// for Ollama, no LiteLLM URL. A fresh `go install` of linklore should
+// not auto-target anyone's private gateway; users opt into a real
+// backend via configs/config.yaml or env vars (LITELLM_BASE_URL,
+// OLLAMA_HOST, LINKLORE_LLM_BACKEND, etc.). The shipped configs/config.yaml
+// carries the project-specific values.
 func Default() Config {
 	return Config{
 		Server:   Server{Addr: "127.0.0.1:8080"},
 		Database: Database{Path: "./data/linklore.db"},
-		// Default to litellm (in front of vLLM on the DGX) — same stack
-		// graphrag uses, materially faster than Ollama for our workload.
-		// API key default is "sk-local": that's the master key the DGX
-		// Spark gateway is configured with, per graphrag's config comment
-		// ("APIKey defaults to sk-local in our infra"). Real keys live
-		// in .env / process env and override this.
 		LLM: LLM{
-			Backend: "litellm",
+			// "none" = run without an LLM. Search degrades to BM25,
+			// chat is disabled, ingestion still fetches + extracts.
+			Backend: "none",
 			LiteLLM: LiteLLM{
-				BaseURL:        "http://192.168.1.94:8000/v1",
-				Model:          "qwen36-chat",
-				EmbedModel:     "nomic-embed",
-				APIKey:         "sk-local",
+				BaseURL:        "",
+				Model:          "",
+				EmbedModel:     "",
+				APIKey:         "",
 				TimeoutSeconds: 600,
 			},
 			Ollama: Ollama{
-				Host:           "http://192.168.1.94:11434",
-				Model:          "qwen3.6:35b",
-				EmbedModel:     "nomic-embed-text",
+				Host:           "http://localhost:11434",
+				Model:          "",
+				EmbedModel:     "",
 				NumCtx:         32768,
 				TimeoutSeconds: 600,
 			},
@@ -116,6 +119,10 @@ func Default() Config {
 		UI:       UI{ReaderFont: "serif", ReaderWidth: "narrow"},
 	}
 }
+
+// litellmDefaultAPIKey is the master key our LiteLLM gateway accepts when
+// no real key is set. Only consulted when Backend == "litellm".
+const litellmDefaultAPIKey = "sk-local"
 
 // Load reads a YAML config from path, falls back to defaults for missing
 // fields, then applies env overrides. An empty path returns Default()+env.
@@ -158,12 +165,11 @@ func Load(path string) (Config, error) {
 		}
 	}
 	applyEnv(&cfg)
-	// LiteLLM gateway in our infra accepts "sk-local" as a master key when
-	// no real key is supplied. Falling back here means a fresh checkout
-	// works against the DGX Spark out of the box; users with an actual
-	// per-account key just set LITELLM_API_KEY and override this.
-	if cfg.LLM.LiteLLM.APIKey == "" {
-		cfg.LLM.LiteLLM.APIKey = "sk-local"
+	// Only fill in the LiteLLM master-key fallback when LiteLLM is the
+	// active backend. Ollama/none configs should never carry a phantom
+	// API key in their dump.
+	if cfg.LLM.Backend == "litellm" && cfg.LLM.LiteLLM.APIKey == "" {
+		cfg.LLM.LiteLLM.APIKey = litellmDefaultAPIKey
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -190,6 +196,24 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("LITELLM_API_KEY"); v != "" {
 		c.LLM.LiteLLM.APIKey = v
 	}
+	// Model overrides apply to whichever backend is active so the user
+	// can switch model without editing YAML.
+	if v := os.Getenv("LINKLORE_LLM_MODEL"); v != "" {
+		switch c.LLM.Backend {
+		case "litellm":
+			c.LLM.LiteLLM.Model = v
+		case "ollama":
+			c.LLM.Ollama.Model = v
+		}
+	}
+	if v := os.Getenv("LINKLORE_LLM_EMBED_MODEL"); v != "" {
+		switch c.LLM.Backend {
+		case "litellm":
+			c.LLM.LiteLLM.EmbedModel = v
+		case "ollama":
+			c.LLM.Ollama.EmbedModel = v
+		}
+	}
 	if v := os.Getenv("LINKLORE_WORKER_CONCURRENCY"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			c.Worker.Concurrency = n
@@ -205,9 +229,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("database.path required")
 	}
 	switch c.LLM.Backend {
-	case "ollama", "litellm":
+	case "ollama", "litellm", "none":
 	default:
-		return fmt.Errorf("llm.backend must be ollama or litellm, got %q", c.LLM.Backend)
+		return fmt.Errorf("llm.backend must be ollama, litellm or none, got %q", c.LLM.Backend)
 	}
 	if c.Worker.Concurrency <= 0 {
 		return fmt.Errorf("worker.concurrency must be > 0")

@@ -59,3 +59,12 @@ type Backend interface {
 type HealthChecker interface {
 	Healthcheck(ctx context.Context) error
 }
+
+// Backend identifiers used in config + UI hints. Always reference these
+// constants instead of bare string literals so a typo at the call site
+// becomes a compile error.
+const (
+	BackendNone    = "none"
+	BackendOllama  = "ollama"
+	BackendLitellm = "litellm"
+)
