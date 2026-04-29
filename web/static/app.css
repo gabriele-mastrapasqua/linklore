@@ -251,6 +251,27 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 .muted { color: var(--muted); }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
 
+/* Type-classifier icon next to the title. Tinted by category so the
+   eye picks up Article/Video/Image/Audio/Document/Book at a glance. */
+.kind-icon {
+	display: inline-block; width: 14px; height: 14px; vertical-align: -2px;
+	margin-right: .25rem; border-radius: 3px;
+	background-position: center; background-repeat: no-repeat; background-size: 12px 12px;
+	flex-shrink: 0;
+}
+.kind-article  { background-color: var(--badge-bg); }
+.kind-video    { background-color: #fee2e2; }
+.kind-image    { background-color: #d1fae5; }
+.kind-audio    { background-color: #ede9fe; }
+.kind-document { background-color: #fef3c7; }
+.kind-book     { background-color: #fde68a; }
+:root[data-theme="dark"] .kind-article  { background-color: #2a3450; }
+:root[data-theme="dark"] .kind-video    { background-color: #5b1d1d; }
+:root[data-theme="dark"] .kind-image    { background-color: #1d4d3b; }
+:root[data-theme="dark"] .kind-audio    { background-color: #3b2d63; }
+:root[data-theme="dark"] .kind-document { background-color: #5b4318; }
+:root[data-theme="dark"] .kind-book     { background-color: #4d3a0e; }
+
 /* Segmented switch (view modes, density toggles). */
 .seg-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg-switch .seg-opt { border: 0; border-radius: 0; }

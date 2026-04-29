@@ -7,6 +7,7 @@
 	<div class="meta">
 		<div class="title">
 			{{if .FaviconURL}}<img src="{{.FaviconURL}}" alt="" class="preview preview-favicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">{{end}}
+			<span class="kind-icon kind-{{.Kind}}" title="{{.Kind}}" aria-label="{{.Kind}}"></span>
 			<a href="/links/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
 		</div>
 		<div class="url">{{.URL}}</div>

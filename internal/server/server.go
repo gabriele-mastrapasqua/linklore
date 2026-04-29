@@ -265,6 +265,19 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Optional ?kind=video filter applied in-Go so we keep the existing
+	// SQL untouched and the filter still respects the collection's
+	// custom order_idx.
+	kindFilter := strings.TrimSpace(r.URL.Query().Get("kind"))
+	if kindFilter != "" {
+		filtered := links[:0]
+		for _, l := range links {
+			if l.Kind == kindFilter {
+				filtered = append(filtered, l)
+			}
+		}
+		links = filtered
+	}
 	stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
 	allCollections, _ := s.store.ListCollections(r.Context())
 	s.renderPageRq(w, r, "links", map[string]any{
@@ -273,6 +286,7 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		"Links":          links,
 		"Stats":          stats,
 		"AllCollections": allCollections,
+		"KindFilter":     kindFilter,
 	})
 }
 

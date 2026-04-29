@@ -31,7 +31,18 @@
 		<button type="submit">Add link</button>
 	</form>
 
-	<div class="layout-row" style="margin-top:.75rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+	<div class="kind-filter" style="margin-top:.5rem;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
+		<span class="muted" style="font-size:.8rem">type:</span>
+		{{$slug := .Collection.Slug}}
+		{{$kf := .KindFilter}}
+		<a class="seg-opt {{if eq $kf ""}}active{{end}}" href="/c/{{$slug}}">all</a>
+		{{range $name := list "article" "video" "image" "audio" "document" "book"}}
+			<a class="seg-opt {{if eq $kf $name}}active{{end}}"
+			   href="/c/{{$slug}}?kind={{$name}}"><span class="kind-icon kind-{{$name}}"></span>{{$name}}</a>
+		{{end}}
+	</div>
+
+	<div class="layout-row" style="margin-top:.5rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
 		<span class="muted" style="font-size:.8rem">view:</span>
 		<div id="layout-switch" class="seg-switch" data-current="{{.Collection.Layout}}">
 			{{$slug := .Collection.Slug}}

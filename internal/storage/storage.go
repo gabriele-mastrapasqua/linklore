@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gabrielemastrapasqua/linklore/internal/classify"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -94,6 +95,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			{"extra_images", "TEXT"},
 			{"order_idx", "REAL NOT NULL DEFAULT 0"},
 			{"note", "TEXT"},
+			// Type classifier: article | video | image | audio | document | book.
+			// Set on ingest from URL host + og:type + MIME, refined when the
+			// page is fetched.
+			{"kind", "TEXT NOT NULL DEFAULT 'article'"},
 		},
 		"collections": {
 			{"feed_url", "TEXT"},
@@ -148,6 +153,7 @@ type Link struct {
 	ArchivePath  string
 	OrderIdx     float64
 	Note         string // user-authored personal note (free text)
+	Kind         string // article | video | image | audio | document | book
 	FetchedAt    *time.Time
 	CreatedAt    time.Time
 }
@@ -537,15 +543,25 @@ func (s *Store) CreateLink(ctx context.Context, collectionID int64, urlStr strin
 	}
 	now := time.Now().UTC()
 	top, _ := s.maxOrderIdx(ctx, collectionID)
+	kind := classify.FromURL(urlStr)
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO links(collection_id, url, status, order_idx, created_at) VALUES (?, ?, ?, ?, ?)`,
-		collectionID, urlStr, StatusPending, top+1.0, now.Unix())
+		`INSERT INTO links(collection_id, url, status, order_idx, kind, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		collectionID, urlStr, StatusPending, top+1.0, kind, now.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("insert link: %w", err)
 	}
 	id, _ := res.LastInsertId()
 	return &Link{ID: id, CollectionID: collectionID, URL: urlStr,
-		Status: StatusPending, OrderIdx: top + 1.0, CreatedAt: now}, nil
+		Status: StatusPending, OrderIdx: top + 1.0, Kind: kind, CreatedAt: now}, nil
+}
+
+// SetLinkKind overrides the type label for a link. Called from the
+// worker after fetch when og:type or content-type refines the
+// URL-only classification.
+func (s *Store) SetLinkKind(ctx context.Context, id int64, kind string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE links SET kind = ? WHERE id = ?`, kind, id)
+	return err
 }
 
 func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
@@ -555,7 +571,7 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
 		 FROM links WHERE id = ?`, id)
 	return scanLink(row.Scan)
 }
@@ -570,7 +586,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
 		 FROM links WHERE collection_id = ?
 		 ORDER BY order_idx DESC, created_at DESC LIMIT ? OFFSET ?`,
 		collectionID, limit, offset)
@@ -600,7 +616,7 @@ func scanLink(scan func(...any) error) (*Link, error) {
 		&l.FaviconURL, &extraJSON,
 		&l.ContentMD, &l.ContentLang, &l.Summary,
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
-		&l.OrderIdx, &l.Note, &fetchedAt, &createdAt)
+		&l.OrderIdx, &l.Note, &l.Kind, &fetchedAt, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -828,7 +844,7 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
 		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		status, limit)
 	if err != nil {
@@ -1137,7 +1153,7 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 		       COALESCE(l.favicon_url,''), COALESCE(l.extra_images,''),
 		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
-		       l.order_idx, COALESCE(l.note,''), l.fetched_at, l.created_at
+		       l.order_idx, COALESCE(l.note,''), COALESCE(l.kind,'article'), l.fetched_at, l.created_at
 		  FROM links l
 		  JOIN link_tags lt ON lt.link_id = l.id
 		  JOIN tags t       ON t.id = lt.tag_id
