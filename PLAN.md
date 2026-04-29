@@ -692,3 +692,237 @@ Done bits: Inter + JetBrains Mono, violet AI accent, sparkle on chat link, four 
 - Chat opens with one prompt suggestion already typed; sending it feels like talking to a peer, not a CLI.
 - Dark mode is the default; light mode is equally readable.
 
+
+---
+
+## 14. User-reported bugs and UX rough edges (current sprint)
+
+User feedback session 2026-04-29. Listed verbatim, grouped by area.
+Each item is a discrete TODO; some are bugs, some are missing features,
+some are visual debt.
+
+### 14.1 Smart-add input
+
+- [ ] **Detect feed on a non-feed-shaped URL**. Current heuristic
+  routes only `*.xml`, `/feed`, `/rss`, `/atom` URLs into the feed
+  path. When the user pastes a regular page URL that *does* expose
+  a `<link rel="alternate" type="application/rss+xml">`, offer a
+  one-shot "this page has a feed — subscribe instead?" inline
+  prompt. Don't auto-subscribe (user might genuinely want the link
+  saved as-is). Render the prompt as a small "✦ subscribe to feed"
+  chip above the link row that just appeared; clicking it converts
+  the just-saved link into a feed subscription and refreshes.
+
+### 14.2 Search
+
+- [ ] **Top-bar search shows links + collections mixed**. Should
+  show only links. Drop the "collections that match" rail and the
+  "create collection" suggestion from `/search/live` — the ⌘K
+  palette is the right place for those.
+- [ ] **⌘K palette is currently only collection names**. Should
+  ALSO run FTS5 over link titles + URLs + summaries when the user
+  starts typing free text. Items get a small kind-icon prefix so
+  collections vs links vs nav items are visually distinct.
+- [ ] **Slash commands in ⌘K**. Reserve `/foo` as the action
+  prefix:
+  - `/ask <question>` → opens chat with the question
+  - `/move <link> to <collection>` → bulk-move
+  - `/new <name>` → create collection
+  - `/export <slug>` → download Netscape file
+  - `/duplicates`, `/tags`, `/chat`, `/bookmarklet` (nav)
+  Render commands at the top of the suggestion list with a leading
+  `/` glyph; everything else is FTS hits.
+- [ ] **⌘K item ordering**. Currently the list is
+  `[fixed nav] + [collections]`. Re-order to `[FTS hits] +
+  [collections] + [slash commands] + [nav]`. Empty input → show
+  recent links + most-touched collections.
+
+### 14.3 ⌘K palette bugs
+
+- [ ] **`esc` doesn't close** the palette consistently. The
+  keydown handler is registered but a stale guard or stopPropagation
+  somewhere is swallowing it. Repro: open palette, press esc → still
+  visible.
+- [ ] **Click-outside doesn't close**. The current handler checks
+  `if (e.target === p) close()` but `p` is the modal overlay; it
+  fires only when the user clicks the EXACT `.palette` div, not
+  through any of its children. Needs `e.target.closest('.palette-card')`
+  → if null, close.
+
+### 14.4 Chat quality
+
+- [ ] **Answers feel thin**. Investigate three knobs:
+  1. `chat.top_k` retrieval window (currently 8 chunks). Bump to 12
+     or expose in settings.
+  2. `chat.snippet_chars` truncation (currently 1200 chars per
+     chunk). Try 1800.
+  3. LLM context size — confirm the active model's `num_ctx` is
+     actually being used; some gateways silently cap at 4k.
+  4. Prompt template: the system prompt is short; consider adding
+     "When sources are sparse, say so explicitly rather than
+     hallucinating".
+- [ ] Surface retrieval stats in chat: "X chunks from Y links
+  retrieved · Z tokens of context" so the user can spot when
+  retrieval is the bottleneck.
+
+### 14.5 Favicons + Open Graph
+
+- [ ] **With previews=off, the favicon disappears too**. Favicon
+  belongs to the title block (it's metadata, not a preview), so
+  the previews toggle shouldn't hide it. Move `.preview-favicon`
+  out of `body.previews-off` selectors.
+- [ ] **Two favicons render per row** in some layouts. Audit:
+  `link_row.html` has one in `.title`; `link_header.html` has
+  another. Choose one render path and remove the other.
+- [ ] **Linklore itself has no favicon, no Open Graph, no `<title>`
+  beyond the page route**. Add:
+  - A `<link rel="icon">` to a hand-drawn SVG glyph in
+    `/static/favicon.svg`.
+  - Apple-touch-icon, manifest.json for PWA installability.
+  - `<meta property="og:title">`, `og:description`, `og:image`
+    on the home page so when users share their localhost link
+    inside their network it previews cleanly.
+  - A small inline SVG glyph next to the "linklore" wordmark in
+    the topbar so the brand has a logo not just text.
+
+### 14.6 Logo / branding
+
+- [ ] **Tagline**. Pick something punchier than "Local-first link
+  manager". Options: "Bookmarks you actually own", "Your library,
+  not theirs", "Read once, find later". Surface on the home
+  page's empty state.
+- [ ] **Logo glyph**. A single SVG, two paths max — a hooked link
+  (chain link) overlapping a notebook spine, or a violet/blue
+  raindrop with an L cutout. Try generating a candidate via an
+  image model; fall back to hand-drawn SVG.
+
+### 14.7 Settings UI
+
+- [ ] **`/settings` page** for LLM config. Fields:
+  - Backend (radio: none / ollama / litellm)
+  - Endpoint URL (text)
+  - Model name (text + Refresh List button)
+  - Embed model name (text)
+  - API key (password input, masked)
+  - Test connection button → calls `GET <base_url>/models` and
+    shows green ✓ "X models available" or red ✗ with exception
+    detail. No need to restart.
+  - Save → writes back to `configs/config.yaml` (preserves
+    comments; use a structured YAML edit, not regenerate-from-
+    scratch). When file is empty/missing, write a fresh well-
+    formed YAML.
+- [ ] **Live config reload**. After Save + Test passes, the
+  running worker / chat / search instances should pick up the
+  new backend without a process restart. Implement via a
+  config-version atomic.Pointer — handlers grab the current
+  config at request time.
+
+### 14.8 Cover banner
+
+- [ ] **Top cover click does nothing**. Either wire it to open a
+  paste-URL overlay (same flow as `🖼 cover` button) or remove the
+  click affordance.
+- [ ] **`🖼 cover` + Save cover are clutter** per user. Remove the
+  button + the inline form. Cover-setting moves to either:
+  1. The `/settings/collection/:slug` panel (when that ships), or
+  2. A right-click "Set cover…" item on a row with an image.
+
+### 14.9 Dead-link checker
+
+- [ ] **Auto-checker batch**. New page `/checks` (or section on
+  the existing settings) with a "Check N links" button. For each
+  link in the library: HEAD request with a 5s timeout; classify
+  as 200/4xx/5xx/timeout/dns. Show a summary modal: "X ok · Y
+  broken · Z timed out". Optional bulk-delete-broken button.
+  Background worker, not synchronous; HTMX progress bar.
+- [ ] Schema: new column `links.last_check_at` + `last_check_status`
+  + `last_check_code`. Idempotent ALTER. Plus a settings toggle for
+  weekly auto-check.
+
+### 14.10 Topbar polish
+
+- [ ] **`LLM ok` is plain text**. Replace with a badge: small
+  rounded pill with a status colour (green/yellow/red) and the
+  model name on hover.
+- [ ] **`⌘K` + `✦` icons too tight together**. Bump the gap
+  between them; add 4–6 px of horizontal padding.
+- [ ] **`+` bookmarklet button is unclear**. Either give it a
+  tooltip ("Bookmarklet") or replace the icon with a recognised
+  bookmark glyph. Also confirm clicking it actually navigates to
+  /bookmarklet — currently a user reported it didn't appear to do
+  anything.
+- [ ] **Topbar chat link is mid-row**. Move it to the END of the
+  nav, next to the LLM badge + a new ⚙ settings link, so the AI
+  controls cluster: `[LLM badge] [✦ chat] [⚙ settings]`. Lets
+  users glance at "is the LLM up?" → "open settings" without
+  scanning.
+
+### 14.11 Default collection
+
+- [ ] **Bookmarklet POST fails when "default" collection doesn't
+  exist**. `internal/server` should auto-create a `default` slug
+  on first boot OR auto-create on the first POST `/api/links`
+  with no collection specified. Latter is simpler — wrap the
+  CreateLink call: if collection lookup → ErrNotFound, create.
+
+### 14.12 Pagination
+
+- [ ] **Long collections need pagination**. Currently
+  `ListLinksByCollection` caps at 200. Add a paged shell:
+  `?page=2&per=50`. Footer of the link list: "50 / 100 / all"
+  buttons + "Page 1 of 4" indicator. `all` is opt-in (warn if
+  > 500 links).
+
+### 14.13 Add-collection / import flow
+
+- [ ] **`target slug` field on import is confusing**. Remove it.
+  When importing, always either (a) split by source folder
+  (current default) or (b) bucket everything into a new
+  collection named `imported-<date>`. Drop the slug input.
+- [ ] **`/collections` page mixes "create form" with "list"**.
+  Restructure: title clearly says "Collections"; below, an
+  always-visible card "Add collection" with just `<input
+  name="name">` + Create button + tiny "or import a Netscape
+  file" link that toggles the import form. Below that, the
+  list. No more buttons strewn in the header.
+
+### 14.14 Pre-flight LLM connection test
+
+- [ ] **In-place `/models` probe**. The settings page test button
+  hits `${base_url}/models` (OpenAI compat) or `/api/tags`
+  (Ollama) with the user-typed credentials. Render the JSON
+  response (model count + first 5 model names) on success;
+  status code + body on failure (`401`, `403`, `connection refused`,
+  etc.). No restart, no commit — just a probe.
+
+### 14.15 Visual debt vs Raindrop
+
+User said: "la ui cmq non ha molta cura, secondo me non hai visionato
+bene raindrop e foto della webapp, qui manca stile e fonts ecc."
+
+- [ ] **Re-research Raindrop's actual CSS**: open their app in dev
+  tools, capture exact font weights, exact accent hex, exact
+  shadow values, exact spacing scale. We've been approximating
+  from screenshots; the real values may differ.
+- [ ] **Reference 3+ Raindrop screenshots side-by-side** with our
+  current state. Item-by-item diff: padding around cards, spacing
+  inside the sidebar, typography hierarchy on the link row, the
+  exact shape of badges vs ours.
+- [ ] **Pick three highest-impact deltas** and ship them as one
+  visual overhaul. Probably:
+  1. Tighter typographic scale (sizes + line-heights)
+  2. Real shadow tokens (not approximated)
+  3. Card border-radius + spacing vs our current values
+
+### 14.16 Process discipline
+
+User repeatedly noted "non hai per ogni feat fatto check e tests".
+Going forward:
+
+- [ ] Every interactive feature gets a Playwright-style end-to-end
+  test, not just a server-handler unit test. The HTMX + JS layer
+  is where the bugs land (palette esc, click-outside, drawer
+  close, …) and unit tests don't cover it.
+- [ ] Manual QA checklist file (`docs/qa.md`) — every release
+  walks through it: open palette → esc → click outside → search.
+  Open drawer → esc → reload. Etc.
