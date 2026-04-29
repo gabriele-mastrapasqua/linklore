@@ -167,7 +167,18 @@
 		clearSidebarHints();
 
 		var rect = rowTarget.getBoundingClientRect();
-		var side = (ev.clientY < rect.top + rect.height / 2) ? 'before' : 'after';
+		// In grid layout, neighbouring cards sit side-by-side on the
+		// same row — the natural drop indicator is a vertical bar
+		// between two cards, picked by cursor X. In list / headlines
+		// / moodboard each card stacks vertically, so the original
+		// Y-based horizontal bar is the right shape.
+		var orientation = layoutOrientation(rowTarget);
+		var side;
+		if (orientation === 'vertical') {
+			side = (ev.clientX < rect.left + rect.width / 2) ? 'before' : 'after';
+		} else {
+			side = (ev.clientY < rect.top + rect.height / 2) ? 'before' : 'after';
+		}
 		var targetId = rowTarget.dataset.linkId;
 
 		// Skip the DOM write when nothing changed visually — the main
@@ -180,8 +191,18 @@
 		rafScheduled = true;
 		requestAnimationFrame(function () {
 			rafScheduled = false;
-			placeInsertionBar(rowTarget, side);
+			placeInsertionBar(rowTarget, side, orientation);
 		});
+	}
+
+	// layoutOrientation returns 'vertical' when the surrounding
+	// #links-list has the layout-grid class (cards flow left-to-right
+	// across columns) and 'horizontal' otherwise. A vertical insertion
+	// bar between two grid cards reads as "drop between these two".
+	function layoutOrientation(row) {
+		var list = row.closest('#links-list');
+		if (list && list.classList.contains('layout-grid')) return 'vertical';
+		return 'horizontal';
 	}
 
 	// pickRowByY snaps the cursor to the nearest link row when the
@@ -204,15 +225,29 @@
 	// edge of the target row. No reads here — caller already computed
 	// "side" from the rect, and we keep the rect in scope by calling
 	// getBoundingClientRect() once again (cheap, single read).
-	function placeInsertionBar(rowEl, side) {
+	function placeInsertionBar(rowEl, side, orientation) {
 		var rect = rowEl.getBoundingClientRect();
 		var ind = ensureIndicator();
 		ind.style.display = 'block';
-		ind.style.left = rect.left + 'px';
-		ind.style.width = rect.width + 'px';
-		ind.style.top = (side === 'before' ? rect.top : rect.bottom) + window.scrollY - 2 + 'px';
-		ind.dataset.targetId = rowEl.dataset.linkId;
-		ind.dataset.position = side;
+		if (orientation === 'vertical') {
+			// Vertical bar: a thin strip on the left or right edge of
+			// the targeted card. Used in grid layout where cards sit
+			// side by side.
+			ind.style.height = rect.height + 'px';
+			ind.style.width  = '4px';
+			ind.style.top    = rect.top + window.scrollY + 'px';
+			ind.style.left   = (side === 'before' ? rect.left - 6 : rect.right + 2) + 'px';
+		} else {
+			// Horizontal bar (default): full row width, top or bottom
+			// edge of the targeted card. List / headlines / moodboard.
+			ind.style.height = '4px';
+			ind.style.width  = rect.width + 'px';
+			ind.style.left   = rect.left + 'px';
+			ind.style.top    = (side === 'before' ? rect.top : rect.bottom) + window.scrollY - 2 + 'px';
+		}
+		ind.dataset.targetId   = rowEl.dataset.linkId;
+		ind.dataset.position   = side;
+		ind.dataset.orientation = orientation;
 	}
 
 	function applyOOBHTML(html) {

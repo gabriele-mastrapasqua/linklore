@@ -106,6 +106,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			// View mode for the collection page. One of:
 			// list (default) | grid | headlines | moodboard.
 			{"layout", "TEXT NOT NULL DEFAULT 'list'"},
+			// Optional cover image (URL only, never downloaded). Renders
+			// as a banner on /c/:slug and subtly on the home cards.
+			{"cover_url", "TEXT"},
 		},
 	}
 	for table, cols := range addColumns {
@@ -132,6 +135,7 @@ type Collection struct {
 	FeedURL       string     // empty when this isn't a feed-backed collection
 	LastCheckedAt *time.Time // last successful feed poll
 	Layout        string     // list | grid | headlines | moodboard (default list)
+	CoverURL      string     // optional banner image (URL only)
 	CreatedAt     time.Time
 }
 
@@ -206,7 +210,7 @@ func (s *Store) CreateCollection(ctx context.Context, slug, name, description st
 func (s *Store) GetCollectionBySlug(ctx context.Context, slug string) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), COALESCE(cover_url,''), created_at
 		   FROM collections WHERE slug = ?`, slug)
 	return scanCollection(row.Scan)
 }
@@ -215,7 +219,7 @@ func scanCollection(scan func(...any) error) (*Collection, error) {
 	var c Collection
 	var ts int64
 	var lastChecked sql.NullInt64
-	err := scan(&c.ID, &c.Slug, &c.Name, &c.Description, &c.FeedURL, &lastChecked, &c.Layout, &ts)
+	err := scan(&c.ID, &c.Slug, &c.Name, &c.Description, &c.FeedURL, &lastChecked, &c.Layout, &c.CoverURL, &ts)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -233,7 +237,7 @@ func scanCollection(scan func(...any) error) (*Collection, error) {
 func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), COALESCE(cover_url,''), created_at
 		   FROM collections ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -264,7 +268,7 @@ type CollectionStat struct {
 func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
-		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), c.created_at,
+		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), COALESCE(c.cover_url,''), c.created_at,
 		       COUNT(l.id)                                                  AS total,
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END)           AS summarized,
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END) AS in_progress,
@@ -283,7 +287,7 @@ func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat,
 		var ts int64
 		var lastChecked sql.NullInt64
 		if err := rows.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
-			&cs.FeedURL, &lastChecked, &cs.Layout, &ts,
+			&cs.FeedURL, &lastChecked, &cs.Layout, &cs.CoverURL, &ts,
 			&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 			return nil, err
 		}
@@ -304,7 +308,7 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 	var ts int64
 	row := s.db.QueryRowContext(ctx, `
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
-		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), c.created_at,
+		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), COALESCE(c.cover_url,''), c.created_at,
 		       COUNT(l.id),
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END),
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END),
@@ -315,7 +319,7 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 		 GROUP BY c.id`, id)
 	var lastChecked sql.NullInt64
 	if err := row.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
-		&cs.FeedURL, &lastChecked, &cs.Layout, &ts,
+		&cs.FeedURL, &lastChecked, &cs.Layout, &cs.CoverURL, &ts,
 		&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return CollectionStat{}, ErrNotFound
@@ -450,9 +454,24 @@ func (s *Store) RenameCollection(ctx context.Context, id int64, newSlug, newName
 func (s *Store) GetCollectionBySlugByID(ctx context.Context, id int64) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), COALESCE(cover_url,''), created_at
 		   FROM collections WHERE id = ?`, id)
 	return scanCollection(row.Scan)
+}
+
+// SetCollectionCover sets the optional banner image URL for a
+// collection. Empty string clears it.
+func (s *Store) SetCollectionCover(ctx context.Context, id int64, coverURL string) error {
+	coverURL = strings.TrimSpace(coverURL)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET cover_url = ? WHERE id = ?`, coverURL, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetCollectionLayout updates the view mode for a collection.
@@ -516,7 +535,7 @@ func (s *Store) CreateLinkIfMissing(ctx context.Context, collectionID int64, url
 func (s *Store) ListFeedCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), COALESCE(cover_url,''), created_at
 		   FROM collections WHERE feed_url IS NOT NULL AND feed_url != ''
 		   ORDER BY name`)
 	if err != nil {

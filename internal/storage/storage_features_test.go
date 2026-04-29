@@ -62,6 +62,28 @@ func TestCreateLink_setsKindFromURL(t *testing.T) {
 	}
 }
 
+func TestSetCollectionCover_setAndClear(t *testing.T) {
+	st := openMemForFeatures(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	if err := st.SetCollectionCover(context.Background(), col.ID, "https://example.com/banner.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetCollectionBySlugByID(context.Background(), col.ID)
+	if got.CoverURL != "https://example.com/banner.jpg" {
+		t.Errorf("CoverURL = %q", got.CoverURL)
+	}
+	if err := st.SetCollectionCover(context.Background(), col.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.GetCollectionBySlugByID(context.Background(), col.ID)
+	if got.CoverURL != "" {
+		t.Errorf("CoverURL not cleared: %q", got.CoverURL)
+	}
+	if err := st.SetCollectionCover(context.Background(), 99999, "x"); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound for missing id, got %v", err)
+	}
+}
+
 func TestSetLinkKind_overrides(t *testing.T) {
 	st := openMemForFeatures(t)
 	col, _ := st.CreateCollection(context.Background(), "c", "C", "")

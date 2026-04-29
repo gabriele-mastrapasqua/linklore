@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /c/{slug}/add", s.handleSmartAdd)
 	mux.HandleFunc("POST /c/{slug}/rename", s.handleRenameCollection)
 	mux.HandleFunc("POST /c/{slug}/layout", s.handleSetLayout)
+	mux.HandleFunc("POST /c/{slug}/cover", s.handleSetCover)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)               // legacy alias
@@ -419,6 +420,33 @@ func (s *Server) handleSetLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSetCover stores or clears the banner image for a collection.
+// Form field "url" — empty value clears. HTMX clients get HX-Refresh
+// so the new banner shows up; plain form posts get a 303 home.
+func (s *Server) handleSetCover(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetCollectionCover(r.Context(), col.ID,
+		strings.TrimSpace(r.PostForm.Get("url"))); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		setToast(w, "ok", "Cover updated")
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/c/"+col.Slug, http.StatusSeeOther)
 }
 
 // handleDeleteEmptyCollections sweeps every collection that has zero

@@ -1,7 +1,13 @@
 {{define "content"}}
+{{if .Collection.CoverURL}}
+<div class="collection-banner" style="background-image: url('{{.Collection.CoverURL}}')"></div>
+{{end}}
 <section class="card">
-	<div style="display:flex;align-items:center;gap:.5rem">
-		<h2 style="margin:0;flex:1">{{.Collection.Name}}</h2>
+	<div class="hflex">
+		<h2 class="hflex-fill">{{.Collection.Name}}</h2>
+		<button type="button" class="link-button"
+		        onclick="document.getElementById('cover-{{.Collection.ID}}').toggleAttribute('hidden')"
+		        title="set or clear the banner image">🖼 cover</button>
 		<button type="button" class="link-button"
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').toggleAttribute('hidden')"
 		        title="rename this collection">✎ rename</button>
@@ -23,6 +29,15 @@
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
 	</form>
 	<small class="muted" id="rename-hint-{{.Collection.ID}}" hidden>URL slug is derived from the name; if the new slug is taken, a numeric suffix is appended.</small>
+
+	<form id="cover-{{.Collection.ID}}" class="inline" hidden style="margin-top:.5rem"
+	      hx-post="/c/{{.Collection.Slug}}/cover">
+		<input type="url" name="url" value="{{.Collection.CoverURL}}"
+		       placeholder="https://… (paste a banner image URL — empty clears)">
+		<button type="submit">Save cover</button>
+		<button type="button"
+		        onclick="document.getElementById('cover-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
+	</form>
 
 	{{template "collection_stats" .}}
 	<form class="inline smart-add" style="margin-top:.75rem"

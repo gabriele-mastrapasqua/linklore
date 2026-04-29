@@ -480,6 +480,55 @@ func TestLooksLikeFeedURL(t *testing.T) {
 	}
 }
 
+// ---------- cover image ----------
+
+func TestSetCover_persistsAndShowsBanner(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	postForm(t, ts, "/c/c/cover",
+		url.Values{"url": {"https://example.com/banner.jpg"}})
+	col, _ := st.GetCollectionBySlug(context.Background(), "c")
+	if col.CoverURL != "https://example.com/banner.jpg" {
+		t.Errorf("cover not stored: %q", col.CoverURL)
+	}
+	_, body := get(t, ts, "/c/c")
+	if !strings.Contains(body, "collection-banner") {
+		t.Errorf("collection-banner not rendered when cover set")
+	}
+	if !strings.Contains(body, "https://example.com/banner.jpg") {
+		t.Errorf("cover URL not in rendered body")
+	}
+}
+
+func TestSetCover_emptyClears(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	_ = st.SetCollectionCover(context.Background(), col.ID, "https://example.com/x.jpg")
+	postForm(t, ts, "/c/c/cover", url.Values{"url": {""}})
+	got, _ := st.GetCollectionBySlug(context.Background(), "c")
+	if got.CoverURL != "" {
+		t.Errorf("cover not cleared: %q", got.CoverURL)
+	}
+}
+
+func TestSetCover_htmxRefresh(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	form := url.Values{"url": {"https://example.com/x.jpg"}}
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/c/c/cover",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, _ := ts.Client().Do(req)
+	defer resp.Body.Close()
+	if resp.Header.Get("HX-Refresh") != "true" {
+		t.Errorf("HX-Refresh = %q, want true", resp.Header.Get("HX-Refresh"))
+	}
+	if !strings.Contains(resp.Header.Get("HX-Trigger"), "Cover updated") {
+		t.Errorf("toast trigger missing: %q", resp.Header.Get("HX-Trigger"))
+	}
+}
+
 // ---------- preview drawer ----------
 
 func TestPreview_unknownLink404s(t *testing.T) {

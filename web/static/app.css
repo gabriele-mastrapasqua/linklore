@@ -1041,8 +1041,10 @@ body.previews-off .preview { display: none !important; }
 /* Sidebar collection that would receive the drop: subtle background tint
    + 3px left bar, no outline so the layout doesn't shift around. */
 .dnd-drop-target {
-	background: rgba(37, 99, 235, 0.18) !important;
-	box-shadow: inset 3px 0 0 var(--accent);
+	background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
+	box-shadow: inset 4px 0 0 var(--accent), 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+	transform: scale(1.02);
+	transition: transform .12s ease, background .12s ease;
 }
 .dnd-drop-target.active {
 	box-shadow: inset 3px 0 0 #fff;
@@ -1079,6 +1081,35 @@ body.previews-off .preview { display: none !important; }
 .link-button.danger:hover { color: #fff; background: var(--danger); }
 
 .collection-card-head { display: flex; align-items: flex-start; gap: .25rem; }
+
+/* Optional cover banner on /c/:slug — sits flush above the header
+   card, full-width, fades into the page background. */
+.collection-banner {
+	width: 100%; height: 140px;
+	background-size: cover; background-position: center;
+	border-radius: var(--radius-md);
+	margin-bottom: var(--space-3);
+	box-shadow: var(--shadow-1);
+	position: relative;
+}
+.collection-banner::after {
+	content: ""; position: absolute; inset: 0;
+	background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--bg) 80%, transparent));
+	border-radius: var(--radius-md);
+}
+
+/* Home cards with a cover image: render the cover as a tinted bg.
+   The card content stays legible thanks to the white-overlay gradient
+   inlined in the collection_card template. */
+.collection-card.has-cover {
+	background-size: cover; background-position: center;
+	min-height: 140px;
+	display: flex; flex-direction: column; justify-content: flex-end;
+}
+
+/* Tiny utility classes used by templates (PLAN.md §13.5). */
+.hflex      { display: flex; align-items: center; gap: var(--space-2); }
+.hflex-fill { flex: 1; margin: 0; }
 
 /* Tiny chip used as the drag image so the user moves a label around the
    layout instead of an entire card. Built off-screen by dnd.js then
