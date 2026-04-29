@@ -164,6 +164,13 @@ async function chatSubmit(ev) {
 				// "tokens|tps" emitted periodically + once at the end.
 				const [tok, tps] = data.split('|');
 				if (statsEl) statsEl.textContent = tok + ' tok · ' + tps + ' t/s · ' + chatModel;
+			} else if (event === 'retrieval') {
+				// "chunks|links|bytes" emitted once before token streaming
+				// starts, so the user sees retrieval breadth up front.
+				var [chunks, links, bytes] = data.split('|');
+				if (statsEl) {
+					statsEl.textContent = chunks + ' chunks · ' + links + ' links · ' + bytes + ' chars · ' + chatModel;
+				}
 			} else if (event === 'error') ansEl.textContent += ' [error: ' + data + ']';
 		}
 	}

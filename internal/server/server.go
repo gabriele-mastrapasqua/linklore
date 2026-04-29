@@ -1993,6 +1993,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "event: source\ndata: %d|%s|%s\n\n",
 			src.LinkID, sseSafe(src.Title), sseSafe(src.URL))
 	}
+	// Retrieval transparency: emit before LLM streaming so the user sees
+	// how broadly RAG fired (chunks|distinct links|context bytes) up front.
+	fmt.Fprintf(w, "event: retrieval\ndata: %d|%d|%d\n\n",
+		turn.Stats.Chunks, turn.Stats.LinkCount, turn.Stats.ContextBytes)
 	flush()
 
 	// Emit a "stats" event roughly twice per second while streaming, so

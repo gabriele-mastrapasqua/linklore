@@ -59,6 +59,47 @@ func TestPrepare_persistsUserMsgAndCreatesSession(t *testing.T) {
 	}
 }
 
+func TestPrepare_populatesStats(t *testing.T) {
+	svc, colID := newChatFixture(t)
+	turn, err := svc.Prepare(context.Background(), 0, colID, "what is rust ownership?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.Stats.Chunks != len(turn.Sources) {
+		t.Errorf("Stats.Chunks = %d, want len(Sources) = %d", turn.Stats.Chunks, len(turn.Sources))
+	}
+	// Distinct LinkID count: rebuild it independently and compare.
+	distinct := map[int64]struct{}{}
+	for _, s := range turn.Sources {
+		distinct[s.LinkID] = struct{}{}
+	}
+	if turn.Stats.LinkCount != len(distinct) {
+		t.Errorf("Stats.LinkCount = %d, want %d", turn.Stats.LinkCount, len(distinct))
+	}
+	if turn.Stats.ContextBytes <= 0 {
+		t.Errorf("Stats.ContextBytes = %d, want > 0", turn.Stats.ContextBytes)
+	}
+	// And it should equal the total snippet length.
+	want := 0
+	for _, s := range turn.Sources {
+		want += len(s.Snippet)
+	}
+	if turn.Stats.ContextBytes != want {
+		t.Errorf("Stats.ContextBytes = %d, want sum(len(Snippet)) = %d", turn.Stats.ContextBytes, want)
+	}
+}
+
+func TestPrepare_systemPromptHasNoFabricationGuidance(t *testing.T) {
+	svc, colID := newChatFixture(t)
+	turn, err := svc.Prepare(context.Background(), 0, colID, "what is rust ownership?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(turn.Prompt, "When the retrieved sources don't actually answer") {
+		t.Errorf("system prompt missing no-fabrication guidance:\n%s", turn.Prompt)
+	}
+}
+
 func TestPrepare_emptyMessageRejected(t *testing.T) {
 	svc, colID := newChatFixture(t)
 	if _, err := svc.Prepare(context.Background(), 0, colID, "  "); err == nil {

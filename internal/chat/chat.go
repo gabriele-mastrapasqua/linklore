@@ -32,7 +32,7 @@ type Service struct {
 	search *search.Engine
 	llm    llm.Backend
 
-	// TopK is how many chunks are pulled into context per turn. Default 8.
+	// TopK is how many chunks are pulled into context per turn. Default 12.
 	TopK int
 	// HistoryTurns is how many prior (user, assistant) pairs to include.
 	// Default 6.
@@ -40,7 +40,7 @@ type Service struct {
 }
 
 func New(store *storage.Store, eng *search.Engine, backend llm.Backend) *Service {
-	return &Service{store: store, search: eng, llm: backend, TopK: 8, HistoryTurns: 6}
+	return &Service{store: store, search: eng, llm: backend, TopK: 12, HistoryTurns: 6}
 }
 
 // Citation references one source chunk, exposed so the UI can render a
@@ -59,6 +59,18 @@ type PreparedTurn struct {
 	SessionID int64
 	Prompt    string
 	Sources   []Citation
+	// Retrieval transparency: how many chunks survived, how many
+	// distinct links they came from, and the rough context size.
+	Stats RetrievalStats
+}
+
+// RetrievalStats summarises what RAG actually fed the LLM for this turn —
+// surfaced in the chat UI so the user can see retrieval breadth at a glance
+// before the answer streams in.
+type RetrievalStats struct {
+	Chunks       int // total chunks retrieved (== len(Sources))
+	LinkCount    int // distinct LinkID values
+	ContextBytes int // sum of len(Snippet)
 }
 
 // Prepare retrieves context, persists the user message, and returns the
@@ -98,25 +110,34 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 	}
 
 	citations := make([]Citation, 0, len(hits))
+	seenLinks := make(map[int64]struct{}, len(hits))
+	contextBytes := 0
 	for _, h := range hits {
 		title := h.Link.Title
 		if title == "" {
 			title = h.Link.URL
 		}
-		// 1200 chars (~250 tokens) per chunk — gives the model real
+		// 1800 chars (~360 tokens) per chunk — gives the model real
 		// material to ground the answer. Below ~600 the assistant
 		// often hallucinates because it sees only the chunk's first
 		// boilerplate sentence.
-		snip := truncate(h.Chunk.Text, 1200)
+		snip := truncate(h.Chunk.Text, 1800)
 		citations = append(citations, Citation{
 			LinkID: h.Link.ID, Title: title, URL: h.Link.URL, Snippet: snip,
 		})
+		seenLinks[h.Link.ID] = struct{}{}
+		contextBytes += len(snip)
 	}
 
 	return &PreparedTurn{
 		SessionID: sessionID,
 		Prompt:    buildPrompt(userMsg, citations, history),
 		Sources:   citations,
+		Stats: RetrievalStats{
+			Chunks:       len(citations),
+			LinkCount:    len(seenLinks),
+			ContextBytes: contextBytes,
+		},
 	}, nil
 }
 
@@ -231,7 +252,8 @@ func buildPrompt(userMsg string, citations []Citation, history []storage.ChatMes
 	b.WriteString("You are linklore, an assistant grounded ONLY on the user's saved links.\n")
 	b.WriteString("Reply in the SAME language as the user's last message — if they write in Italian, reply in Italian; in French, in French; etc. Match the user's language exactly.\n")
 	b.WriteString("Be concise. When you use a source, cite it inline like [src:<id>].\n")
-	b.WriteString("If the sources don't answer the question, say so plainly in the user's language.\n\n")
+	b.WriteString("If the sources don't answer the question, say so plainly in the user's language.\n")
+	b.WriteString("When the retrieved sources don't actually answer the question, say so explicitly — don't fabricate facts not present in the snippets. Cite chunk IDs as [src:N] inline.\n\n")
 
 	if len(citations) > 0 {
 		b.WriteString("Sources / Fonti:\n")
