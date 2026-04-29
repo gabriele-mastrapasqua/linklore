@@ -60,6 +60,101 @@ func TestListLinks_unknownKindFilterEmpties(t *testing.T) {
 	}
 }
 
+// ---------- pagination on /c/:slug ----------
+
+// Default per is 50; with 75 links there should be a page 2 and exactly
+// 50 link rows on page 1.
+func TestListLinks_paginationDefault50(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	for i := 0; i < 75; i++ {
+		_, _ = st.CreateLink(context.Background(), col.ID, fmt.Sprintf("https://example.com/%03d", i))
+	}
+	code, body := get(t, ts, "/c/c")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "75 links") {
+		t.Errorf("body missing '75 links' header")
+	}
+	if !strings.Contains(body, "page 1 of 2") {
+		t.Errorf("body missing 'page 1 of 2'")
+	}
+	if !strings.Contains(body, "?page=2") {
+		t.Errorf("body missing next ?page=2 link")
+	}
+	if !strings.Contains(body, "next →") {
+		t.Errorf("body missing 'next ->' anchor text")
+	}
+	if got := strings.Count(body, "link-row"); got != 50 {
+		t.Errorf("link-row count = %d, want 50", got)
+	}
+}
+
+// per=100 fits all 75 in one page.
+func TestListLinks_paginationPer100(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	for i := 0; i < 75; i++ {
+		_, _ = st.CreateLink(context.Background(), col.ID, fmt.Sprintf("https://example.com/%03d", i))
+	}
+	code, body := get(t, ts, "/c/c?per=100")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "page 1 of 1") {
+		t.Errorf("body missing 'page 1 of 1'")
+	}
+	if got := strings.Count(body, "link-row"); got != 75 {
+		t.Errorf("link-row count = %d, want 75", got)
+	}
+}
+
+// per=0 means "all" (capped at 5000); 75 links all render and there is
+// no next anchor.
+func TestListLinks_paginationAll(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	for i := 0; i < 75; i++ {
+		_, _ = st.CreateLink(context.Background(), col.ID, fmt.Sprintf("https://example.com/%03d", i))
+	}
+	code, body := get(t, ts, "/c/c?per=0")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if got := strings.Count(body, "link-row"); got != 75 {
+		t.Errorf("link-row count = %d, want 75", got)
+	}
+	if strings.Contains(body, "next →") {
+		t.Errorf("'next' anchor should not render when all links fit")
+	}
+}
+
+// page=2 with default per=50 returns links 51..75 (25 rows). CreateLink
+// sets order_idx so the most recently inserted link surfaces first; with
+// predictable URLs we can assert that the page-2 window contains the
+// earliest URLs (000..024) and not the latest.
+func TestListLinks_paginationOffsetWorks(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	for i := 0; i < 75; i++ {
+		_, _ = st.CreateLink(context.Background(), col.ID, fmt.Sprintf("https://example.com/%03d", i))
+	}
+	code, body := get(t, ts, "/c/c?page=2")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if got := strings.Count(body, "link-row"); got != 25 {
+		t.Errorf("link-row count on page 2 = %d, want 25", got)
+	}
+	if !strings.Contains(body, "example.com/000") {
+		t.Errorf("page 2 missing oldest link 'example.com/000'")
+	}
+	if strings.Contains(body, "example.com/074") {
+		t.Errorf("page 2 should NOT contain newest link 'example.com/074'")
+	}
+}
+
 // ---------- layout endpoint ----------
 
 func TestSetLayout_unknownCollection404s(t *testing.T) {

@@ -114,4 +114,21 @@
 		{{template "link_row" .}}
 	{{end}}
 </div>
+
+{{if gt .Stats.Total 0}}
+{{$kf := .KindFilter}}
+<nav class="pagination" style="margin-top:var(--space-4);display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;justify-content:center">
+	<span class="muted" style="font-size:.8rem">{{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}} · page {{.Page}} of {{.TotalPages}}</span>
+	{{if gt .Page 1}}
+	<a class="seg-opt" href="?page={{add .Page -1}}{{if .Per}}&per={{.Per}}{{end}}{{if $kf}}&kind={{$kf}}{{end}}">← prev</a>
+	{{end}}
+	{{if lt .Page .TotalPages}}
+	<a class="seg-opt" href="?page={{add .Page 1}}{{if .Per}}&per={{.Per}}{{end}}{{if $kf}}&kind={{$kf}}{{end}}">next →</a>
+	{{end}}
+	<span class="muted" style="font-size:.8rem;margin-left:var(--space-3)">show:</span>
+	<a class="seg-opt {{if eq .Per 50}}active{{end}}"  href="?per=50{{if $kf}}&kind={{$kf}}{{end}}">50</a>
+	<a class="seg-opt {{if eq .Per 100}}active{{end}}" href="?per=100{{if $kf}}&kind={{$kf}}{{end}}">100</a>
+	<a class="seg-opt {{if eq .Per 0}}active{{end}}"   href="?per=0{{if $kf}}&kind={{$kf}}{{end}}">all</a>
+</nav>
+{{end}}
 {{end}}

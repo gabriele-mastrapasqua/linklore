@@ -621,14 +621,39 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 			}(col.ID, col.Slug)
 		}
 	}
-	links, err := s.store.ListLinksByCollection(r.Context(), col.ID, 200, 0)
+	// Pagination knobs from the querystring. ?per accepts 50 / 100 / 0,
+	// where 0 means "all" (capped at 5000 to avoid runaway memory). A
+	// missing ?per defaults to 50; an explicit ?per=0 must be honoured
+	// as "all" (the default-vs-explicit-zero distinction matters).
+	per := 50
+	if perRaw := r.URL.Query().Get("per"); perRaw != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(perRaw)); err == nil {
+			switch n {
+			case 0, 50, 100:
+				per = n
+			}
+		}
+	}
+	page, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page")))
+	if page < 1 {
+		page = 1
+	}
+	limit := per
+	offset := (page - 1) * limit
+	if per == 0 { // "all" — ignore page, hard-cap at 5000
+		limit = 5000
+		offset = 0
+		page = 1
+	}
+	links, err := s.store.ListLinksByCollection(r.Context(), col.ID, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Optional ?kind=video filter applied in-Go so we keep the existing
-	// SQL untouched and the filter still respects the collection's
-	// custom order_idx.
+	// Optional ?kind=video filter applied in-Go. Note: this trims a
+	// page after pagination, so a filtered page may be smaller than
+	// `per`. Acceptable for v1 — pagination still tracks the
+	// unfiltered total. Revisit if filter+paginate combos prove common.
 	kindFilter := strings.TrimSpace(r.URL.Query().Get("kind"))
 	if kindFilter != "" {
 		filtered := links[:0]
@@ -640,6 +665,10 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		links = filtered
 	}
 	stats, _ := s.store.CollectionStatsByID(r.Context(), col.ID)
+	totalPages := 1
+	if per > 0 && stats.Total > 0 {
+		totalPages = (stats.Total + per - 1) / per
+	}
 	allCollections, _ := s.store.ListCollections(r.Context())
 	s.renderPageRq(w, r, "links", map[string]any{
 		"Title":          col.Name,
@@ -648,6 +677,9 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		"Stats":          stats,
 		"AllCollections": allCollections,
 		"KindFilter":     kindFilter,
+		"Page":           page,
+		"Per":            per,
+		"TotalPages":     totalPages,
 	})
 }
 

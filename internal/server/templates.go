@@ -28,6 +28,7 @@ func funcMap() template.FuncMap {
 			return out, nil
 		},
 		"list": func(values ...any) []any { return values },
+		"add":  func(a, b int) int { return a + b },
 	}
 }
 
