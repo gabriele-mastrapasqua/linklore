@@ -572,11 +572,14 @@ body.density-no-title   .link-row .title   { display: none; }
 
 .drawer-head {
 	display: flex; align-items: flex-start; gap: var(--space-4);
-	margin-bottom: var(--space-4);
+	margin-bottom: var(--space-6);
+	padding-bottom: var(--space-4);
+	border-bottom: 1px solid var(--border);
 }
 .drawer-title {
-	flex: 1; font-size: 1.25rem; font-weight: 700; line-height: 1.3;
+	flex: 1; font-size: 1.45rem; font-weight: 700; line-height: 1.3;
 	display: flex; align-items: flex-start; gap: var(--space-2);
+	letter-spacing: -.01em;
 }
 .drawer-title .preview-favicon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
 .drawer-deeplink { color: var(--text); text-decoration: none; }
@@ -584,23 +587,36 @@ body.density-no-title   .link-row .title   { display: none; }
 .drawer-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
 .drawer-toolbar {
-	display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
-	padding: var(--space-3) 0;
-	border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-	font-size: .8rem; margin-bottom: var(--space-4);
+	display: flex; flex-wrap: wrap; align-items: center;
+	gap: var(--space-2) var(--space-4);
+	padding: var(--space-3) var(--space-3);
+	background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+	border: 1px solid var(--border); border-radius: var(--radius-md);
+	font-size: .8rem; margin-bottom: var(--space-6);
 }
-.drawer-toolbar .muted { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+.drawer-toolbar .muted {
+	font-size: .68rem; text-transform: uppercase;
+	letter-spacing: .08em; font-weight: 600;
+	color: var(--muted);
+}
 
-.drawer-meta { font-size: .82rem; margin-bottom: var(--space-4); line-height: 1.6; }
+.drawer-meta {
+	font-size: .82rem; margin-bottom: var(--space-6); line-height: 1.6;
+	padding-bottom: var(--space-3);
+	border-bottom: 1px dashed var(--border);
+}
 .drawer-meta .drawer-url { color: var(--muted); word-break: break-all; }
 
 .drawer-summary {
-	background: color-mix(in srgb, var(--accent-ai) 7%, var(--card));
-	border: 1px solid color-mix(in srgb, var(--accent-ai) 22%, var(--border));
-	border-radius: var(--radius-md); padding: var(--space-4) var(--space-4);
+	background: color-mix(in srgb, var(--accent-ai) 9%, var(--card));
+	border: 1px solid color-mix(in srgb, var(--accent-ai) 26%, var(--border));
+	border-left-width: 4px;
+	border-radius: var(--radius-md);
+	padding: var(--space-4) var(--space-4) var(--space-4) var(--space-4);
 	margin-bottom: var(--space-6);
 }
-.drawer-summary p { margin: var(--space-2) 0 0; line-height: 1.6; }
+.drawer-summary p { margin: var(--space-2) 0 0; line-height: 1.65; font-size: 1.02rem; }
+.drawer-summary strong.sparkle { font-size: .85rem; letter-spacing: .03em; }
 
 .drawer-loading { padding: 2rem; text-align: center; }
 
@@ -609,8 +625,16 @@ body.density-no-title   .link-row .title   { display: none; }
    centred inside the drawer's content area for that "page on a desk"
    feel rather than a wall of text against the edge. */
 .drawer-article {
-	font-size: 1.02rem; line-height: 1.7;
-	max-width: 68ch; margin: var(--space-3) auto 0;
+	font-size: 1.02rem; line-height: 1.75;
+	max-width: 68ch; margin: var(--space-4) auto 0;
+	/* Article column always reads as a "page" — paper background +
+	   thin border + subtle shadow in every theme. Sepia just swaps
+	   the colour of the paper. */
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	padding: clamp(1.5rem, 4vw, 2.5rem) clamp(1.5rem, 4vw, 2.5rem);
+	box-shadow: var(--shadow-1);
 }
 .drawer-article h1, .drawer-article h2, .drawer-article h3 {
 	line-height: 1.3; margin: 1.8em 0 .6em;
@@ -647,17 +671,22 @@ body.density-no-title   .link-row .title   { display: none; }
 
 /* Theme overrides for the article only. Drawer chrome (head/toolbar)
    keeps the site palette so controls stay legible against the cover. */
-.drawer[data-theme="light"] .drawer-article { color: #111; background: transparent; }
-.drawer[data-theme="dark"]  .drawer-article { color: #ecf0f6; }
-.drawer[data-theme="sepia"] .drawer-article { color: #3e2f15; }
-.drawer[data-theme="sepia"] { --drawer-paper: #f6eedb; }
+.drawer[data-theme="light"] .drawer-article { color: #1a1a1a; background: #fafafa; border-color: #e8e8e8; }
+.drawer[data-theme="dark"]  .drawer-article { color: #ecf0f6; background: var(--card); border-color: var(--border); }
+.drawer[data-theme="sepia"] {
+	--drawer-paper: #f6eedb;
+	--drawer-ink:   #4d3c1c;
+}
 .drawer[data-theme="sepia"] .drawer-article {
 	background: var(--drawer-paper);
-	padding: 1.5rem clamp(1.25rem, 3vw, 2rem);
-	border-radius: var(--radius-md);
-	box-shadow: var(--shadow-1);
+	color: var(--drawer-ink);
+	border-color: color-mix(in srgb, var(--drawer-ink) 18%, transparent);
 }
 .drawer[data-theme="sepia"] .drawer-article a { color: #1d4ed8; }
+.drawer[data-theme="sepia"] .drawer-article blockquote {
+	border-left-color: color-mix(in srgb, var(--drawer-ink) 35%, transparent);
+	color: color-mix(in srgb, var(--drawer-ink) 75%, var(--drawer-paper));
+}
 
 /* Toasts. Stacked bottom-right; slide in from below. */
 .toasts {
