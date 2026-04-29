@@ -531,6 +531,39 @@ func TestBase_drawerScaffoldPresent(t *testing.T) {
 	}
 }
 
+// ---------- palette + ctxmenu scaffolding ----------
+
+func TestStatic_paletteAndCtxJSLoad(t *testing.T) {
+	ts, _ := newTestServer(t)
+	for _, p := range []string{"/static/palette.js", "/static/ctxmenu.js", "/static/drawer.js"} {
+		code, body := get(t, ts, p)
+		if code != 200 {
+			t.Errorf("%s status %d", p, code)
+		}
+		if !strings.Contains(body, "use strict") {
+			t.Errorf("%s body unexpected", p)
+		}
+	}
+}
+
+func TestBase_topbarHasCmdKHint(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `⌘K`) {
+		t.Errorf("⌘K kbd hint missing from topbar")
+	}
+}
+
+func TestBase_loadsPaletteAndCtxScripts(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	for _, src := range []string{"/static/palette.js", "/static/ctxmenu.js", "/static/drawer.js"} {
+		if !strings.Contains(body, `src="`+src+`"`) {
+			t.Errorf("base.html doesn't load %s", src)
+		}
+	}
+}
+
 // ---------- toasts via HX-Trigger ----------
 
 func TestBulkDelete_emitsToast(t *testing.T) {

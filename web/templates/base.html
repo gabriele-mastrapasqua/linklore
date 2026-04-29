@@ -17,6 +17,8 @@
 	<script src="/static/keys.js" defer></script>
 	<script src="/static/toasts.js" defer></script>
 	<script src="/static/drawer.js" defer></script>
+	<script src="/static/ctxmenu.js" defer></script>
+	<script src="/static/palette.js" defer></script>
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
 <header class="topbar">
@@ -25,7 +27,7 @@
 		<input type="search" name="q" placeholder="search…"
 		       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
 		<a class="topbar-ask ai-link" href="/chat" title="Ask the LLM (✦)">✦</a>
-		<kbd class="topbar-kbd" title="press / to focus">/</kbd>
+		<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
 	</div>
 	<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
 	<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load" hx-swap="innerHTML"></span>
