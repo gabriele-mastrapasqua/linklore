@@ -454,6 +454,108 @@ func TestSmartAdd_emptyURLRejected(t *testing.T) {
 	}
 }
 
+// pageWithAlternate spins up an httptest server whose root returns
+// HTML advertising an RSS feed via <link rel="alternate">, and whose
+// /feed.xml path returns a minimal valid Atom feed. Used by the
+// "smart-add offers feed" tests.
+func pageWithAlternate(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var feedURL string
+	mux.HandleFunc("/feed.xml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/atom+xml")
+		fmt.Fprint(w, `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Demo</title>
+  <id>urn:demo</id>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <entry>
+    <title>Hello</title>
+    <id>urn:demo:1</id>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <link href="https://example.com/post-1"/>
+  </entry>
+</feed>`)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<html><head><link rel="alternate" type="application/rss+xml" href="%s"></head><body>hi</body></html>`, feedURL)
+	})
+	ts := httptest.NewServer(mux)
+	feedURL = ts.URL + "/feed.xml"
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// Pasting a regular page URL whose <head> exposes an RSS feed should
+// (a) still create the link normally and (b) attach an inline
+// "subscribe to feed instead?" banner — but NOT auto-subscribe.
+func TestSmartAdd_offersFeedWhenPageHasAlternate(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	site := pageWithAlternate(t)
+
+	code, body := postForm(t, ts, "/c/c/add", url.Values{"url": {site.URL + "/"}})
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "feed-offer-host") {
+		t.Errorf("expected feed-offer-host OOB swap in response, body=%q", body)
+	}
+	if !strings.Contains(body, "Subscribe instead") {
+		t.Errorf("offer button text missing, body=%q", body)
+	}
+	if !strings.Contains(body, site.URL+"/feed.xml") {
+		t.Errorf("discovered feed URL missing from offer, body=%q", body)
+	}
+	// Link was still created.
+	links, _ := st.ListLinksByCollection(context.Background(), 1, 5, 0)
+	if len(links) != 1 || links[0].URL != site.URL+"/" {
+		t.Errorf("link not created, got %+v", links)
+	}
+	// Collection feed_url stayed empty — we didn't auto-subscribe.
+	col, _ := st.GetCollectionBySlug(context.Background(), "c")
+	if col.FeedURL != "" {
+		t.Errorf("auto-subscribed against intent: feed_url=%q", col.FeedURL)
+	}
+}
+
+// When the pasted URL is itself feed-shaped (looksLikeFeedURL) it
+// should follow the existing subscribe path, not the link+offer path.
+// We don't need a real feed upstream — even if Discover fails, no
+// feed_offer banner should appear because the dispatcher took the
+// other branch.
+func TestSmartAdd_noOfferWhenURLIsAlreadyFeed(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	// 127.0.0.1:1 is guaranteed-refused, so Discover fails and we
+	// fall through to the regular link path. Crucially, we should
+	// NOT then probe again and emit a feed offer for the same URL.
+	_, body := postForm(t, ts, "/c/c/add", url.Values{"url": {"http://127.0.0.1:1/feed.xml"}})
+	if strings.Contains(body, "feed-offer-host") {
+		t.Errorf("feed-offer-host shown for an already-feed-shaped URL, body=%q", body)
+	}
+}
+
+// When the collection is already feed-backed, pasting a page URL
+// must NOT offer to swap the existing feed for a newly discovered
+// one — that would silently lose the user's prior subscription.
+func TestSmartAdd_noOfferWhenCollectionAlreadyHasFeed(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	_ = st.SetCollectionFeed(context.Background(), col.ID, "https://example.com/existing-feed.xml")
+	site := pageWithAlternate(t)
+
+	_, body := postForm(t, ts, "/c/c/add", url.Values{"url": {site.URL + "/"}})
+	if strings.Contains(body, "feed-offer-host") {
+		t.Errorf("feed-offer-host shown despite existing feed_url, body=%q", body)
+	}
+}
+
 func TestLooksLikeFeedURL(t *testing.T) {
 	yes := []string{
 		"https://example.com/feed",

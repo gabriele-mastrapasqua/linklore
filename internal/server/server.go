@@ -743,6 +743,24 @@ func (s *Server) handleSmartAdd(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "link_row", link)
 	s.writeCollectionStatsOOB(w, r.Context(), col)
 	s.writeEmptyStateOOB(w, true)
+
+	// Quick non-blocking probe: does this page advertise a feed via
+	// <link rel="alternate">? If yes — and the collection isn't already
+	// feed-backed — surface an inline "subscribe to feed instead?" banner.
+	// We don't auto-subscribe; a single pasted URL stays a single link
+	// unless the user explicitly opts in. Time-boxed at 3s so a slow
+	// upstream can't stall the response.
+	if col.FeedURL == "" && s.feedImport != nil {
+		probeCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if feedURL, derr := s.feedImport.Discover(probeCtx, raw); derr == nil && feedURL != "" && feedURL != raw {
+			s.renderFragment(w, "feed_offer", map[string]any{
+				"Slug":    col.Slug,
+				"FeedURL": feedURL,
+				"PageURL": raw,
+			})
+		}
+	}
 }
 
 func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {

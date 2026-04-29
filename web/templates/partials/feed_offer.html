@@ -1,0 +1,19 @@
+{{define "feed_offer"}}
+<div hx-swap-oob="innerHTML:#feed-offer-host">
+  <div class="banner banner-info" style="margin-bottom: var(--space-3); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap">
+    <span>📡 <strong>This page has an RSS feed.</strong> Subscribe the whole collection to it instead?</span>
+    <code style="font-size: .8rem">{{.FeedURL}}</code>
+    <button type="button" class="seg-opt active"
+            hx-post="/c/{{.Slug}}/feed/save"
+            hx-vals='{"url":"{{.FeedURL}}"}'
+            hx-target="#collection-feed-{{.Slug}}" hx-swap="outerHTML"
+            hx-on::after-request="document.getElementById('feed-offer-host').innerHTML = ''">
+      ✦ Subscribe instead
+    </button>
+    <button type="button" class="seg-opt"
+            onclick="document.getElementById('feed-offer-host').innerHTML = ''">
+      Dismiss
+    </button>
+  </div>
+</div>
+{{end}}
