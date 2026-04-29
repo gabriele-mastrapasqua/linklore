@@ -1,15 +1,23 @@
 {{define "collection_feed"}}
-<section id="collection-feed-{{.Collection.ID}}" class="card">
-	<strong>📡 RSS / Atom feed</strong>
-	{{if .Collection.FeedURL}}
-		<small class="muted" style="margin-left:.5rem">
+{{if .Collection.FeedURL}}
+<section id="collection-feed-{{.Collection.ID}}" class="card feed-card">
+	<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+		<strong>📡 RSS / Atom feed</strong>
+		<small class="muted" style="flex:1;min-width:0">
 			<code>{{.Collection.FeedURL}}</code>
 			{{if .Collection.LastCheckedAt}}· last check: {{.Collection.LastCheckedAt.Format "2006-01-02 15:04"}}{{end}}
 		</small>
-	{{else}}
-		<small class="muted" style="margin-left:.5rem">paste a site or feed URL — linklore detects RSS/Atom automatically</small>
-	{{end}}
-
+		<button type="button" class="seg-opt"
+		        hx-post="/c/{{.Collection.Slug}}/feed/refresh"
+		        hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
+		        hx-disabled-elt="this">↻ Refresh now</button>
+		<button type="button" class="seg-opt"
+		        hx-post="/c/{{.Collection.Slug}}/feed/save"
+		        hx-vals='{"url":""}'
+		        hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
+		        hx-confirm="Stop using a feed for this collection? Existing imported links stay; new ones won't be pulled."
+		        title="stop using a feed for this collection">Unsubscribe</button>
+	</div>
 	{{if .JustRefresh}}
 		<div class="muted" style="margin-top:.4rem;font-size:.85rem">
 			↻ {{.LastResult.Added}} new ·
@@ -22,35 +30,26 @@
 			✓ feed detected → <code>{{.DiscoverdMsg}}</code>
 		</div>
 	{{end}}
-	{{if .DiscoverErr}}
-		<div class="muted" style="margin-top:.4rem;font-size:.85rem;color:var(--danger)">
-			couldn't detect a feed for <code>{{.DiscoverFrom}}</code> ({{.DiscoverErr}})
-		</div>
-	{{end}}
 	{{if .RefreshErr}}
 		<div class="muted" style="margin-top:.4rem;font-size:.85rem;color:var(--danger)">
 			refresh failed: {{.RefreshErr}}
 		</div>
 	{{end}}
-
-	<form class="inline" style="margin-top:.5rem"
-	      hx-post="/c/{{.Collection.Slug}}/feed/save"
-	      hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
-	      hx-disabled-elt="find button">
-		<input type="url" name="url" value="{{.Collection.FeedURL}}"
-		       placeholder="https://example.com  or  https://example.com/feed.xml" required>
-		<button type="submit">Save</button>
-		{{if .Collection.FeedURL}}
-		<button type="button"
-		        hx-post="/c/{{.Collection.Slug}}/feed/refresh"
-		        hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
-		        hx-disabled-elt="this">↻ Refresh now</button>
-		<button type="button"
-		        hx-post="/c/{{.Collection.Slug}}/feed/save"
-		        hx-vals='{"url":""}'
-		        hx-target="#collection-feed-{{.Collection.ID}}" hx-swap="outerHTML"
-		        title="stop using a feed for this collection">Clear</button>
-		{{end}}
-	</form>
 </section>
+{{else if or .DiscoverErr .RefreshErr}}
+<section id="collection-feed-{{.Collection.ID}}" class="card feed-card">
+	{{if .DiscoverErr}}
+	<div class="muted" style="font-size:.85rem;color:var(--danger)">
+		couldn't detect a feed for <code>{{.DiscoverFrom}}</code> ({{.DiscoverErr}})
+	</div>
+	{{end}}
+	{{if .RefreshErr}}
+	<div class="muted" style="font-size:.85rem;color:var(--danger)">
+		refresh failed: {{.RefreshErr}}
+	</div>
+	{{end}}
+</section>
+{{else}}
+<div id="collection-feed-{{.Collection.ID}}" hidden></div>
+{{end}}
 {{end}}

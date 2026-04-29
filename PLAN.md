@@ -571,3 +571,119 @@ These should all hold in a `LINKLORE_LLM_BACKEND=none` (or LLM offline) run:
 5. `/chat` shows a friendly "chat unavailable — configure an LLM backend" page.
 6. The link detail page shows the orange "no summary yet, configure LLM" banner with the actual probe error.
 7. No DGX-specific URL or API key appears in any default config dump.
+
+---
+
+## 13. UI/UX upgrade plan vs Raindrop
+
+**Goal**: match Raindrop's perceived quality on a single-user, local-first, MIT codebase. We're not after a pixel-perfect clone — we want the *feel* (snappy, calm, navigable in muscle memory) without the SaaS chrome.
+
+References used here come from the Raindrop product (raindrop.io), help center, the screenshot filenames in their marketing pages (`collections.ec97115a.png`, `view-modes.0907cc9c.png`, `highlights.333d72d3.png`), and the Italian marketing landing the user shared on 2026-04-29. Where I cite specifics, they're inferred from the live UI rather than scraped CSS — Raindrop ships compiled webpack bundles, so exact tokens can't be machine-extracted.
+
+### 13.1 What Raindrop does well that we should match
+
+- **Three-pane shell**: sidebar (collections + filters) · centre list/grid · right-pane preview drawer. Selecting a card opens the article inline rather than navigating away. Linklore currently navigates to `/links/:id` for detail — we should keep that route but ALSO offer an in-page drawer for fast triage.
+- **Calm typography**: a single sans-serif (Inter family) at clear weights — 400 body / 600 titles. Generous line-height (~1.55) on summaries. Mono only for URLs and code snippets. Linklore now uses Inter + JetBrains Mono via Google Fonts; we've matched this layer.
+- **One vivid accent**: their signature blue is used sparingly — only for active state and primary CTAs. Everything else is greys + light tints. Linklore's `--accent` is in the same family; the discipline to use it sparingly is the work.
+- **Type-tinted icons**: video/audio/image/book each carry a soft category tint (red/violet/teal/amber). We added this — keep refining the palette to match Raindrop's softer pastels (theirs are muted; ours are slightly punchier).
+- **Density toggles**: per-list "show titles / summaries / tags" — ours exist, but the bar is plain. Their visual is a row of pill toggles with active states.
+- **Card geometry**: 8–12 px radius, faint elevation in light mode (~0 1px 2px rgba(0,0,0,.06)), borders-only in dark mode. We're close.
+- **Empty states**: every empty list shows a short illustrative line + a primary CTA. Ours often render `(none yet)` in muted grey — adequate but could be warmer.
+- **Inline preview-on-hover**: hovering a card slightly raises it (transform: translateY(-1px) + stronger shadow). Telegraphs interactivity. Free CSS win.
+- **Sticky filter chips**: when scrolling a long list, the filter row stays at the top of the viewport. Ours scrolls away.
+- **Keyboard navigation**: j/k or ↑/↓ moves between cards; ↵ opens preview; e edit; # tag; del delete. Major productivity feel — entirely missing from linklore.
+- **Right-click context menus**: a single right-click anywhere on a card surfaces "Open / Open in new tab / Edit / Move / Tag / Delete / Refresh / Ask Stella". One menu, every action. We have buttons scattered — the menu is denser AND less visually noisy.
+- **Status pulse**: on background work (importing, summarising), an unobtrusive activity dot in the topbar pulses. We have `worker-status` but it's text. A dot + count is friendlier.
+- **"Ask Stella" sparkle integration**: visible as a subtle ✦ button right of the search bar, opens a modal scoped to the current view. Ours is a top-nav link; better than nothing, but a contextual button would be tighter.
+
+### 13.2 Where we should diverge (single-user MIT advantages)
+
+- **Faster boot**: no auth wall, no "Welcome to Raindrop" onboarding. Open the app, see your library. Already true — let's keep it.
+- **Local-first cues**: tiny "✓ saved locally" footer line + a "DB at ./data/linklore.db (X MB)" hint somewhere subtle. Raindrop can't say that; we should brag about it quietly.
+- **Power-user mode**: a `?` overlay listing every keyboard shortcut, every URL pattern (`/c/:slug?kind=video`, `/duplicates`, `/c/:slug/export.html`). Helps the user remember the surface area without opening the README.
+- **No paywall hints anywhere**: Raindrop's UI sprinkles "Pro" badges. Ours has none — keep it that way; replace any "feature locked" copy with "configure X" hints.
+- **The chat is the differentiator**: Stella is AI-as-search. Our RAG chat over a local LLM is *the same product feature* but private. Make it the centrepiece on the empty home page (a short prompt + canned questions).
+
+### 13.3 Concrete UI debt to pay down (priority order)
+
+1. **Right-pane preview drawer** (highest impact). Selecting a row opens an article-reader pane on the right; existing `/links/:id` page stays as the deep link. Keyboard `↵` opens, `esc` closes. Replaces the current "navigate-then-back" pattern.
+2. **Keyboard navigation** with j/k/↑/↓/↵/e/del/#/✦. Single tiny JS file (`keys.js`) hooking `keydown`. Worth its weight.
+3. **Right-click context menu** on `.link-row`. Replaces the per-row action buttons except `delete` (kept for discoverability).
+4. **Sticky filter row**: the kind-chip + view-mode + density bar stays pinned when you scroll. `position: sticky; top: 56px` (under the topbar).
+5. **Hover lift on cards**: `transition: transform .12s, box-shadow .12s; &:hover { transform: translateY(-1px); box-shadow: stronger }`.
+6. **Empty-state illustrations** (CSS-only, not raster): home, collection, search, chat, duplicates each get a single "muted glyph + sentence + CTA" block.
+7. **Topbar polish**:
+   - Replace "linklore" wordmark with a wordmark + small logo glyph (a single SVG inline, two paths).
+   - The search input gets a `⌘K` / `Ctrl+K` hint on the right edge and opens a command palette later (Phase 2).
+   - The activity indicator changes from "idle" / "working" text to a colored dot with tooltip.
+8. **Status pulse**: when the worker's queue length > 0, the dot pulses (3s ease-in-out animation) in violet; idle = solid grey.
+9. **Better empty-feed indicator**: the `📡` emoji is fine but visually heavy. Replace with a Lucide `rss` icon (inline SVG).
+10. **"Ask ✦" sparkle button in the search bar** itself (right-aligned), not just a top nav link. Click → opens chat scoped to the current view (collection slug auto-prefilled).
+11. **Smart-add input visual emphasis** (just shipped): pasting a URL feels primary. The accent ring + violet focus glow telegraph "this is where you do the main thing".
+12. **Per-collection cover image** (optional, off by default): a single `cover_url` column. When set, the collection card on home shows it as a subtle background.
+13. **Tag chips** styled like Raindrop's: rounded, faint background (`color-mix(--accent 10%, --card)`), no border. Currently they're small-caps badges.
+14. **Reader-mode controls**: font-size `S/M/L`, line-width `narrow / medium / wide`, theme `light / sepia / dark`. Triple-toggle stack in the reader pane.
+
+### 13.4 Interaction debt
+
+- **Drag-and-drop**: works for cross-collection moves and within-list reorder. Two improvements:
+  - When dragging between collections, the destination collection in the sidebar should highlight more aggressively (current state: subtle).
+  - Drop preview at the target index inside the list (a horizontal blue bar). We have an indicator; check it works in `grid` and `moodboard` layouts — it likely doesn't.
+- **Toasts**: success/error toasts in the bottom-right for non-page actions (bulk delete, pruned N empties, exported file). Currently most actions silently OOB-swap; users get no confirmation.
+- **Loading states**: HTMX `hx-disabled-elt` already greys out buttons. Add a thin progress bar at the top edge during long requests (htmx-indicator class on `body`).
+- **Confirm-on-delete tone**: our `hx-confirm` strings are good but verbose. Tighten to one-sentence questions ("Delete 'X' and 4 links? Cannot be undone.") — already partial.
+
+### 13.5 Visual tokens to formalise
+
+Define these as CSS custom properties so a single edit changes everything:
+
+```css
+--radius-sm: 6px;   /* buttons, chips */
+--radius-md: 10px;  /* cards, inputs */
+--radius-lg: 16px;  /* drawers, modals */
+--shadow-1: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+--shadow-2: 0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+--space-1: .25rem;
+--space-2: .5rem;
+--space-3: .75rem;
+--space-4: 1rem;
+--space-6: 1.5rem;
+```
+
+Then replace the inline `style="margin-top:.75rem"` litter with utility classes (`.mt-3` etc.) — keeps templates skimmable.
+
+### 13.6 Phasing
+
+Done bits: Inter + JetBrains Mono, violet AI accent, sparkle on chat link, four view modes, type chips, density toggles, smart-add input, sidebar `+` shortcut.
+
+**Phase 16 — Reading & navigation** (highest UX delta):
+- Right-pane preview drawer
+- Keyboard navigation (`keys.js`)
+- Sticky filter row
+- Hover lift on cards
+- Reader-mode controls (font/width/theme)
+
+**Phase 17 — Affordances**:
+- Right-click context menu
+- Toasts
+- Better empty states
+- Topbar polish (logo glyph, ⌘K hint, status dot pulse)
+
+**Phase 18 — Personalisation**:
+- Per-collection cover image
+- Tag chip refresh
+- Visual-token system rollout (replace inline styles)
+
+**Phase 19 — AI surface**:
+- ✦ Ask button inside the search input
+- Command palette (⌘K) — search + ask + actions in one place
+
+### 13.7 Acceptance for "feels as good as Raindrop"
+
+- A first-time visitor lands on `/`, sees no ASCII-art, no jargon, just a card with "Create your first collection" + a single input.
+- Adding a URL takes ≤ 2 keystrokes after focus (paste + enter).
+- Switching from grid to moodboard never jolts the layout (transitions are sub-100ms, no scroll jump).
+- Pressing `?` shows every shortcut.
+- Chat opens with one prompt suggestion already typed; sending it feels like talking to a peer, not a CLI.
+- Dark mode is the default; light mode is equally readable.
+

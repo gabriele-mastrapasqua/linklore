@@ -85,6 +85,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /c/{slug}", s.handleDeleteCollection)
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
+	mux.HandleFunc("POST /c/{slug}/add", s.handleSmartAdd)
 	mux.HandleFunc("POST /c/{slug}/rename", s.handleRenameCollection)
 	mux.HandleFunc("POST /c/{slug}/layout", s.handleSetLayout)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
@@ -543,6 +544,96 @@ func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {
 		"AllCollections": allCollections,
 		"KindFilter":     kindFilter,
 	})
+}
+
+// looksLikeFeedURL is a cheap heuristic — no network — that decides
+// whether a pasted URL probably points at an RSS/Atom feed. Used by
+// handleSmartAdd to route "feed-shaped" URLs into the subscribe path
+// while everything else becomes a single link. False negatives just
+// get added as links (user can fix that with the feed card); false
+// positives surface as a "refresh failed: …" inline error and are
+// trivial to clear.
+func looksLikeFeedURL(raw string) bool {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return false
+	}
+	// Drop querystring + fragment for the suffix test.
+	if i := strings.IndexAny(s, "?#"); i > 0 {
+		s = s[:i]
+	}
+	suffixes := []string{
+		".xml", ".atom", ".rss",
+		"/feed", "/feed/", "/rss", "/rss/", "/atom", "/atom/",
+		"/feed.xml", "/rss.xml", "/atom.xml", "/index.xml",
+	}
+	for _, sfx := range suffixes {
+		if strings.HasSuffix(s, sfx) {
+			return true
+		}
+	}
+	return false
+}
+
+// handleSmartAdd is the single entry point for the unified
+// "Add to this collection" input. Pasted URLs that look like an
+// RSS/Atom feed (and only when the collection doesn't already
+// have one) become the collection's feed_url; everything else
+// is added as a regular link. This collapses what used to be two
+// near-identical forms into one.
+func (s *Server) handleSmartAdd(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	raw := strings.TrimSpace(r.PostForm.Get("url"))
+	if raw == "" {
+		http.Error(w, "url required", http.StatusBadRequest)
+		return
+	}
+
+	// Feed path: only when the user pasted something feed-shaped AND
+	// this collection isn't already feed-backed. Refusing to overwrite
+	// an existing feed_url avoids "I added a video, why did my RSS
+	// subscription disappear?" support tickets.
+	if col.FeedURL == "" && looksLikeFeedURL(raw) {
+		feedURL, derr := s.feedImport.Discover(r.Context(), raw)
+		if derr == nil && feedURL != "" {
+			if err := s.store.SetCollectionFeed(r.Context(), col.ID, feedURL); err == nil {
+				_, _ = s.feedImport.RefreshOne(r.Context(), col.ID)
+				updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				// Re-render the feed card OOB so the URL appears with
+				// the "feed detected" notice; client follows up with a
+				// page reload to pull in the freshly imported links.
+				w.Header().Set("HX-Refresh", "true")
+				s.renderFragment(w, "collection_feed", map[string]any{
+					"Collection":   updated,
+					"DiscoverdMsg": feedURL,
+				})
+				if updated != nil {
+					s.writeCollectionStatsOOB(w, r.Context(), updated)
+				}
+				return
+			}
+		}
+		// Discover failed — fall through and treat as a regular link.
+	}
+
+	link, err := s.store.CreateLink(r.Context(), col.ID, raw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	s.renderFragment(w, "link_row", link)
+	s.writeCollectionStatsOOB(w, r.Context(), col)
+	s.writeEmptyStateOOB(w, true)
 }
 
 func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {

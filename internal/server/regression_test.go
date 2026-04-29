@@ -398,6 +398,103 @@ func TestBulkMove_unknownDestinationRejected(t *testing.T) {
 	}
 }
 
+// ---------- smart-add (unified link / feed input) ----------
+
+// Pasting a regular page URL into the smart-add input creates a link
+// in the collection.
+func TestSmartAdd_pageURLBecomesLink(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	code, _ := postForm(t, ts, "/c/c/add", url.Values{"url": {"https://example.com/article"}})
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), 1, 5, 0)
+	if len(links) != 1 || links[0].URL != "https://example.com/article" {
+		t.Errorf("link not created, got %+v", links)
+	}
+	col, _ := st.GetCollectionBySlug(context.Background(), "c")
+	if col.FeedURL != "" {
+		t.Errorf("regular URL incorrectly set as feed: %q", col.FeedURL)
+	}
+}
+
+// A URL that ends in /feed.xml SHOULD be promoted to a feed
+// subscription when the collection doesn't already have one.
+// We can't actually verify the feed contents (no real upstream)
+// but the dispatch logic itself can be checked: with an unreachable
+// host the discover step fails and the URL falls through to the
+// link-creation path. That's fine for unit-testing the dispatcher.
+func TestSmartAdd_unreachableFeedFallsBackToLink(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	// 127.0.0.1:1 is guaranteed-refused; Discover fails, we add as link.
+	code, _ := postForm(t, ts, "/c/c/add", url.Values{"url": {"http://127.0.0.1:1/feed.xml"}})
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	links, _ := st.ListLinksByCollection(context.Background(), 1, 5, 0)
+	if len(links) != 1 {
+		t.Errorf("expected fallback link, got %d links", len(links))
+	}
+}
+
+func TestSmartAdd_emptyURLRejected(t *testing.T) {
+	ts, st := newTestServer(t)
+	st.CreateCollection(context.Background(), "c", "C", "")
+	code, _ := postForm(t, ts, "/c/c/add", url.Values{"url": {""}})
+	if code != 400 {
+		t.Errorf("status %d, want 400", code)
+	}
+}
+
+func TestLooksLikeFeedURL(t *testing.T) {
+	yes := []string{
+		"https://example.com/feed",
+		"https://example.com/feed/",
+		"https://example.com/rss",
+		"https://example.com/atom.xml",
+		"https://example.com/index.xml",
+		"https://example.com/post.xml",
+		"https://example.com/path/atom",
+		"https://example.com/feed?x=1",
+		"https://example.com/feed.xml#section",
+	}
+	for _, u := range yes {
+		if !looksLikeFeedURL(u) {
+			t.Errorf("looksLikeFeedURL(%q) = false, want true", u)
+		}
+	}
+	no := []string{
+		"https://example.com",
+		"https://example.com/article",
+		"https://example.com/blog/post",
+		"https://example.com/feed-section/post", // suffix on non-final segment
+		"",
+	}
+	for _, u := range no {
+		if looksLikeFeedURL(u) {
+			t.Errorf("looksLikeFeedURL(%q) = true, want false", u)
+		}
+	}
+}
+
+// ---------- sidebar add affordance ----------
+
+func TestSidebar_hasNewCollectionShortcut(t *testing.T) {
+	ts, _ := newTestServer(t)
+	_, body := get(t, ts, "/")
+	if !strings.Contains(body, `class="sidebar-add"`) {
+		t.Errorf("sidebar + button missing")
+	}
+	if !strings.Contains(body, `href="/#new-collection"`) {
+		t.Errorf("sidebar + button doesn't link to the create form")
+	}
+	if !strings.Contains(body, `id="new-collection"`) {
+		t.Errorf("create-form anchor target missing on home page")
+	}
+}
+
 // ---------- type classifier in flight ----------
 
 func TestCreateLink_classifiesPDFAsDocument(t *testing.T) {

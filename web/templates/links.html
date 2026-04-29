@@ -25,13 +25,18 @@
 	<small class="muted" id="rename-hint-{{.Collection.ID}}" hidden>URL slug is derived from the name; if the new slug is taken, a numeric suffix is appended.</small>
 
 	{{template "collection_stats" .}}
-	<form class="inline" style="margin-top:.75rem"
-	      hx-post="/c/{{.Collection.Slug}}/links"
+	<form class="inline smart-add" style="margin-top:.75rem"
+	      hx-post="/c/{{.Collection.Slug}}/add"
 	      hx-target="#links-list" hx-swap="afterbegin"
 	      hx-on::after-request="this.reset()">
-		<input type="url" name="url" placeholder="https://…" required>
-		<button type="submit">Add link</button>
+		<input type="url" name="url" placeholder="Paste a link or RSS/Atom feed URL — linklore picks the right action"
+		       required autocomplete="off">
+		<button type="submit">Add</button>
 	</form>
+	<small class="muted" style="display:block;margin-top:.25rem;font-size:.75rem">
+		Single URL → saved as a link. Feed-shaped URL (<code>.xml</code>,
+		<code>/feed</code>, <code>/rss</code>, …) → subscribed as RSS for the whole collection.
+	</small>
 
 	<div class="kind-filter" style="margin-top:.5rem;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">
 		<span class="muted" style="font-size:.8rem">type:</span>

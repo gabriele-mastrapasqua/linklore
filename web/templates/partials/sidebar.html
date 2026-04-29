@@ -1,7 +1,10 @@
 {{define "sidebar"}}
 <aside class="sidebar">
 	<div class="sidebar-section">
-		<div class="sidebar-title">Collections</div>
+		<div class="sidebar-title-row">
+			<span class="sidebar-title">Collections</span>
+			<a href="/#new-collection" class="sidebar-add" title="new collection">+</a>
+		</div>
 		<nav id="sidebar-collections">
 			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">All</a>
 			{{range .Sidebar}}

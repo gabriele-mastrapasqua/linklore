@@ -151,7 +151,8 @@
       "Bash(sort -t: -k2 -nr)",
       "Bash(make cover-pkg *)",
       "Bash(make cover *)",
-      "Bash(sort -k3 -n)"
+      "Bash(sort -k3 -n)",
+      "Bash(curl -s -o /dev/null -w \"POST page-url -> %{http_code}\\\\n\" -X POST -d 'url=https://example.com/article' http://127.0.0.1:8080/c/fullone/add)"
     ]
   }
 }

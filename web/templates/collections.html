@@ -1,9 +1,11 @@
 {{define "content"}}
-<section class="card">
+<section class="card" id="new-collection">
 	<h2>Collections</h2>
 	<form class="inline" hx-post="/collections" hx-target="#collections-list" hx-swap="beforeend"
 	      hx-on::after-request="this.reset()">
-		<input type="text" name="name" placeholder="Collection name" required>
+		<input type="text" name="name" placeholder="Collection name" required
+		       autofocus
+		       onload="if(location.hash==='#new-collection')this.focus()">
 		<button type="submit">Create</button>
 	</form>
 	<div style="margin-top:.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">

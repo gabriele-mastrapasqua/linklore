@@ -132,13 +132,24 @@ main {
 	overflow-y: auto;
 }
 .sidebar-section { margin-bottom: 1rem; }
+.sidebar-title-row {
+	display: flex; align-items: center; justify-content: space-between;
+	margin: 0 .6rem .4rem;
+}
 .sidebar-title {
 	font-size: .75rem;
 	text-transform: uppercase;
 	color: var(--muted);
 	letter-spacing: .05em;
-	margin: 0 .6rem .4rem;
 }
+.sidebar-add {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 22px; height: 22px; line-height: 1; font-size: 1.05rem;
+	color: var(--muted); border: 1px solid var(--border); border-radius: 6px;
+	background: var(--bg); text-decoration: none; cursor: pointer;
+	transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.sidebar-add:hover { color: var(--text); background: var(--card); border-color: var(--accent); }
 .sidebar nav { display: flex; flex-direction: column; }
 .sidebar-link {
 	display: flex; align-items: center; gap: .4rem;
@@ -285,6 +296,20 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 	background: var(--bg); color: var(--text); border: 1px solid var(--border);
 	border-radius: 6px; padding: 0.25rem 0.4rem; font-size: 0.85rem;
 }
+
+/* Smart-add: emphasised single input that handles both link + feed. */
+.smart-add input[type="url"] {
+	border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+	background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+.smart-add input[type="url"]:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Feed status card sits a bit subdued — it's secondary info now. */
+.feed-card { background: color-mix(in srgb, var(--accent) 4%, var(--card)); }
 
 .muted { color: var(--muted); }
 .empty { padding: 2rem; text-align: center; color: var(--muted); }
