@@ -34,9 +34,15 @@ Single binary, single SQLite file. No accounts, no SaaS, no telemetry.
 - **Bookmarklet** at `/bookmarklet` that POSTs to `/api/links`.
 
 ### Organize
-- **Collections + tags** — drag-and-drop reorder within a collection, drag
-  onto a sidebar collection to move across, bulk select + move + delete
-  toolbar.
+- **Collections + tags** with drag-and-drop reorder.
+- **Drag-and-drop** — drop a row onto a sidebar collection to move it
+  across; insertion bar previews the destination index (vertical bar
+  in grid layout, horizontal in list/headlines/moodboard).
+- **Bulk select toolbar** — checkbox per row, sticky bar with
+  Move-to-collection and Delete; or click anywhere on a row body to
+  toggle.
+- **Sidebar `+` shortcut** next to the "Collections" header — jumps
+  straight to the create form, focused.
 - **Four view modes** per collection: list / grid / headlines / moodboard
   (Pinterest-style masonry). Persisted server-side.
 - **Density toggles** — show/hide titles / summaries / badges. Saved per

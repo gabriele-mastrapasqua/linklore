@@ -557,82 +557,107 @@ body.density-no-title   .link-row .title   { display: none; }
 
 .drawer {
 	position: fixed; top: 0; right: 0; height: 100vh;
-	width: min(720px, 92vw);
+	width: min(820px, 96vw);
 	background: var(--card); color: var(--text);
 	border-left: 1px solid var(--border);
 	box-shadow: -8px 0 24px rgba(0,0,0,.18);
 	z-index: 100;
 	transform: translateX(100%);
 	transition: transform .22s ease;
-	overflow-y: auto; padding: var(--space-4) var(--space-6);
+	overflow-y: auto;
+	/* Generous outer margins so content doesn't hug the edges. */
+	padding: var(--space-6) clamp(2rem, 5vw, 3.5rem) var(--space-6);
 }
 .drawer.drawer-open { transform: translateX(0); }
 
 .drawer-head {
-	display: flex; align-items: flex-start; gap: var(--space-3);
-	margin-bottom: var(--space-3);
+	display: flex; align-items: flex-start; gap: var(--space-4);
+	margin-bottom: var(--space-4);
 }
 .drawer-title {
-	flex: 1; font-size: 1.15rem; font-weight: 600; line-height: 1.35;
-	display: flex; align-items: center; gap: var(--space-2);
+	flex: 1; font-size: 1.25rem; font-weight: 700; line-height: 1.3;
+	display: flex; align-items: flex-start; gap: var(--space-2);
 }
-.drawer-title .preview-favicon { width: 18px; height: 18px; flex-shrink: 0; }
+.drawer-title .preview-favicon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
 .drawer-deeplink { color: var(--text); text-decoration: none; }
 .drawer-deeplink:hover { color: var(--accent); }
 .drawer-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
 .drawer-toolbar {
-	display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
-	padding: var(--space-2) 0;
+	display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
+	padding: var(--space-3) 0;
 	border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-	font-size: .8rem; margin-bottom: var(--space-3);
+	font-size: .8rem; margin-bottom: var(--space-4);
 }
-.drawer-toolbar .muted { font-size: .8rem; }
+.drawer-toolbar .muted { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
 
-.drawer-meta { font-size: .8rem; margin-bottom: var(--space-3); }
+.drawer-meta { font-size: .82rem; margin-bottom: var(--space-4); line-height: 1.6; }
 .drawer-meta .drawer-url { color: var(--muted); word-break: break-all; }
 
 .drawer-summary {
-	background: color-mix(in srgb, var(--accent-ai) 8%, var(--card));
+	background: color-mix(in srgb, var(--accent-ai) 7%, var(--card));
 	border: 1px solid color-mix(in srgb, var(--accent-ai) 22%, var(--border));
-	border-radius: var(--radius-md); padding: var(--space-3);
-	margin-bottom: var(--space-4);
+	border-radius: var(--radius-md); padding: var(--space-4) var(--space-4);
+	margin-bottom: var(--space-6);
 }
-.drawer-summary p { margin: var(--space-2) 0 0; line-height: 1.55; }
+.drawer-summary p { margin: var(--space-2) 0 0; line-height: 1.6; }
 
 .drawer-loading { padding: 2rem; text-align: center; }
 
-/* Reader article: width / font-size / theme are driven by data-attrs
-   on .drawer (set by drawer.js + persisted to localStorage). */
+/* Reader article: width / font-size / theme driven by data-attrs on
+   .drawer (set by drawer.js + persisted). The article column is
+   centred inside the drawer's content area for that "page on a desk"
+   feel rather than a wall of text against the edge. */
 .drawer-article {
-	font-size: 1rem; line-height: 1.65;
-	max-width: 68ch; margin: 0 auto;
+	font-size: 1.02rem; line-height: 1.7;
+	max-width: 68ch; margin: var(--space-3) auto 0;
 }
-.drawer-article h1, .drawer-article h2, .drawer-article h3 { line-height: 1.3; margin-top: 1.5em; }
-.drawer-article p, .drawer-article li { margin: .8em 0; }
+.drawer-article h1, .drawer-article h2, .drawer-article h3 {
+	line-height: 1.3; margin: 1.8em 0 .6em;
+}
+.drawer-article p, .drawer-article li { margin: 1em 0; }
+.drawer-article ul, .drawer-article ol { padding-left: 1.5em; }
 .drawer-article a { color: var(--accent); }
-.drawer-article img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
-.drawer-article pre { background: var(--code-bg); padding: var(--space-3); border-radius: var(--radius-md); overflow-x: auto; }
+.drawer-article img {
+	display: block; max-width: 100%; height: auto;
+	border-radius: var(--radius-md); margin: 1.5em auto;
+	box-shadow: var(--shadow-1);
+}
+.drawer-article blockquote {
+	margin: 1.4em 0; padding: .25em 1em;
+	border-left: 3px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+	color: var(--muted);
+}
+.drawer-article pre {
+	background: var(--code-bg); padding: var(--space-3);
+	border-radius: var(--radius-md); overflow-x: auto;
+}
 .drawer-article code { font-family: var(--ff-mono); font-size: .9em; }
+.drawer-article hr {
+	border: 0; border-top: 1px solid var(--border); margin: 2em 0;
+}
 
-.drawer[data-size="s"] .drawer-article { font-size: .9rem; }
-.drawer[data-size="m"] .drawer-article { font-size: 1rem; }
-.drawer[data-size="l"] .drawer-article { font-size: 1.15rem; }
+.drawer[data-size="s"] .drawer-article { font-size: .92rem; line-height: 1.65; }
+.drawer[data-size="m"] .drawer-article { font-size: 1.02rem; line-height: 1.7; }
+.drawer[data-size="l"] .drawer-article { font-size: 1.15rem; line-height: 1.75; }
 
 .drawer[data-width="narrow"] .drawer-article { max-width: 56ch; }
 .drawer[data-width="medium"] .drawer-article { max-width: 68ch; }
-.drawer[data-width="wide"]   .drawer-article { max-width: 88ch; }
+.drawer[data-width="wide"]   .drawer-article { max-width: 92ch; }
 
-/* Theme overrides for the article only. The drawer-head and toolbar
-   keep the site palette so controls stay legible. */
+/* Theme overrides for the article only. Drawer chrome (head/toolbar)
+   keeps the site palette so controls stay legible against the cover. */
 .drawer[data-theme="light"] .drawer-article { color: #111; background: transparent; }
 .drawer[data-theme="dark"]  .drawer-article { color: #ecf0f6; }
-.drawer[data-theme="sepia"] .drawer-article { color: #4b3c1f; }
-.drawer[data-theme="sepia"] {
-	--drawer-paper: #f6efe1;
+.drawer[data-theme="sepia"] .drawer-article { color: #3e2f15; }
+.drawer[data-theme="sepia"] { --drawer-paper: #f6eedb; }
+.drawer[data-theme="sepia"] .drawer-article {
+	background: var(--drawer-paper);
+	padding: 1.5rem clamp(1.25rem, 3vw, 2rem);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-1);
 }
-.drawer[data-theme="sepia"] .drawer-article { background: var(--drawer-paper); padding: 1rem 1.25rem; border-radius: var(--radius-md); }
-.drawer[data-theme="sepia"] .drawer-article a { color: #2563eb; }
+.drawer[data-theme="sepia"] .drawer-article a { color: #1d4ed8; }
 
 /* Toasts. Stacked bottom-right; slide in from below. */
 .toasts {
@@ -683,18 +708,25 @@ body.density-no-title   .link-row .title   { display: none; }
 .palette {
 	position: fixed; inset: 0; z-index: 200;
 	background: rgba(0, 0, 0, .35);
-	display: flex; justify-content: center; padding-top: 12vh;
+	display: flex; justify-content: center;
+	padding: 8vh 1rem 4vh;
 	cursor: pointer;
 }
 .palette-card {
+	/* The card is a vertical flex container constrained to the
+	   viewport so the bottom toolbar never falls off-screen. The
+	   list is the only flex-grow child; if the input or footer
+	   ever change height, the list absorbs the difference. */
 	width: min(620px, 92vw); cursor: default;
+	max-height: calc(100vh - 12vh);
+	display: flex; flex-direction: column; min-height: 0;
 	background: var(--card); color: var(--text);
 	border: 1px solid var(--border); border-radius: var(--radius-lg);
 	box-shadow: var(--shadow-2);
 	overflow: hidden;
 }
 .palette-input {
-	width: 100%; box-sizing: border-box;
+	width: 100%; box-sizing: border-box; flex-shrink: 0;
 	padding: var(--space-3) var(--space-4); font-size: 1rem;
 	border: 0; border-bottom: 1px solid var(--border);
 	background: transparent; color: var(--text); outline: none;
@@ -702,7 +734,7 @@ body.density-no-title   .link-row .title   { display: none; }
 }
 .palette-list {
 	list-style: none; margin: 0; padding: var(--space-1);
-	max-height: 60vh; overflow-y: auto;
+	flex: 1 1 auto; min-height: 0; overflow-y: auto;
 }
 .palette-item {
 	display: flex; align-items: center; justify-content: space-between;
