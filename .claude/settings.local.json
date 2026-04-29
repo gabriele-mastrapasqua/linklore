@@ -150,7 +150,8 @@
       "Bash(go tool *)",
       "Bash(sort -t: -k2 -nr)",
       "Bash(make cover-pkg *)",
-      "Bash(make cover *)"
+      "Bash(make cover *)",
+      "Bash(sort -k3 -n)"
     ]
   }
 }

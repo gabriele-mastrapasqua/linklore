@@ -226,6 +226,52 @@ func TestHelpFlagSucceeds(t *testing.T) {
 
 // ---------- runAdd (subprocess) ----------
 
+// TestRunReindex_subprocessLogsAndExits builds the binary and invokes
+// the reindex stub, expecting clean exit + the expected log line.
+func TestRunReindex_subprocessLogsAndExits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping subprocess build in -short mode")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "linklore")
+	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	cmd := exec.Command(bin, "reindex")
+	cmd.Env = append(os.Environ(),
+		"LINKLORE_DB_PATH="+filepath.Join(dir, "test.db"),
+		"LINKLORE_LLM_BACKEND=none",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("reindex: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "reindex stub") {
+		t.Errorf("expected stub log line, got: %s", out)
+	}
+}
+
+// TestRunAdd_subprocessNoArgsFails covers the error branch in runAdd
+// without involving in-process log.Fatal.
+func TestRunAdd_subprocessNoArgsFails(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping subprocess build in -short mode")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "linklore")
+	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	cmd := exec.Command(bin, "add") // no URL arg
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Errorf("expected non-zero exit when URL is missing, got: %s", out)
+	}
+	if !strings.Contains(string(out), "usage: linklore add URL") {
+		t.Errorf("missing usage hint: %s", out)
+	}
+}
+
 // TestRunAdd_subprocessQueuesLink builds the binary, runs `linklore add`
 // against a fresh database path, and asserts a row materialised. This
 // is the only end-to-end check for the CLI ingest path — runAdd uses
