@@ -30,6 +30,29 @@
 		<input type="url" name="url" placeholder="https://…" required>
 		<button type="submit">Add link</button>
 	</form>
+
+	<div class="layout-row" style="margin-top:.75rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+		<span class="muted" style="font-size:.8rem">view:</span>
+		<div id="layout-switch" class="seg-switch" data-current="{{.Collection.Layout}}">
+			{{$slug := .Collection.Slug}}
+			{{$cur := .Collection.Layout}}
+			{{range $name := list "list" "grid" "headlines" "moodboard"}}
+				<button type="button" class="seg-opt {{if eq $cur $name}}active{{end}}"
+				        data-layout="{{$name}}"
+				        hx-post="/c/{{$slug}}/layout"
+				        hx-vals='{"layout":"{{$name}}"}'
+				        hx-swap="none"
+				        onclick="linklore.setLayout('{{$name}}')">{{$name}}</button>
+			{{end}}
+		</div>
+		<span class="muted" style="font-size:.8rem;margin-left:auto">density:</span>
+		<button type="button" class="seg-opt density-toggle" data-density="title"
+		        onclick="linklore.toggleDensity('title')">titles</button>
+		<button type="button" class="seg-opt density-toggle" data-density="summary"
+		        onclick="linklore.toggleDensity('summary')">summary</button>
+		<button type="button" class="seg-opt density-toggle" data-density="badges"
+		        onclick="linklore.toggleDensity('badges')">badges</button>
+	</div>
 </section>
 
 {{template "collection_feed" (dict "Collection" .Collection)}}
@@ -55,7 +78,7 @@
 	<button type="button" class="link-button" onclick="linklore.bulkClear()">clear</button>
 </div>
 
-<div id="links-list">
+<div id="links-list" class="layout-{{.Collection.Layout}}">
 	<div id="links-empty"{{if .Links}} hidden{{end}}>
 		<div class="empty">No links yet.</div>
 	</div>

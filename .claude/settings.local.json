@@ -137,7 +137,11 @@
       "WebFetch(domain:raindrop.io)",
       "WebFetch(domain:help.raindrop.io)",
       "WebFetch(domain:pricing.raindrop.page)",
-      "Bash(grep -n \"</script>\\\\|^</div>\\\\|^{{end}}$\" /Users/gabrielemastrapasqua/source/personal/linklore/web/templates/chat.html)"
+      "Bash(grep -n \"</script>\\\\|^</div>\\\\|^{{end}}$\" /Users/gabrielemastrapasqua/source/personal/linklore/web/templates/chat.html)",
+      "Bash(git reset *)",
+      "Bash(curl -s -X POST -d \"layout=grid\" http://127.0.0.1:8080/c/fullone/layout -i)",
+      "Bash(curl -s http://127.0.0.1:8080/c/fullone)",
+      "Bash(curl -s -X POST -d \"layout=list\" http://127.0.0.1:8080/c/fullone/layout -o /dev/null -w \"%{http_code}\\\\n\")"
     ]
   }
 }

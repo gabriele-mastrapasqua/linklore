@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
 	mux.HandleFunc("POST /c/{slug}/rename", s.handleRenameCollection)
+	mux.HandleFunc("POST /c/{slug}/layout", s.handleSetLayout)
 	mux.HandleFunc("GET /c/{slug}/feed.xml", s.handleFeed)
 	mux.HandleFunc("GET /c/{slug}/stats", s.handleCollectionStats)
 	mux.HandleFunc("POST /c/{slug}/feed", s.handleSetFeed)               // legacy alias
@@ -171,6 +172,28 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 	}); err == nil {
 		fmt.Fprintf(w, "\n<div hx-swap-oob=\"beforeend:#sidebar-collections\">%s</div>", sb.String())
 	}
+}
+
+// handleSetLayout flips a collection between list/grid/headlines/
+// moodboard view modes. Persists the choice; the actual class swap
+// happens client-side (a tiny script driven by hx-on::after-request)
+// so we don't have to re-render the whole list.
+func (s *Server) handleSetLayout(w http.ResponseWriter, r *http.Request) {
+	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	layout := strings.TrimSpace(r.PostForm.Get("layout"))
+	if err := s.store.SetCollectionLayout(r.Context(), col.ID, layout); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleDeleteCollection wipes the collection and every link inside

@@ -98,6 +98,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		"collections": {
 			{"feed_url", "TEXT"},
 			{"last_checked_at", "INTEGER"},
+			// View mode for the collection page. One of:
+			// list (default) | grid | headlines | moodboard.
+			{"layout", "TEXT NOT NULL DEFAULT 'list'"},
 		},
 	}
 	for table, cols := range addColumns {
@@ -123,6 +126,7 @@ type Collection struct {
 	Description   string
 	FeedURL       string     // empty when this isn't a feed-backed collection
 	LastCheckedAt *time.Time // last successful feed poll
+	Layout        string     // list | grid | headlines | moodboard (default list)
 	CreatedAt     time.Time
 }
 
@@ -196,7 +200,7 @@ func (s *Store) CreateCollection(ctx context.Context, slug, name, description st
 func (s *Store) GetCollectionBySlug(ctx context.Context, slug string) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
 		   FROM collections WHERE slug = ?`, slug)
 	return scanCollection(row.Scan)
 }
@@ -205,7 +209,7 @@ func scanCollection(scan func(...any) error) (*Collection, error) {
 	var c Collection
 	var ts int64
 	var lastChecked sql.NullInt64
-	err := scan(&c.ID, &c.Slug, &c.Name, &c.Description, &c.FeedURL, &lastChecked, &ts)
+	err := scan(&c.ID, &c.Slug, &c.Name, &c.Description, &c.FeedURL, &lastChecked, &c.Layout, &ts)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -223,7 +227,7 @@ func scanCollection(scan func(...any) error) (*Collection, error) {
 func (s *Store) ListCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
 		   FROM collections ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -254,7 +258,7 @@ type CollectionStat struct {
 func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
-		       COALESCE(c.feed_url,''), c.last_checked_at, c.created_at,
+		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), c.created_at,
 		       COUNT(l.id)                                                  AS total,
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END)           AS summarized,
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END) AS in_progress,
@@ -273,7 +277,7 @@ func (s *Store) ListCollectionsWithStats(ctx context.Context) ([]CollectionStat,
 		var ts int64
 		var lastChecked sql.NullInt64
 		if err := rows.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
-			&cs.FeedURL, &lastChecked, &ts,
+			&cs.FeedURL, &lastChecked, &cs.Layout, &ts,
 			&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 			return nil, err
 		}
@@ -294,7 +298,7 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 	var ts int64
 	row := s.db.QueryRowContext(ctx, `
 		SELECT c.id, c.slug, c.name, COALESCE(c.description,''),
-		       COALESCE(c.feed_url,''), c.last_checked_at, c.created_at,
+		       COALESCE(c.feed_url,''), c.last_checked_at, COALESCE(c.layout,'list'), c.created_at,
 		       COUNT(l.id),
 		       COUNT(CASE WHEN l.status = 'summarized' THEN 1 END),
 		       COUNT(CASE WHEN l.status = 'pending' THEN 1 END),
@@ -305,7 +309,7 @@ func (s *Store) CollectionStatsByID(ctx context.Context, id int64) (CollectionSt
 		 GROUP BY c.id`, id)
 	var lastChecked sql.NullInt64
 	if err := row.Scan(&cs.ID, &cs.Slug, &cs.Name, &cs.Description,
-		&cs.FeedURL, &lastChecked, &ts,
+		&cs.FeedURL, &lastChecked, &cs.Layout, &ts,
 		&cs.Total, &cs.Summarized, &cs.InProgress, &cs.Failed); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return CollectionStat{}, ErrNotFound
@@ -440,9 +444,29 @@ func (s *Store) RenameCollection(ctx context.Context, id int64, newSlug, newName
 func (s *Store) GetCollectionBySlugByID(ctx context.Context, id int64) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
 		   FROM collections WHERE id = ?`, id)
 	return scanCollection(row.Scan)
+}
+
+// SetCollectionLayout updates the view mode for a collection.
+// Accepts: list | grid | headlines | moodboard. Anything else returns
+// an error before the SQL fires so we don't silently store junk.
+func (s *Store) SetCollectionLayout(ctx context.Context, id int64, layout string) error {
+	switch layout {
+	case "list", "grid", "headlines", "moodboard":
+	default:
+		return fmt.Errorf("unsupported layout %q", layout)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET layout = ? WHERE id = ?`, layout, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetCollectionFeed assigns or clears the feed_url on a collection.
@@ -486,7 +510,7 @@ func (s *Store) CreateLinkIfMissing(ctx context.Context, collectionID int64, url
 func (s *Store) ListFeedCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, slug, name, COALESCE(description,''),
-		        COALESCE(feed_url,''), last_checked_at, created_at
+		        COALESCE(feed_url,''), last_checked_at, COALESCE(layout,'list'), created_at
 		   FROM collections WHERE feed_url IS NOT NULL AND feed_url != ''
 		   ORDER BY name`)
 	if err != nil {

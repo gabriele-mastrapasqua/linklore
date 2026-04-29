@@ -27,6 +27,7 @@ func funcMap() template.FuncMap {
 			}
 			return out, nil
 		},
+		"list": func(values ...any) []any { return values },
 	}
 }
 
