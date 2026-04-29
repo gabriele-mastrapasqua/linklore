@@ -600,6 +600,10 @@ body.previews-off .preview { display: none !important; }
 	border-radius: 4px;
 }
 .link-button:hover { color: var(--text); background: var(--badge-bg); }
+.link-button.danger { color: var(--danger); }
+.link-button.danger:hover { color: #fff; background: var(--danger); }
+
+.collection-card-head { display: flex; align-items: flex-start; gap: .25rem; }
 
 /* Tiny chip used as the drag image so the user moves a label around the
    layout instead of an entire card. Built off-screen by dnd.js then

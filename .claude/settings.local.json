@@ -124,7 +124,16 @@
       "Bash(curl -sL --http2 -o /dev/null -w \"%{http_code}\\\\n\" \"https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw\")",
       "Bash(curl -sLI -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64; rv:120.0\\) Gecko/20100101 Firefox/120.0' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8' -H 'Accept-Language: en-US,en;q=0.5' -H 'Accept-Encoding: gzip, deflate, br' 'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw')",
       "Bash(xargs -r kill)",
-      "Bash(curl -s -X POST http://127.0.0.1:8080/c/ai-video/feed/refresh)"
+      "Bash(curl -s -X POST http://127.0.0.1:8080/c/ai-video/feed/refresh)",
+      "Bash(curl -s -X POST -d \"name=smoketest\" http://127.0.0.1:8080/collections)",
+      "Bash(curl -s \"http://127.0.0.1:8080/\")",
+      "Bash(curl -s -X POST -d \"name=smoketest2\" http://127.0.0.1:8080/collections)",
+      "Bash(curl -s -X POST -H \"HX-Request: true\" -d \"name=cosmico-renamed\" http://127.0.0.1:8080/c/cosmico/rename -i)",
+      "Bash(curl -s -X POST -d \"name=cosmico\" http://127.0.0.1:8080/c/cosmico-renamed/rename -i)",
+      "Bash(curl -s -X POST -d \"name=temp-rename-test\" http://127.0.0.1:8080/collections)",
+      "Bash(curl -s -X POST -H \"HX-Request: true\" -d \"name=temp-renamed\" http://127.0.0.1:8080/c/temp-rename-test/rename -i)",
+      "Bash(curl -s -X POST -d \"name=temp-final\" http://127.0.0.1:8080/c/temp-renamed/rename -i)",
+      "Bash(curl -s -X DELETE http://127.0.0.1:8080/c/temp-final -o /dev/null -w \"delete=%{http_code}\\\\n\")"
     ]
   }
 }

@@ -374,9 +374,30 @@ func (s *Store) LinkStatusCounts(ctx context.Context) (LinkStatusCounts, error) 
 	return c, err
 }
 
+// DeleteCollection wipes the collection and every row that references
+// it: link_tags → chunks → links → chat_messages → chat_sessions →
+// collections. FK enforcement is off on this DB so we have to do the
+// cascade manually inside a transaction.
 func (s *Store) DeleteCollection(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM collections WHERE id = ?`, id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	stmts := []string{
+		`DELETE FROM link_tags WHERE link_id IN (SELECT id FROM links WHERE collection_id = ?)`,
+		`DELETE FROM chunks    WHERE link_id IN (SELECT id FROM links WHERE collection_id = ?)`,
+		`DELETE FROM links     WHERE collection_id = ?`,
+		`DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE collection_id = ?)`,
+		`DELETE FROM chat_sessions WHERE collection_id = ?`,
+		`DELETE FROM collections WHERE id = ?`,
+	}
+	for _, q := range stmts {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return fmt.Errorf("delete cascade: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // RenameCollection updates the human-readable name and/or the slug.

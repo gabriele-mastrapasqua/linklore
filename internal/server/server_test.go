@@ -441,9 +441,14 @@ func TestFeedImport_setURL(t *testing.T) {
 func TestFeedImport_refreshErrorsWithoutURL(t *testing.T) {
 	ts, st := newTestServer(t)
 	st.CreateCollection(context.Background(), "rss", "RSS", "")
-	code, _ := postForm(t, ts, "/c/rss/feed/refresh", url.Values{})
-	if code < 400 {
-		t.Errorf("expected 4xx without feed_url, got %d", code)
+	// Refresh now renders upstream errors inline in the feed card
+	// rather than returning 4xx, so HTMX can swap them into the page.
+	code, body := postForm(t, ts, "/c/rss/feed/refresh", url.Values{})
+	if code != 200 {
+		t.Errorf("expected 200 with inline error, got %d", code)
+	}
+	if !strings.Contains(body, "refresh failed") {
+		t.Errorf("expected 'refresh failed' in body, got: %s", body)
 	}
 }
 

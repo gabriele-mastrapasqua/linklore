@@ -2,7 +2,7 @@
 <aside class="sidebar">
 	<div class="sidebar-section">
 		<div class="sidebar-title">Collections</div>
-		<nav>
+		<nav id="sidebar-collections">
 			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">All</a>
 			{{range .Sidebar}}
 			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}

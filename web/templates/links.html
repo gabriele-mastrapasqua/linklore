@@ -5,6 +5,10 @@
 		<button type="button" class="link-button"
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').toggleAttribute('hidden')"
 		        title="rename this collection">✎ rename</button>
+		<button type="button" class="link-button danger"
+		        hx-delete="/c/{{.Collection.Slug}}"
+		        hx-confirm="Delete collection “{{.Collection.Name}}” and all {{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}} inside it? This cannot be undone."
+		        title="delete this collection and all its links">✕ delete</button>
 	</div>
 	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
 

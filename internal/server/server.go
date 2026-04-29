@@ -77,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /{$}", s.handleHome)
 	mux.HandleFunc("POST /collections", s.handleCreateCollection)
+	mux.HandleFunc("DELETE /c/{slug}", s.handleDeleteCollection)
 	mux.HandleFunc("GET /c/{slug}", s.handleListLinks)
 	mux.HandleFunc("POST /c/{slug}/links", s.handleCreateLink)
 	mux.HandleFunc("POST /c/{slug}/rename", s.handleRenameCollection)
@@ -159,7 +160,42 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// Wrap in a stat with zero counts so the card template renders correctly.
-	s.renderFragment(w, "collection_card", storage.CollectionStat{Collection: *col})
+	cs := storage.CollectionStat{Collection: *col}
+	s.renderFragment(w, "collection_card", cs)
+	// OOB-append the matching sidebar entry so the left nav stays in
+	// sync without a full page reload.
+	var sb strings.Builder
+	if err := s.r.partials.ExecuteTemplate(&sb, "sidebar_collection_entry", map[string]any{
+		"Cs": cs, "ActiveSlug": "",
+	}); err == nil {
+		fmt.Fprintf(w, "\n<div hx-swap-oob=\"beforeend:#sidebar-collections\">%s</div>", sb.String())
+	}
+}
+
+// handleDeleteCollection wipes the collection and every link inside
+// it. If the request was issued from the collection's own page we
+// respond with HX-Redirect so the browser navigates away from the
+// now-404 URL; otherwise we OOB-remove the matching sidebar entry and
+// the (optional) collection card on the home page.
+func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	col, err := s.store.GetCollectionBySlug(r.Context(), slug)
+	if err != nil {
+		s.notFound(w, err)
+		return
+	}
+	if err := s.store.DeleteCollection(r.Context(), col.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if strings.Contains(r.Header.Get("HX-Current-URL"), "/c/"+slug) {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<a id="sidebar-collection-%d" hx-swap-oob="delete"></a>`, col.ID)
+	fmt.Fprintf(w, `<div id="collection-%d" hx-swap-oob="delete"></div>`, col.ID)
 }
 
 // uniqueSlugFromName turns a free-form name into a valid slug and
@@ -892,8 +928,16 @@ func (s *Server) handleRenameCollection(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("HX-Redirect", "/c/"+finalSlug)
-	http.Redirect(w, r, "/c/"+finalSlug, http.StatusSeeOther)
+	target := "/c/" + finalSlug
+	// HTMX clients: HX-Redirect navigates the whole page. We must NOT
+	// also write a 303 body, otherwise HTMX swaps the redirected page
+	// into the form target — that's the "iframe inside the page" bug.
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // handleSetFeed assigns or clears collection.feed_url. Empty value

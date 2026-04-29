@@ -1,6 +1,12 @@
 {{define "collection_card"}}
-<div class="card" id="collection-{{.ID}}">
-	<h3 style="margin:0 0 .25rem 0"><a href="/c/{{.Slug}}">{{.Name}}</a></h3>
+<div class="card collection-card" id="collection-{{.ID}}">
+	<div class="collection-card-head">
+		<h3 style="margin:0 0 .25rem 0;flex:1"><a href="/c/{{.Slug}}">{{.Name}}</a></h3>
+		<button type="button" class="link-button danger"
+		        hx-delete="/c/{{.Slug}}"
+		        hx-confirm="Delete collection “{{.Name}}” and all {{.Total}} link{{if ne .Total 1}}s{{end}} inside it? This cannot be undone."
+		        title="delete this collection and all its links">✕</button>
+	</div>
 	<div class="muted" style="font-size:.85rem">/{{.Slug}}{{if .Description}} · {{.Description}}{{end}}</div>
 	<div class="badges" style="margin-top:.4rem">
 		<span class="badge">{{.Total}} link{{if ne .Total 1}}s{{end}}</span>
