@@ -221,6 +221,41 @@ func applyEnv(c *Config) {
 	}
 }
 
+// SaveYAML writes the current config back to path. Re-marshals the
+// whole struct via gopkg.in/yaml.v3 and writes atomically (write to
+// .tmp, then rename). Comment preservation is intentionally NOT
+// attempted for v1 — keeping it simple beats a half-working diff.
+//
+// The directory is created if it doesn't exist (mode 0o755). The
+// resulting file is mode 0o600 because it can carry an api_key.
+func (c Config) SaveYAML(path string) error {
+	if path == "" {
+		return fmt.Errorf("save config: empty path")
+	}
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	dir := path
+	if i := strings.LastIndexAny(dir, "/\\"); i >= 0 {
+		dir = dir[:i]
+	} else {
+		dir = "."
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.Server.Addr == "" {
 		return fmt.Errorf("server.addr required")

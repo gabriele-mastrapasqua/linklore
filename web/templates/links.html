@@ -2,12 +2,10 @@
 {{if .Collection.CoverURL}}
 <div class="collection-banner" style="background-image: url('{{.Collection.CoverURL}}')"></div>
 {{end}}
+<!-- cover URL is set via the right-click "Set cover…" menu (ctxmenu.js) — kept off this page to keep the header tidy -->
 <section class="card">
 	<div class="hflex">
 		<h2 class="hflex-fill">{{.Collection.Name}}</h2>
-		<button type="button" class="link-button"
-		        onclick="document.getElementById('cover-{{.Collection.ID}}').toggleAttribute('hidden')"
-		        title="set or clear the banner image">🖼 cover</button>
 		<button type="button" class="link-button"
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').toggleAttribute('hidden')"
 		        title="rename this collection">✎ rename</button>
@@ -29,15 +27,6 @@
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
 	</form>
 	<small class="muted" id="rename-hint-{{.Collection.ID}}" hidden>URL slug is derived from the name; if the new slug is taken, a numeric suffix is appended.</small>
-
-	<form id="cover-{{.Collection.ID}}" class="inline" hidden style="margin-top:.5rem"
-	      hx-post="/c/{{.Collection.Slug}}/cover">
-		<input type="url" name="url" value="{{.Collection.CoverURL}}"
-		       placeholder="https://… (paste a banner image URL — empty clears)">
-		<button type="submit">Save cover</button>
-		<button type="button"
-		        onclick="document.getElementById('cover-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
-	</form>
 
 	{{template "collection_stats" .}}
 	<form class="inline smart-add" style="margin-top:.75rem"

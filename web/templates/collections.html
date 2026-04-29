@@ -1,39 +1,47 @@
 {{define "content"}}
 <section class="card" id="new-collection">
-	<h2>Collections</h2>
+	<h2>Add a collection</h2>
 	<form class="inline" hx-post="/collections" hx-target="#collections-list" hx-swap="beforeend"
 	      hx-on::after-request="this.reset()">
-		<input type="text" name="name" placeholder="Collection name" required
-		       autofocus
-		       onload="if(location.hash==='#new-collection')this.focus()">
+		<input type="text" name="name" placeholder="e.g. Reading list" required autofocus>
 		<button type="submit">Create</button>
 	</form>
-	<div style="margin-top:.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
-		<small class="muted">URL slug is derived automatically from the name (e.g. “My news” → /c/my-news).</small>
-		<button type="button" class="link-button"
-		        hx-post="/collections/prune" hx-swap="none"
-		        hx-confirm="Delete every collection that has 0 links and no RSS feed? RSS-backed collections are kept even if currently empty."
-		        title="Sweep all empty collections">✕ prune empty</button>
-	</div>
-	<form method="POST" action="/import" enctype="multipart/form-data" class="inline" style="margin-top:.5rem">
-		<input type="file" name="file" accept=".html,.htm" required>
-		<input type="text" name="collection" placeholder="target slug (optional — empty = group by source folder)" style="flex:1;min-width:240px">
-		<button type="submit" title="Import a Netscape Bookmark File (Chrome / Firefox / Pocket / Pinboard / Raindrop)">Import</button>
-	</form>
+	<small class="muted">URL slug is derived from the name.</small>
+
+	<details style="margin-top:1rem">
+		<summary class="muted" style="cursor:pointer; font-size:.85rem">↥ import a Netscape Bookmark File</summary>
+		<form method="POST" action="/import" enctype="multipart/form-data" class="inline" style="margin-top:.5rem">
+			<input type="file" name="file" accept=".html,.htm" required>
+			<button type="submit">Import</button>
+		</form>
+		<small class="muted" style="display:block; margin-top:.25rem; font-size:.75rem">
+			Links are bucketed into collections matching the source folders in the file.
+		</small>
+	</details>
 </section>
 
-<div id="collections-list">
-{{if not .Collections}}
-	<div class="empty">
-		<div class="empty-glyph">🗂️</div>
-		<h3>No collections yet</h3>
-		<p>Group your saved links by topic — News, Recipes, Reading list, anything.</p>
-		<a class="empty-cta" href="#new-collection"
-		   onclick="document.querySelector('[name=name]').focus()">Create your first one</a>
+<section class="card">
+	<div style="display:flex; align-items:center; gap:.5rem">
+		<h2 style="margin:0; flex:1">Your collections</h2>
+		<button type="button" class="link-button"
+		        hx-post="/collections/prune" hx-swap="none"
+		        hx-confirm="Delete every collection that has 0 links and no RSS feed? RSS-backed collections are kept."
+		        title="Sweep all empty collections">✕ prune empty</button>
 	</div>
-{{end}}
-{{range .Collections}}
-	{{template "collection_card" .}}
-{{end}}
-</div>
+
+	<div id="collections-list">
+	{{if not .Collections}}
+		<div class="empty">
+			<div class="empty-glyph">🗂️</div>
+			<h3>No collections yet</h3>
+			<p>Group your saved links by topic — News, Recipes, Reading list, anything.</p>
+			<a class="empty-cta" href="#new-collection"
+			   onclick="document.querySelector('[name=name]').focus()">Create your first one</a>
+		</div>
+	{{end}}
+	{{range .Collections}}
+		{{template "collection_card" .}}
+	{{end}}
+	</div>
+</section>
 {{end}}

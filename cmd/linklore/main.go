@@ -136,6 +136,16 @@ func runServe(args []string) {
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
+	// Wire the config path so /settings can save back to the same YAML
+	// file the user passed in. Empty path leaves /settings save in
+	// in-memory-only mode.
+	resolvedPath := *cfgPath
+	if resolvedPath == "" {
+		if _, err := os.Stat("./configs/config.yaml"); err == nil {
+			resolvedPath = "./configs/config.yaml"
+		}
+	}
+	srv.SetConfigPath(resolvedPath)
 	httpSrv := &http.Server{
 		Addr:              cfg.Server.Addr,
 		Handler:           srv.Handler(),

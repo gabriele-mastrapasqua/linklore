@@ -99,6 +99,11 @@ func (s *Store) migrate(ctx context.Context) error {
 			// Set on ingest from URL host + og:type + MIME, refined when the
 			// page is fetched.
 			{"kind", "TEXT NOT NULL DEFAULT 'article'"},
+			// Dead-link checker columns: filled by /checks scans.
+			// status is one of "ok" | "broken" | "timeout" | "dns" | "5xx".
+			{"last_check_at", "INTEGER"},
+			{"last_check_status", "TEXT"},
+			{"last_check_code", "INTEGER"},
 		},
 		"collections": {
 			{"feed_url", "TEXT"},
@@ -158,8 +163,12 @@ type Link struct {
 	OrderIdx     float64
 	Note         string // user-authored personal note (free text)
 	Kind         string // article | video | image | audio | document | book
-	FetchedAt    *time.Time
-	CreatedAt    time.Time
+	// Dead-link checker fields (zero values mean "never checked").
+	LastCheckAt     *time.Time
+	LastCheckStatus string // "" | ok | broken | timeout | dns | 5xx
+	LastCheckCode   int    // HTTP status, 0 for transport errors
+	FetchedAt       *time.Time
+	CreatedAt       time.Time
 }
 
 type Chunk struct {
@@ -590,7 +599,9 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        fetched_at, created_at
 		 FROM links WHERE id = ?`, id)
 	return scanLink(row.Scan)
 }
@@ -605,7 +616,9 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        fetched_at, created_at
 		 FROM links WHERE collection_id = ?
 		 ORDER BY order_idx DESC, created_at DESC LIMIT ? OFFSET ?`,
 		collectionID, limit, offset)
@@ -627,7 +640,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 // scanLink works for both *sql.Row and *sql.Rows by accepting their Scan func.
 func scanLink(scan func(...any) error) (*Link, error) {
 	var l Link
-	var readAt, fetchedAt sql.NullInt64
+	var readAt, fetchedAt, lastCheckAt sql.NullInt64
 	var createdAt int64
 	var extraJSON string
 	err := scan(&l.ID, &l.CollectionID, &l.URL,
@@ -635,7 +648,9 @@ func scanLink(scan func(...any) error) (*Link, error) {
 		&l.FaviconURL, &extraJSON,
 		&l.ContentMD, &l.ContentLang, &l.Summary,
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
-		&l.OrderIdx, &l.Note, &l.Kind, &fetchedAt, &createdAt)
+		&l.OrderIdx, &l.Note, &l.Kind,
+		&lastCheckAt, &l.LastCheckStatus, &l.LastCheckCode,
+		&fetchedAt, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -655,6 +670,10 @@ func scanLink(scan func(...any) error) (*Link, error) {
 	if fetchedAt.Valid {
 		t := time.Unix(fetchedAt.Int64, 0).UTC()
 		l.FetchedAt = &t
+	}
+	if lastCheckAt.Valid {
+		t := time.Unix(lastCheckAt.Int64, 0).UTC()
+		l.LastCheckAt = &t
 	}
 	l.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return &l, nil
@@ -716,6 +735,101 @@ func (s *Store) UpdateLinkNote(ctx context.Context, id int64, note string) error
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE links SET note = ? WHERE id = ?`, strings.TrimSpace(note), id)
 	return err
+}
+
+// UpdateLinkCheck records the outcome of a /checks scan against this
+// link. status is one of "ok" | "broken" | "timeout" | "dns" | "5xx";
+// code is the HTTP response status (0 for transport errors).
+func (s *Store) UpdateLinkCheck(ctx context.Context, id int64, status string, code int) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET last_check_at = ?, last_check_status = ?, last_check_code = ?
+		 WHERE id = ?`, now, status, code, id)
+	return err
+}
+
+// LinkCheckCounts is the aggregate the /checks summary needs.
+type LinkCheckCounts struct {
+	Total        int
+	OK           int
+	Broken       int // any non-ok terminal status
+	Timeout      int
+	DNS          int
+	ServerErr    int // 5xx
+	NeverChecked int
+}
+
+// CountLinkChecks aggregates last_check_status across every link.
+func (s *Store) CountLinkChecks(ctx context.Context) (LinkCheckCounts, error) {
+	var c LinkCheckCounts
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT COALESCE(last_check_status,''), COUNT(*) FROM links GROUP BY 1`)
+	if err != nil {
+		return c, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return c, err
+		}
+		c.Total += n
+		switch status {
+		case "":
+			c.NeverChecked += n
+		case "ok":
+			c.OK += n
+		case "timeout":
+			c.Timeout += n
+			c.Broken += n
+		case "dns":
+			c.DNS += n
+			c.Broken += n
+		case "5xx":
+			c.ServerErr += n
+			c.Broken += n
+		default:
+			// "broken" plus anything unknown
+			c.Broken += n
+		}
+	}
+	return c, rows.Err()
+}
+
+// ListBrokenLinks returns the most-recent links whose last check
+// flagged them as broken/timeout/dns/5xx. Used by /checks page.
+func (s *Store) ListBrokenLinks(ctx context.Context, limit int) ([]Link, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, collection_id, url,
+		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
+		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
+		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        fetched_at, created_at
+		   FROM links
+		  WHERE last_check_status IS NOT NULL
+		    AND last_check_status != ''
+		    AND last_check_status != 'ok'
+		  ORDER BY last_check_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		l, err := scanLink(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
 }
 
 // MarkLinkRead sets read_at to now (Inbox marks-as-read action).
@@ -863,7 +977,9 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        fetched_at, created_at
 		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		status, limit)
 	if err != nil {
@@ -1171,7 +1287,9 @@ func (s *Store) ListAllLinks(ctx context.Context) ([]Link, error) {
 		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
 		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
-		        order_idx, COALESCE(note,''), COALESCE(kind,'article'), fetched_at, created_at
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        fetched_at, created_at
 		   FROM links ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -1199,7 +1317,9 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 		       COALESCE(l.favicon_url,''), COALESCE(l.extra_images,''),
 		       COALESCE(l.content_md,''), COALESCE(l.content_lang,''), COALESCE(l.summary,''),
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
-		       l.order_idx, COALESCE(l.note,''), COALESCE(l.kind,'article'), l.fetched_at, l.created_at
+		       l.order_idx, COALESCE(l.note,''), COALESCE(l.kind,'article'),
+		       l.last_check_at, COALESCE(l.last_check_status,''), COALESCE(l.last_check_code,0),
+		       l.fetched_at, l.created_at
 		  FROM links l
 		  JOIN link_tags lt ON lt.link_id = l.id
 		  JOIN tags t       ON t.id = lt.tag_id

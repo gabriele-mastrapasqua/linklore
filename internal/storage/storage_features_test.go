@@ -113,6 +113,57 @@ func TestListAllLinks_returnsEverything(t *testing.T) {
 	}
 }
 
+func TestUpdateLinkCheck(t *testing.T) {
+	st := openMemForFeatures(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/x")
+
+	// Initially nothing recorded.
+	got, err := st.GetLink(context.Background(), l.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastCheckStatus != "" || got.LastCheckCode != 0 || got.LastCheckAt != nil {
+		t.Errorf("fresh link has check state: status=%q code=%d at=%v",
+			got.LastCheckStatus, got.LastCheckCode, got.LastCheckAt)
+	}
+
+	if err := st.UpdateLinkCheck(context.Background(), l.ID, "broken", 404); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetLink(context.Background(), l.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastCheckStatus != "broken" {
+		t.Errorf("status = %q, want broken", got.LastCheckStatus)
+	}
+	if got.LastCheckCode != 404 {
+		t.Errorf("code = %d, want 404", got.LastCheckCode)
+	}
+	if got.LastCheckAt == nil {
+		t.Errorf("last_check_at not persisted")
+	}
+
+	// CountLinkChecks aggregates correctly.
+	counts, err := st.CountLinkChecks(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.Total != 1 || counts.Broken != 1 || counts.OK != 0 {
+		t.Errorf("counts = %+v", counts)
+	}
+
+	// ListBrokenLinks surfaces it.
+	broken, err := st.ListBrokenLinks(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(broken) != 1 || broken[0].ID != l.ID {
+		t.Errorf("broken list = %+v", broken)
+	}
+}
+
 func TestDeleteCollection_cascadesEverything(t *testing.T) {
 	st := openMemForFeatures(t)
 	col, _ := st.CreateCollection(context.Background(), "c", "C", "")

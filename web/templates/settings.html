@@ -1,0 +1,74 @@
+{{define "content"}}
+<section class="card">
+	<h2 style="margin:0 0 .25rem 0">Settings</h2>
+	<div class="muted" style="font-size:.9rem">
+		Edit the LLM backend without restarting the server. Saving rewrites
+		<code>{{if .CfgPath}}{{.CfgPath}}{{else}}(no config path — changes apply in-memory only){{end}}</code>.
+	</div>
+</section>
+
+<section class="card" style="margin-top:.75rem">
+	<h3 style="margin:.25rem 0">LLM</h3>
+	<form id="settings-form" hx-post="/settings" hx-target="#settings-result" hx-swap="innerHTML">
+		<fieldset style="border:0;padding:0;margin:0 0 .75rem">
+			<legend class="muted" style="font-size:.85rem">Backend</legend>
+			<div class="seg-switch" role="radiogroup" style="margin-top:.25rem">
+				{{range $b := .Backends}}
+					<label class="seg-opt {{if eq $.Form.Backend $b}}active{{end}}" style="cursor:pointer">
+						<input type="radio" name="backend" value="{{$b}}"
+						       {{if eq $.Form.Backend $b}}checked{{end}}
+						       style="margin-right:.4rem"
+						       onchange="this.form.querySelectorAll('.seg-opt').forEach(o=>o.classList.toggle('active', o.contains(this)))">
+						{{$b}}
+					</label>
+				{{end}}
+			</div>
+		</fieldset>
+
+		<label style="display:block;margin-top:.5rem">
+			<span class="muted" style="font-size:.85rem">Endpoint URL</span>
+			<input type="text" name="endpoint" value="{{.Form.Endpoint}}"
+			       placeholder="litellm: https://api.example/v1 — ollama: http://localhost:11434"
+			       style="width:100%;padding:.4rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:.2rem">
+		</label>
+
+		<label style="display:block;margin-top:.5rem">
+			<span class="muted" style="font-size:.85rem">Model</span>
+			<input type="text" name="model" value="{{.Form.Model}}"
+			       placeholder="qwen3-instruct, llama3.1, …"
+			       style="width:100%;padding:.4rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:.2rem">
+		</label>
+
+		<label style="display:block;margin-top:.5rem">
+			<span class="muted" style="font-size:.85rem">Embed model</span>
+			<input type="text" name="embed_model" value="{{.Form.EmbedModel}}"
+			       placeholder="nomic-embed-text"
+			       style="width:100%;padding:.4rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:.2rem">
+		</label>
+
+		<label style="display:block;margin-top:.5rem">
+			<span class="muted" style="font-size:.85rem">API key (litellm only)</span>
+			<input type="password" name="api_key" value="{{.Form.APIKey}}"
+			       placeholder="sk-…"
+			       style="width:100%;padding:.4rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);margin-top:.2rem">
+		</label>
+
+		<div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
+			<button type="button"
+			        hx-post="/settings/test"
+			        hx-include="#settings-form"
+			        hx-target="#settings-result"
+			        hx-swap="innerHTML"
+			        style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem .8rem;cursor:pointer">Test connection</button>
+			<button type="submit"
+			        style="background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:6px;padding:.4rem .8rem;cursor:pointer">Save</button>
+		</div>
+	</form>
+
+	<div id="settings-result" style="margin-top:.75rem"></div>
+
+	<small class="muted" style="display:block;margin-top:.75rem;font-size:.75rem">
+		Active worker still uses the previous backend until the next process restart.
+	</small>
+</section>
+{{end}}

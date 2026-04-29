@@ -1278,3 +1278,26 @@ body.previews-off  .preview:not(.preview-favicon) { display: none !important; }
 }
 .detail-preview-strip img:hover { transform: scale(1.04); }
 .detail-preview-strip a { line-height: 0; }
+
+/* ---- /settings + /checks status pill ---- */
+.status-pill {
+	display: inline-block;
+	padding: .25rem .55rem;
+	border-radius: 999px;
+	font-size: .85rem;
+	font-weight: 500;
+	border: 1px solid var(--border);
+	background: var(--card);
+}
+.status-pill.status-ok {
+	color: #166534;
+	background: color-mix(in srgb, #16a34a 14%, var(--card));
+	border-color: color-mix(in srgb, #16a34a 35%, var(--border));
+}
+.status-pill.status-err {
+	color: #991b1b;
+	background: color-mix(in srgb, #dc2626 14%, var(--card));
+	border-color: color-mix(in srgb, #dc2626 40%, var(--border));
+}
+[data-theme="dark"] .status-pill.status-ok { color: #4ade80; }
+[data-theme="dark"] .status-pill.status-err { color: #fca5a5; }

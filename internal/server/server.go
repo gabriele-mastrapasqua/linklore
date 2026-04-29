@@ -4,14 +4,19 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gabrielemastrapasqua/linklore/internal/chat"
@@ -31,7 +36,9 @@ import (
 )
 
 type Server struct {
+	cfgMu      sync.RWMutex
 	cfg        config.Config
+	cfgPath    string // path to config.yaml; "" disables /settings save
 	store      *storage.Store
 	r          *renderer
 	search     *search.Engine // nil → search routes return empty results
@@ -41,6 +48,9 @@ type Server struct {
 	worker     *worker.Worker // optional, for refetch/reindex
 	events     *events.Broker // optional, for SSE push to clients
 	tagsCfg    tagsCfg
+
+	// /checks scan progress flag (true while a scan is running).
+	checkScanRunning atomic.Bool
 }
 
 // tagsCfg is a tiny local view onto config.Tags so we don't carry the whole
@@ -64,6 +74,31 @@ func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *c
 		events:     broker,
 		tagsCfg:    tagsCfg{MaxPerLink: cfg.Tags.MaxPerLink, ActiveCap: cfg.Tags.ActiveCap, ReuseDistance: cfg.Tags.ReuseDistance},
 	}, nil
+}
+
+// SetConfigPath records the path the server was loaded from so /settings
+// can save back to it. Optional: an empty path leaves /settings save
+// disabled (the form renders with a "no path" notice).
+func (s *Server) SetConfigPath(path string) { s.cfgPath = path }
+
+// currentConfig returns a copy of the live config. Handlers that read
+// config-derived state should call this rather than reading s.cfg
+// directly so a /settings save is reflected immediately.
+func (s *Server) currentConfig() config.Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
+// updateConfig swaps in a new in-memory config. Worker / chat / search
+// keep references to the backend they got at boot — those hot paths
+// only see the new values after a process restart. /settings page
+// surfaces this caveat to the user.
+func (s *Server) updateConfig(c config.Config) {
+	s.cfgMu.Lock()
+	s.cfg = c
+	s.tagsCfg = tagsCfg{MaxPerLink: c.Tags.MaxPerLink, ActiveCap: c.Tags.ActiveCap, ReuseDistance: c.Tags.ReuseDistance}
+	s.cfgMu.Unlock()
 }
 
 // Handler returns the configured *http.ServeMux. Kept separate from ListenAndServe
@@ -144,6 +179,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/links", s.handleAPILinks)
 
 	mux.HandleFunc("GET /inbox", s.handlePlaceholder("Inbox", "Inbox is intentionally not implemented for now."))
+
+	mux.HandleFunc("GET /settings", s.handleSettings)
+	mux.HandleFunc("POST /settings", s.handleSaveSettings)
+	mux.HandleFunc("POST /settings/test", s.handleTestSettings)
+
+	mux.HandleFunc("GET /checks", s.handleChecksPage)
+	mux.HandleFunc("POST /checks/run", s.handleChecksRun)
+	mux.HandleFunc("GET /checks/summary", s.handleChecksSummary)
 
 	return logging(mux)
 }
@@ -511,6 +554,29 @@ func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `<div id="collection-%d" hx-swap-oob="delete"></div>`, col.ID)
 }
 
+// ensureCollectionForIngest resolves the collection for an inbound
+// ingest call (bookmarklet, smart-add). When the slug is empty or
+// "default" and missing, it auto-creates the canonical "Default"
+// collection on the fly. uniqueSlugFromName guarantees we don't
+// collide with a user-created entry that happens to use the slug.
+func (s *Server) ensureCollectionForIngest(ctx context.Context, slug string) (*storage.Collection, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		slug = "default"
+	}
+	col, err := s.store.GetCollectionBySlug(ctx, slug)
+	if err == nil {
+		return col, nil
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return nil, err
+	}
+	if slug == "default" {
+		return s.store.CreateCollection(ctx, s.uniqueSlugFromName(ctx, "Default"), "Default", "")
+	}
+	return s.store.CreateCollection(ctx, slug, slug, "")
+}
+
 // uniqueSlugFromName turns a free-form name into a valid slug and
 // resolves clashes by appending -2, -3, … until the slug is unused.
 func (s *Server) uniqueSlugFromName(ctx context.Context, name string) string {
@@ -625,7 +691,11 @@ func (s *Server) handleSmartAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	col, err := s.store.GetCollectionBySlug(r.Context(), r.PathValue("slug"))
+	slug := r.PathValue("slug")
+	col, err := s.store.GetCollectionBySlug(r.Context(), slug)
+	if errors.Is(err, storage.ErrNotFound) && slug == "default" {
+		col, err = s.ensureCollectionForIngest(r.Context(), slug)
+	}
 	if err != nil {
 		s.notFound(w, err)
 		return
@@ -1628,13 +1698,7 @@ func (s *Server) handleAPILinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := strings.TrimSpace(r.PostForm.Get("collection"))
-	if slug == "" {
-		slug = "default"
-	}
-	col, err := s.store.GetCollectionBySlug(r.Context(), slug)
-	if errors.Is(err, storage.ErrNotFound) {
-		col, err = s.store.CreateCollection(r.Context(), slug, slug, "")
-	}
+	col, err := s.ensureCollectionForIngest(r.Context(), slug)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2065,3 +2129,323 @@ func (s *statusWriter) WriteHeader(code int) {
 // Unwrap lets http.NewResponseController reach the real ResponseWriter
 // (and its Flusher / Hijacker / etc) through this middleware wrapper.
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// ---- /settings ----
+
+// settingsForm holds the editable subset of llm config exposed to /settings.
+// We collapse the per-backend host/base_url into a single "endpoint" field
+// so the user only sees one URL input.
+type settingsForm struct {
+	Backend    string
+	Endpoint   string
+	Model      string
+	EmbedModel string
+	APIKey     string
+}
+
+func (s *Server) settingsFormFromConfig() settingsForm {
+	c := s.currentConfig()
+	f := settingsForm{Backend: c.LLM.Backend}
+	switch c.LLM.Backend {
+	case llm.BackendLitellm:
+		f.Endpoint = c.LLM.LiteLLM.BaseURL
+		f.Model = c.LLM.LiteLLM.Model
+		f.EmbedModel = c.LLM.LiteLLM.EmbedModel
+		f.APIKey = c.LLM.LiteLLM.APIKey
+	case llm.BackendOllama:
+		f.Endpoint = c.LLM.Ollama.Host
+		f.Model = c.LLM.Ollama.Model
+		f.EmbedModel = c.LLM.Ollama.EmbedModel
+	}
+	return f
+}
+
+func parseSettingsForm(r *http.Request) settingsForm {
+	return settingsForm{
+		Backend:    strings.TrimSpace(r.PostForm.Get("backend")),
+		Endpoint:   strings.TrimSpace(r.PostForm.Get("endpoint")),
+		Model:      strings.TrimSpace(r.PostForm.Get("model")),
+		EmbedModel: strings.TrimSpace(r.PostForm.Get("embed_model")),
+		APIKey:     r.PostForm.Get("api_key"),
+	}
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	s.renderPageRq(w, r, "settings", map[string]any{
+		"Title":    "Settings",
+		"Form":     s.settingsFormFromConfig(),
+		"CfgPath":  s.cfgPath,
+		"Backends": []string{llm.BackendNone, llm.BackendOllama, llm.BackendLitellm},
+	})
+}
+
+func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	form := parseSettingsForm(r)
+	switch form.Backend {
+	case llm.BackendNone, llm.BackendOllama, llm.BackendLitellm:
+	default:
+		s.writeSettingsBanner(w, "err", "Unknown backend: "+form.Backend)
+		return
+	}
+
+	// Apply to a copy of the current config.
+	c := s.currentConfig()
+	c.LLM.Backend = form.Backend
+	switch form.Backend {
+	case llm.BackendLitellm:
+		c.LLM.LiteLLM.BaseURL = form.Endpoint
+		c.LLM.LiteLLM.Model = form.Model
+		c.LLM.LiteLLM.EmbedModel = form.EmbedModel
+		c.LLM.LiteLLM.APIKey = form.APIKey
+	case llm.BackendOllama:
+		c.LLM.Ollama.Host = form.Endpoint
+		c.LLM.Ollama.Model = form.Model
+		c.LLM.Ollama.EmbedModel = form.EmbedModel
+	}
+	if err := c.Validate(); err != nil {
+		s.writeSettingsBanner(w, "err", err.Error())
+		return
+	}
+
+	// Persist when we have a path; otherwise just update memory.
+	if s.cfgPath != "" {
+		if err := c.SaveYAML(s.cfgPath); err != nil {
+			s.writeSettingsBanner(w, "err", err.Error())
+			return
+		}
+	}
+	s.updateConfig(c)
+	s.writeSettingsBanner(w, "ok", "Settings saved. Worker keeps the previous backend until restart.")
+}
+
+func (s *Server) writeSettingsBanner(w http.ResponseWriter, kind, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	cls := "status-pill status-ok"
+	if kind == "err" {
+		cls = "status-pill status-err"
+	}
+	fmt.Fprintf(w, `<span class="%s">%s</span>`, cls, htmlEscape(msg))
+}
+
+// handleTestSettings probes the configured backend without mutating any
+// persisted state. Reads only the form fields. 5s context-bound timeout.
+func (s *Server) handleTestSettings(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	form := parseSettingsForm(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	switch form.Backend {
+	case llm.BackendNone, "":
+		s.writeSettingsBanner(w, "err", "Backend disabled")
+		return
+	case llm.BackendLitellm:
+		count, err := probeLitellm(ctx, form.Endpoint, form.APIKey)
+		if err != nil {
+			s.writeSettingsBanner(w, "err", err.Error())
+			return
+		}
+		s.writeSettingsBanner(w, "ok", fmt.Sprintf("Reachable — %d models", count))
+	case llm.BackendOllama:
+		count, err := probeOllama(ctx, form.Endpoint)
+		if err != nil {
+			s.writeSettingsBanner(w, "err", err.Error())
+			return
+		}
+		s.writeSettingsBanner(w, "ok", fmt.Sprintf("Reachable — %d models", count))
+	default:
+		s.writeSettingsBanner(w, "err", "Unknown backend: "+form.Backend)
+	}
+}
+
+// probeLitellm GET base/models with optional Bearer auth. Returns the
+// length of the .data array.
+func probeLitellm(ctx context.Context, baseURL, apiKey string) (int, error) {
+	if baseURL == "" {
+		return 0, fmt.Errorf("base_url required")
+	}
+	url := strings.TrimRight(baseURL, "/") + "/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		snip := strings.TrimSpace(string(body))
+		if snip == "" {
+			snip = http.StatusText(resp.StatusCode)
+		}
+		return 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, snip)
+	}
+	var out struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, fmt.Errorf("parse response: %w", err)
+	}
+	return len(out.Data), nil
+}
+
+// probeOllama GET host/api/tags. Returns len(.models).
+func probeOllama(ctx context.Context, host string) (int, error) {
+	if host == "" {
+		return 0, fmt.Errorf("host required")
+	}
+	url := strings.TrimRight(host, "/") + "/api/tags"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		Models []json.RawMessage `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, fmt.Errorf("parse response: %w", err)
+	}
+	return len(out.Models), nil
+}
+
+// ---- /checks ----
+
+func (s *Server) handleChecksPage(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.store.CountLinkChecks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	broken, _ := s.store.ListBrokenLinks(r.Context(), 50)
+	s.renderPageRq(w, r, "checks", map[string]any{
+		"Title":   "Link checker",
+		"Counts":  counts,
+		"Broken":  broken,
+		"Running": s.checkScanRunning.Load(),
+	})
+}
+
+func (s *Server) handleChecksSummary(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.store.CountLinkChecks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w,
+		`<span class="muted">%d links · %d ok · %d broken · %d timed out · %d never checked</span>`,
+		counts.Total, counts.OK, counts.Broken, counts.Timeout, counts.NeverChecked)
+}
+
+func (s *Server) handleChecksRun(w http.ResponseWriter, r *http.Request) {
+	if !s.checkScanRunning.CompareAndSwap(false, true) {
+		setToast(w, "warn", "A scan is already running")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	go s.runDeadLinkScan(context.Background())
+
+	setToast(w, "ok", "Scan started — refresh to see progress")
+	w.WriteHeader(http.StatusOK)
+}
+
+// runDeadLinkScan walks every link, HEADs each one with a 5s timeout,
+// and persists the result. Cap parallelism at 8 simultaneous requests.
+// Publishes a stats_changed event per link so any open SSE client picks
+// up live progress.
+func (s *Server) runDeadLinkScan(ctx context.Context) {
+	defer s.checkScanRunning.Store(false)
+
+	links, err := s.store.ListAllLinks(ctx)
+	if err != nil {
+		log.Printf("checks: list links: %v", err)
+		return
+	}
+
+	// Bounded fan-out: 8 simultaneous HEAD requests.
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		// HEAD redirects are followed by default — that's what we want;
+		// a 200 after redirect is "ok". Cap to 5 hops to stop loops.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+	for _, l := range links {
+		l := l
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			status, code := probeLink(ctx, client, l.URL)
+			if err := s.store.UpdateLinkCheck(ctx, l.ID, status, code); err != nil {
+				log.Printf("checks: update %d: %v", l.ID, err)
+				return
+			}
+			if s.events != nil {
+				s.events.Publish(events.Event{
+					Kind: events.KindStatsChanged, LinkID: l.ID, CollectionID: l.CollectionID,
+				})
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// probeLink classifies the outcome of one HEAD request.
+// status is one of: ok, broken, timeout, dns, 5xx.
+func probeLink(ctx context.Context, client *http.Client, url string) (status string, code int) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return "broken", 0
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		// Distinguish timeout / DNS / generic transport.
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return "timeout", 0
+		}
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) {
+			return "dns", 0
+		}
+		return "broken", 0
+	}
+	defer resp.Body.Close()
+	code = resp.StatusCode
+	switch {
+	case code >= 200 && code < 400:
+		return "ok", code
+	case code >= 500:
+		return "5xx", code
+	default:
+		return "broken", code
+	}
+}

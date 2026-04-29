@@ -10,10 +10,15 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gabrielemastrapasqua/linklore/internal/config"
+	"github.com/gabrielemastrapasqua/linklore/internal/storage"
 )
 
 // ---------- /c/:slug rendering ----------
@@ -912,4 +917,185 @@ func TestLinksPage_noCoverButton(t *testing.T) {
 	if strings.Contains(body, `id="cover-`) {
 		t.Errorf("page still has cover-form (id=cover-…)")
 	}
+}
+
+// ---------- /settings ----------
+
+func TestSettings_renderRoute(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/settings")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	for _, want := range []string{"Backend", "Endpoint URL", "Save"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("settings page missing %q", want)
+		}
+	}
+}
+
+func TestSettings_postRoundtrips(t *testing.T) {
+	st, err := storage.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	srv, err := New(config.Default(), st, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	srv.SetConfigPath(cfgPath)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	form := url.Values{
+		"backend":     {"none"},
+		"endpoint":    {""},
+		"model":       {""},
+		"embed_model": {""},
+		"api_key":     {""},
+	}
+	code, body := postForm(t, ts, "/settings", form)
+	if code != 200 {
+		t.Fatalf("status=%d body=%s", code, body)
+	}
+	if !strings.Contains(body, "status-pill status-ok") {
+		t.Errorf("expected status-ok pill on save: %s", body)
+	}
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Errorf("expected config saved at %s, got %v", cfgPath, err)
+	}
+	// GET reflects the new backend.
+	_, body2 := get(t, ts, "/settings")
+	if !strings.Contains(body2, `value="none"`) {
+		t.Errorf("GET /settings doesn't reflect saved backend: %s", body2)
+	}
+}
+
+func TestSettingsTest_noneBackend(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := postForm(t, ts, "/settings/test", url.Values{"backend": {"none"}})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(strings.ToLower(body), "disabled") {
+		t.Errorf("expected 'disabled' in body, got: %s", body)
+	}
+}
+
+func TestSettingsTest_litellmReachable(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"m1"},{"id":"m2"}]}`)
+	}))
+	defer upstream.Close()
+
+	ts, _ := newTestServer(t)
+	code, body := postForm(t, ts, "/settings/test", url.Values{
+		"backend":  {"litellm"},
+		"endpoint": {upstream.URL},
+		"api_key":  {"sk-test"},
+	})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(body, "status-pill status-ok") {
+		t.Errorf("expected status-ok pill, got: %s", body)
+	}
+	if !strings.Contains(body, "2 models") {
+		t.Errorf("expected '2 models', got: %s", body)
+	}
+}
+
+func TestSettingsTest_litellmAuthFail(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"unauthorized"}`)
+	}))
+	defer upstream.Close()
+
+	ts, _ := newTestServer(t)
+	code, body := postForm(t, ts, "/settings/test", url.Values{
+		"backend":  {"litellm"},
+		"endpoint": {upstream.URL},
+		"api_key":  {"sk-bad"},
+	})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(body, "status-pill status-err") {
+		t.Errorf("expected status-err pill, got: %s", body)
+	}
+	if !strings.Contains(body, "401") {
+		t.Errorf("expected '401' in body, got: %s", body)
+	}
+}
+
+// ---------- /checks ----------
+
+func TestChecks_renderRoute(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/checks")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(body, "Link checker") {
+		t.Errorf("page missing 'Link checker' header")
+	}
+}
+
+func TestChecks_summaryCounts(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	a, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/a")
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://example.com/b")
+	_, _ = st.CreateLink(context.Background(), col.ID, "https://example.com/c")
+	if err := st.UpdateLinkCheck(context.Background(), a.ID, "broken", 404); err != nil {
+		t.Fatal(err)
+	}
+	code, body := get(t, ts, "/checks/summary")
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+	if !strings.Contains(body, "1 broken") {
+		t.Errorf("expected '1 broken' in summary, got: %s", body)
+	}
+}
+
+func TestChecksRun_marksDeadLink(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	link, _ := st.CreateLink(context.Background(), col.ID, upstream.URL+"/missing")
+
+	code, _ := postForm(t, ts, "/checks/run", url.Values{})
+	if code != 200 {
+		t.Fatalf("status=%d", code)
+	}
+
+	// Wait up to ~2s for the goroutine to finish.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := st.GetLink(context.Background(), link.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.LastCheckStatus != "" {
+			if got.LastCheckStatus != "broken" {
+				t.Errorf("status = %q, want broken", got.LastCheckStatus)
+			}
+			if got.LastCheckCode != 404 {
+				t.Errorf("code = %d, want 404", got.LastCheckCode)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("scan never completed within 2s")
 }
