@@ -348,17 +348,20 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
    small framed glyph so it reads unmistakably as an action. Tightens
    on hover. */
 .link-row .note-edit {
-	display: inline-block; margin-left: .4rem;
-	font-size: .75rem; line-height: 1;
-	color: var(--muted); text-decoration: none;
-	border: 1px solid var(--border); border-radius: var(--radius-sm);
-	padding: .15rem .35rem;
-	background: var(--card);
-	transition: color .12s ease, border-color .12s ease, background .12s ease;
+	display: inline-flex; align-items: center; gap: .25rem;
+	margin-left: .5rem; vertical-align: middle;
+	font-size: .75rem; line-height: 1; font-weight: 500;
+	color: var(--accent); text-decoration: none;
+	border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+	border-radius: var(--radius-sm);
+	padding: .25rem .5rem;
+	background: color-mix(in srgb, var(--accent) 10%, var(--card));
+	transition: color .12s ease, border-color .12s ease, background .12s ease, transform .08s ease;
 }
 .link-row .note-edit:hover {
-	color: var(--accent); border-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 10%, var(--card));
+	color: #fff; border-color: var(--accent);
+	background: var(--accent);
+	transform: translateY(-1px);
 }
 /* "Add note" CTA — only shown when the row has no summary, no
    description, and no note. Visible without hover so the action is
@@ -754,9 +757,20 @@ body.density-no-title   .link-row .title   { display: none; }
 .drawer-article ul, .drawer-article ol { padding-left: 1.5em; }
 .drawer-article a { color: var(--accent); }
 .drawer-article img {
-	display: block; max-width: 100%; height: auto;
-	border-radius: var(--radius-md); margin: 1.5em auto;
-	box-shadow: var(--shadow-1);
+	display: block;
+	max-width: 100%;
+	max-height: 420px;          /* keep huge hero images from dominating */
+	width: auto; height: auto;
+	object-fit: contain;
+	margin: 1.5em auto;
+	border-radius: var(--radius-md);
+	background: transparent;    /* don't paint the paper colour behind a transparent PNG */
+}
+/* The first image in the article often IS a giant hero — pull it tight
+   to the article's max width so it doesn't sit in a half-empty band. */
+.drawer-article > p:first-of-type > img:only-child,
+.drawer-article > img:first-of-type {
+	margin-top: 0;
 }
 .drawer-article blockquote {
 	margin: 1.4em 0; padding: .25em 1em;
