@@ -10,12 +10,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/gabriele-mastrapasqua/linklore/internal/config"
 	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
+
+// binPath returns the path to drop a freshly-built `linklore` binary
+// in a test temp dir, with the .exe suffix on Windows. `go build -o foo`
+// silently produces foo.exe on windows; without the suffix, exec.Command
+// can't resolve the binary.
+func binPath(t *testing.T) string {
+	t.Helper()
+	name := "linklore"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(t.TempDir(), name)
+}
 
 // ---------- maskKey ----------
 
@@ -174,7 +188,7 @@ func TestUsageOnNoArgs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping subprocess build in -short mode")
 	}
-	bin := filepath.Join(t.TempDir(), "linklore")
+	bin := binPath(t)
 	build := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
@@ -194,7 +208,7 @@ func TestUnknownSubcommandFails(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping subprocess build in -short mode")
 	}
-	bin := filepath.Join(t.TempDir(), "linklore")
+	bin := binPath(t)
 	build := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
@@ -211,7 +225,7 @@ func TestHelpFlagSucceeds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping subprocess build in -short mode")
 	}
-	bin := filepath.Join(t.TempDir(), "linklore")
+	bin := binPath(t)
 	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
@@ -234,6 +248,9 @@ func TestRunReindex_subprocessLogsAndExits(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "linklore")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
@@ -259,6 +276,9 @@ func TestRunAdd_subprocessNoArgsFails(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "linklore")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
@@ -282,6 +302,9 @@ func TestRunAdd_subprocessQueuesLink(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "linklore")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	if out, err := exec.Command("go", "build", "-tags=sqlite_fts5", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
