@@ -28,12 +28,12 @@
 		</nav>
 	</div>
 
-	<div class="sidebar-section">
+	<div class="sidebar-section sidebar-section-collections">
 		<div class="sidebar-title-row">
 			<span class="sidebar-title">Collections</span>
 			<a href="/#new-collection" class="sidebar-add" title="new collection">+</a>
 		</div>
-		<nav id="sidebar-collections" class="sidebar-nav">
+		<nav id="sidebar-collections" class="sidebar-nav sidebar-nav-scroll">
 			{{range .Sidebar}}
 			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}
 			{{else}}
@@ -42,7 +42,7 @@
 		</nav>
 	</div>
 
-	<div class="sidebar-section">
+	<div class="sidebar-section sidebar-section-tools">
 		<div class="sidebar-title-row">
 			<span class="sidebar-title">Tools</span>
 		</div>

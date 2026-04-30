@@ -16,7 +16,10 @@
 		        hx-confirm="Delete collection “{{.Collection.Name}}” and all {{.Stats.Total}} link{{if ne .Stats.Total 1}}s{{end}} inside it? This cannot be undone."
 		        title="delete this collection and all its links">✕ delete</button>
 	</div>
-	<div class="muted" style="font-size:.9rem">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
+	<div class="collection-subhead">
+		<div class="muted collection-slug">/c/{{.Collection.Slug}}{{if .Collection.FeedURL}} · 📡 RSS feed{{end}}</div>
+		{{template "collection_stats" .}}
+	</div>
 
 	<form id="rename-{{.Collection.ID}}" class="inline" hidden style="margin-top:.5rem"
 	      hx-post="/c/{{.Collection.Slug}}/rename">
@@ -27,8 +30,6 @@
 		        onclick="document.getElementById('rename-{{.Collection.ID}}').setAttribute('hidden','')">Cancel</button>
 	</form>
 	<small class="muted" id="rename-hint-{{.Collection.ID}}" hidden>URL slug is derived from the name; if the new slug is taken, a numeric suffix is appended.</small>
-
-	{{template "collection_stats" .}}
 	<form class="inline smart-add" style="margin-top:.75rem"
 	      hx-post="/c/{{.Collection.Slug}}/add"
 	      hx-target="#links-list" hx-swap="afterbegin"

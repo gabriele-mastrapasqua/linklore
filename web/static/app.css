@@ -1616,6 +1616,68 @@ body.previews-off .preview:not(.preview-favicon) { display: none !important; }
 	.topbar-search { max-width: 100%; }
 }
 
+/* --- v16 polish:
+   1. Topbar search input was 480px wide inside a 640px wrap, so the
+      ⌘K kbd sat ~120px to the right of the input edge — that's the
+      "stacca" the user kept reporting. Force the input to fill its
+      wrap so kbd is flush with the input border.
+   2. #worker-status renders an empty <span> when idle; that empty
+      span shows as a faint pill ("pallino bianco") next to the LLM
+      badge. Hide it when there's nothing to say.
+   3. Sidebar: the previous max-height made the WHOLE aside scroll,
+      hiding the Tools section when collections were many. Pin
+      Library + Tools at top/bottom and only let the Collections
+      list scroll internally. Best-practice from Raindrop / Notion
+      sidebars.
+   4. Collection-subhead: lay /c/slug · RSS-feed AND the badges row
+      side-by-side so the header reads as a single block.
+   5. Topbar vertical alignment: the brand h1 was 26px tall and the
+      search input 32px tall, and they baseline-aligned awkwardly.
+      Force align-items center on the topbar flex (already there
+      but inputs were stretching). */
+
+/* 1. search fills its wrap so ⌘K hugs the right edge */
+header.topbar input[type="search"] {
+	max-width: none;
+	width: 100%;
+	flex: none;
+}
+
+/* 2. hide the worker pill when the SSE poll returned empty */
+#worker-status:empty { display: none; }
+
+/* 3. sidebar: pin Library + Tools, scroll only the Collections list */
+.sidebar {
+	display: flex; flex-direction: column;
+	min-height: 0;
+}
+.sidebar-section-collections {
+	display: flex; flex-direction: column;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+.sidebar-nav-scroll {
+	overflow-y: auto;
+	min-height: 0;
+	flex: 1 1 auto;
+	/* tiny inset so the scrollbar gutter doesn't crowd the count badge */
+	padding-right: 2px;
+	scrollbar-width: thin;
+}
+.sidebar-section-tools { flex-shrink: 0; }
+
+/* 4. Collection page subhead: slug + badges in one row, badges right-aligned */
+.collection-subhead {
+	display: flex; align-items: center;
+	gap: var(--space-3); flex-wrap: wrap;
+	margin-bottom: 1rem;
+}
+.collection-subhead .collection-slug { font-size: .9rem; flex: 1 1 auto; min-width: 0; }
+.collection-subhead .collection-stats {
+	margin: 0 !important;
+	flex: 0 0 auto;
+}
+
 /* --- v15 polish:
    - kind-icon next to title is redundant when a favicon is already
      drawn — it was rendering as a tiny coloured square between the
