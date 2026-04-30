@@ -1616,6 +1616,35 @@ body.previews-off .preview:not(.preview-favicon) { display: none !important; }
 	.topbar-search { max-width: 100%; }
 }
 
+/* --- v15 polish:
+   - kind-icon next to title is redundant when a favicon is already
+     drawn — it was rendering as a tiny coloured square between the
+     favicon and the title and looked like noise. Hide whenever a
+     favicon img exists; show only on rows with no favicon.
+   - collection header (title row + slug + badges + add input) was
+     too tight — readers couldn't tell the blocks apart. Stack them
+     with explicit vertical rhythm so each section breathes.
+   - dark-theme search input border was nearly invisible; bump
+     contrast on focus and rest. */
+.link-row .title .preview-favicon + .kind-icon { display: none; }
+
+section.card > .hflex { margin-bottom: .9rem; }
+section.card > .muted { margin-bottom: .85rem; }
+section.card > form#rename-1 + small.muted,
+section.card > .badges + form.inline { margin-top: 1rem; }
+.smart-add { margin-top: 1.25rem !important; }
+section.card > .badges { margin-bottom: 1rem; }
+.collection-stats { margin: .75rem 0 1rem; }
+
+header.topbar input[type="search"] {
+	border-color: color-mix(in srgb, var(--border) 100%, var(--muted) 25%);
+}
+header.topbar input[type="search"]:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 /* --- HTML5 hidden must beat display:flex on form.inline + others.
    Without this, the rename/inline forms remain visible despite the
    attribute, because the explicit display rule wins specificity. --- */
