@@ -40,7 +40,7 @@ type Service struct {
 }
 
 func New(store *storage.Store, eng *search.Engine, backend llm.Backend) *Service {
-	return &Service{store: store, search: eng, llm: backend, TopK: 12, HistoryTurns: 6}
+	return &Service{store: store, search: eng, llm: backend, TopK: 16, HistoryTurns: 6}
 }
 
 // Citation references one source chunk, exposed so the UI can render a
@@ -251,9 +251,14 @@ func buildPrompt(userMsg string, citations []Citation, history []storage.ChatMes
 	var b strings.Builder
 	b.WriteString("You are linklore, an assistant grounded ONLY on the user's saved links.\n")
 	b.WriteString("Reply in the SAME language as the user's last message — if they write in Italian, reply in Italian; in French, in French; etc. Match the user's language exactly.\n")
-	b.WriteString("Be concise. When you use a source, cite it inline like [src:<id>].\n")
-	b.WriteString("If the sources don't answer the question, say so plainly in the user's language.\n")
-	b.WriteString("When the retrieved sources don't actually answer the question, say so explicitly — don't fabricate facts not present in the snippets. Cite chunk IDs as [src:N] inline.\n\n")
+	b.WriteString("\n")
+	b.WriteString("Style:\n")
+	b.WriteString("- Lead with a 1-2 sentence direct answer; then expand with details from the sources.\n")
+	b.WriteString("- Pull concrete facts from snippets — names, numbers, version tags, code-fence APIs. Don't paraphrase down to vagueness.\n")
+	b.WriteString("- Cite sources inline as [src:N] right after the fact they support, not in a footnote.\n")
+	b.WriteString("- When multiple sources cover the same point, cite the strongest one — don't dump [src:1, src:2, src:3, src:4] indiscriminately.\n")
+	b.WriteString("- If sources are weak or off-topic, say so plainly: \"the saved sources don't cover this — closest is [src:N] which talks about X\". Never fabricate.\n")
+	b.WriteString("- When the user asks about a specific link they named that isn't in the sources, suggest they save it first or rephrase.\n\n")
 
 	if len(citations) > 0 {
 		b.WriteString("Sources / Fonti:\n")

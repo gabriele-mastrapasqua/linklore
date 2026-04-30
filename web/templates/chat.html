@@ -15,7 +15,10 @@
 {{else}}
 <div class="chat-shell">
 	<header class="chat-header">
-		<h2 style="margin:0;font-size:1.05rem">Chat with your library</h2>
+		<div style="display:flex;align-items:center;gap:.5rem">
+			<h2 style="margin:0;font-size:1.05rem;flex:1">Chat with your library</h2>
+			<button type="button" class="ai-chip" onclick="chatNew()" title="reset session: clear conversation + sources">✦ new chat</button>
+		</div>
 		<div class="badges" style="margin-top:.25rem">
 			{{if eq .Ready 0}}
 			<span class="badge failed">no summarised links yet — add a link or click reindex on a failed one</span>
@@ -113,6 +116,9 @@ async function chatSubmit(ev) {
 	const sourcesList = document.getElementById('chat-sources-list');
 	sourcesList.innerHTML = '';
 	sourcesEl.hidden = true;
+	// Dedup map for THIS turn — one row per distinct link, even if
+	// retrieval returned three chunks from the same article.
+	const seenLinkIDs = new Set();
 
 	const cells = chatAppend('linklore', '', true);
 	const ansEl = cells.ans;
@@ -155,6 +161,12 @@ async function chatSubmit(ev) {
 			}
 			else if (event === 'source') {
 				const [id, title, url] = data.split('|');
+				// Source events arrive once per chunk — but multiple
+				// chunks often come from the SAME link. Show each link
+				// only once in the sidebar; the answer body still cites
+				// individual chunk IDs via [src:N] tokens.
+				if (seenLinkIDs.has(id)) continue;
+				seenLinkIDs.add(id);
 				const li = document.createElement('li');
 				li.innerHTML = '[src:' + id + '] <a href="' + url + '" target="_blank" rel="noopener"></a>';
 				li.querySelector('a').textContent = title;
@@ -183,6 +195,25 @@ function chatFill(text) {
 	if (!inp) return;
 	inp.value = text;
 	inp.focus();
+}
+
+// Reset the conversation: clear the rendered log + the sources rail,
+// drop the session id back to 0 so the next message starts a fresh
+// chat_session row server-side. Doesn't touch the LLM backend itself.
+function chatNew() {
+	var log = document.getElementById('chat-log');
+	if (log) log.innerHTML = '';
+	var srcEl  = document.getElementById('chat-sources');
+	var srcUL  = document.getElementById('chat-sources-list');
+	if (srcUL) srcUL.innerHTML = '';
+	if (srcEl) srcEl.hidden = true;
+	var sess = document.getElementById('chat-session');
+	if (sess) sess.value = '0';
+	var inp = document.getElementById('chat-input');
+	if (inp) { inp.value = ''; inp.focus(); }
+	if (window.linklore && window.linklore.toast) {
+		window.linklore.toast('New chat started', 'info');
+	}
 }
 
 // If the page loaded with a pre-filled ?ask=, give the input focus

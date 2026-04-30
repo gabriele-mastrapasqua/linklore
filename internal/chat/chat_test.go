@@ -95,7 +95,7 @@ func TestPrepare_systemPromptHasNoFabricationGuidance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(turn.Prompt, "When the retrieved sources don't actually answer") {
+	if !strings.Contains(turn.Prompt, "Never fabricate") {
 		t.Errorf("system prompt missing no-fabrication guidance:\n%s", turn.Prompt)
 	}
 }
