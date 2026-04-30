@@ -18,6 +18,10 @@ configs/*.local.yaml
 .tmp/
 node_modules/
 
+# Internal planning notes — kept on disk locally but never published.
+PLAN.md
+PLAN-*.md
+
 # Local-only artefacts from MCP / browser tooling sessions —
 # Playwright snapshots and screenshots Claude takes while working.
 .playwright-mcp/
