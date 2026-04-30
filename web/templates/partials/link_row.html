@@ -11,7 +11,12 @@
 			<a href="/links/{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</a>
 		</div>
 		<div class="url">{{.URL}}</div>
-		{{if .Summary}}<div class="summary">{{.Summary}}</div>{{end}}
+		{{if .Summary}}
+			<div class="summary">{{.Summary}}</div>
+		{{else if .Description}}
+			<div class="summary description">{{.Description}}</div>
+		{{end}}
+		{{if .Note}}<div class="summary note"><span class="note-glyph">📝</span>{{.Note}}</div>{{end}}
 		<div class="badges">
 			<span class="badge {{.Status}}">{{.Status}}</span>
 			{{if .ContentLang}}<span class="badge">{{.ContentLang}}</span>{{end}}

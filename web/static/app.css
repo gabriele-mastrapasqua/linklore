@@ -330,6 +330,19 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 	color: var(--text); opacity: .8;
 	margin-top: var(--space-2); font-size: .92rem; line-height: 1.55;
 }
+/* og:description fallback (only shown when there's no LLM summary) —
+   muted slightly more so the user can tell at a glance which one this is. */
+.link-row .summary.description { opacity: .65; font-style: italic; }
+/* User-authored note — small accent stripe + 📝 glyph so it never
+   blends into the description / summary above it. */
+.link-row .summary.note {
+	border-left: 3px solid color-mix(in srgb, var(--accent) 40%, transparent);
+	padding: .2rem var(--space-2);
+	background: color-mix(in srgb, var(--accent) 5%, transparent);
+	border-radius: var(--radius-sm);
+	opacity: .9; font-style: normal;
+}
+.link-row .summary.note .note-glyph { margin-right: .35rem; opacity: .7; }
 .link-row .badges { margin-top: var(--space-2); display: flex; gap: .25rem; flex-wrap: wrap; }
 .badge {
 	display: inline-block; padding: .15rem .55rem; border-radius: 999px;
