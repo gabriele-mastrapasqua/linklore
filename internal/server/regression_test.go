@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/config"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/config"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 // ---------- /c/:slug rendering ----------

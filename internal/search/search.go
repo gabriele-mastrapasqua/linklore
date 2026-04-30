@@ -22,9 +22,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/embed"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/embed"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 // Embedder is the subset of llm.Backend the search uses.

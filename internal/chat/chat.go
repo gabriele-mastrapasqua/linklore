@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/search"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/search"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 // Service is the public type. It depends on storage (history persistence),

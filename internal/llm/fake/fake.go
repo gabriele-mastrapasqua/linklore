@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
 
 type Backend struct {

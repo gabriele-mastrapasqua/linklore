@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/embed"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
-	"github.com/gabrielemastrapasqua/linklore/internal/search"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/embed"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm/fake"
+	"github.com/gabriele-mastrapasqua/linklore/internal/search"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 func newChatFixture(t *testing.T) (*Service, int64) {

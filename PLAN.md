@@ -305,7 +305,7 @@ Env overrides (whitelist): `LINKLORE_DB_PATH`, `OLLAMA_HOST`, `LINKLORE_LLM_BACK
 ## 8. TODO (phased)
 
 ### Phase 1 — Skeleton + storage (1-2 days)
-- [ ] `go mod init github.com/gabrielemastrapasqua/linklore`, Makefile (build, test, run, fmt, vet, lint).
+- [ ] `go mod init github.com/gabriele-mastrapasqua/linklore`, Makefile (build, test, run, fmt, vet, lint).
 - [ ] `internal/config` with YAML + env overrides. Bind `127.0.0.1:8080` by default.
 - [ ] `internal/storage`: open SQLite WAL, run migrations, basic CRUD (collections, links, **chunks**, tags). Tests.
 - [ ] `cmd/linklore` subcommands: `serve`, `add <url> -c <slug>` (CLI add, free given the binary).

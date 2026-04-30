@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 	"github.com/mmcdole/gofeed"
 )
 

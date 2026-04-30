@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
 
 func TestGenerate_default(t *testing.T) {

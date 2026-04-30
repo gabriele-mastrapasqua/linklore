@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 const atomFixture = `<?xml version="1.0" encoding="UTF-8"?>

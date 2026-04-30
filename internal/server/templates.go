@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"io/fs"
 
-	"github.com/gabrielemastrapasqua/linklore/web"
+	"github.com/gabriele-mastrapasqua/linklore/web"
 )
 
 // funcMap holds the template helpers shared across both the page tree and

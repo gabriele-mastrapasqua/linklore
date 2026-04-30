@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/chat"
-	"github.com/gabrielemastrapasqua/linklore/internal/config"
-	"github.com/gabrielemastrapasqua/linklore/internal/events"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
-	"github.com/gabrielemastrapasqua/linklore/internal/search"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
-	"github.com/gabrielemastrapasqua/linklore/internal/worker"
+	"github.com/gabriele-mastrapasqua/linklore/internal/chat"
+	"github.com/gabriele-mastrapasqua/linklore/internal/config"
+	"github.com/gabriele-mastrapasqua/linklore/internal/events"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm/fake"
+	"github.com/gabriele-mastrapasqua/linklore/internal/search"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/worker"
 )
 
 func newTestServer(t *testing.T) (*httptest.Server, *storage.Store) {

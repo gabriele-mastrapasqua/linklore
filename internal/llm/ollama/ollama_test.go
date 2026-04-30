@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
 
 func newServer(h http.HandlerFunc) (*Backend, *httptest.Server) {

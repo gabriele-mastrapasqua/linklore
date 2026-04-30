@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 	"github.com/gorilla/feeds"
 )
 

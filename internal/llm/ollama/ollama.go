@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
 
 type Config struct {

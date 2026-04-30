@@ -1,4 +1,4 @@
-module github.com/gabrielemastrapasqua/linklore
+module github.com/gabriele-mastrapasqua/linklore
 
 go 1.26.2
 

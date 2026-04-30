@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 func newStoreWithLinks(t *testing.T) *storage.Store {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/classify"
+	"github.com/gabriele-mastrapasqua/linklore/internal/classify"
 	_ "github.com/mattn/go-sqlite3"
 )
 

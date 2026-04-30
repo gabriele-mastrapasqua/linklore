@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm/fake"
 )
 
 func TestSummarize_happyPath(t *testing.T) {

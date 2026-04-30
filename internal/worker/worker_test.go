@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/config"
-	"github.com/gabrielemastrapasqua/linklore/internal/extract"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm/fake"
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/config"
+	"github.com/gabriele-mastrapasqua/linklore/internal/extract"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm/fake"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 const fixtureHTML = `<!doctype html><html>

@@ -22,8 +22,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
-	"github.com/gabrielemastrapasqua/linklore/internal/tags"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/tags"
 )
 
 // Config holds the static knobs.

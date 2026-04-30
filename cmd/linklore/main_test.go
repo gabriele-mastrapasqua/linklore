@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/config"
-	"github.com/gabrielemastrapasqua/linklore/internal/llm"
+	"github.com/gabriele-mastrapasqua/linklore/internal/config"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 )
 
 // ---------- maskKey ----------

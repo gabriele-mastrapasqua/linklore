@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabrielemastrapasqua/linklore/internal/storage"
+	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
 )
 
 // ---------- view modes ----------
