@@ -1621,3 +1621,29 @@ body.previews-off .preview:not(.preview-favicon) { display: none !important; }
    attribute, because the explicit display rule wins specificity. --- */
 [hidden] { display: none !important; }
 
+/* --- Cleaner row in list/headlines views: the row of small extra
+   thumbnails was visually noisy on the home/collection screenshots.
+   Keep one big primary image on the right, hide the extras strip
+   except in moodboard / detail page where the gallery is intentional. --- */
+#links-list.layout-list .link-row .preview-strip { display: none; }
+#links-list.layout-list .link-row .preview-primary {
+	width: 168px; height: 110px;
+}
+
+/* --- Command palette items must NOT wrap: a long title + URL on the
+   same row was breaking onto two lines and looking disordered. Single
+   line, ellipsis on overflow, URL hint shrinks if needed. --- */
+.palette-item { flex-wrap: nowrap; min-width: 0; }
+.palette-item > * { min-width: 0; }
+.palette-item .palette-title,
+.palette-item > span:first-child {
+	flex: 1 1 auto;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.palette-item .palette-hint,
+.palette-item > span:last-child {
+	flex: 0 1 auto;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	max-width: 50%; opacity: .7;
+}
+

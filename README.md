@@ -136,11 +136,15 @@ the migration.
 
 <table>
 <tr>
-<td width="50%"><strong>Collection (list view)</strong><br>Favicons, LLM summaries, type chips, density toggles, four view modes.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
-<td width="50%"><strong>RAG chat with citations</strong><br>Streaming answer, <code>[src:4]</code> tokens link back to the chunk. Sources rail on the right dims rows that were retrieved but not cited.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat answering with citations"></td>
+<td width="50%"><strong>Collection — list view</strong><br>Favicon + LLM summary + tags per row, big single hero image on the right. Type filter chips above (article / video / image / audio / document / book) narrow the grid to a single content kind.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
+<td width="50%"><strong>RAG chat with citations</strong><br>Streaming answer, <code>[src:N]</code> tokens link back to the exact chunk. Sources rail on the right dims rows that were retrieved but not cited.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat answering with citations"></td>
 </tr>
 <tr>
-<td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + a TL;DR card.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
+<td width="50%"><strong>Moodboard view</strong><br>Same data, Pinterest-style masonry. Three more layouts (grid, headlines, list) one click away — choice is per-collection and persisted.<br><img src="docs/screenshots/06-moodboard.png" alt="Moodboard view"></td>
+<td width="50%"><strong>Type filter</strong><br>Per-collection chip filters narrow the view to one content kind without leaving the page.<br><img src="docs/screenshots/07-types.png" alt="Type filter chips"></td>
+</tr>
+<tr>
+<td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + an LLM TL;DR card pinned above the article.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
 <td width="50%"><strong>⌘K command palette</strong><br>Fuzzy-search every link, every collection, every page. <code>j/k</code> walks rows; <code>↵</code> opens.<br><img src="docs/screenshots/05-palette.png" alt="Command palette"></td>
 </tr>
 </table>
