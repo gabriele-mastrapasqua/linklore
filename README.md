@@ -50,67 +50,24 @@ the migration.
 
 ## Features
 
-**Capture**
-- Smart-add input — paste a page URL or an RSS/Atom feed URL into the
-  same field; linklore figures out which it is.
-- Bookmarklet at `/bookmarklet` (drag to your bookmarks bar).
-- Netscape Bookmark File import + export — round-trips with Chrome,
-  Firefox, Safari, Edge, Pocket, Pinboard, Raindrop.
-- RSS/Atom subscription per collection with auto-discovery from a
-  homepage URL.
-
-**Organize**
-- Collections + tags with drag-and-drop reorder.
-- Four view modes per collection: list / grid / headlines / moodboard
-  (Pinterest-style masonry). Persisted server-side per collection.
-- Density toggles — show/hide titles, summaries, badges.
-- Bulk-select toolbar — checkbox per row, sticky bar with
-  Move-to-collection and Delete.
-- Per-link type classifier on ingest: article / video / image / audio /
-  document / book.
-- Duplicates view with URL canonicalisation (drops `www.`, trailing
-  slashes, fragments, `utm_*`, `fbclid`, `gclid`, and 14 other tracker
-  keys).
-- One-click "prune empty collections" on the home page.
-
-**Read**
-- Right-pane reader drawer — slide-in preview with font size S/M/L,
-  width narrow/medium/wide, theme light/sepia/dark.
-- Full reader page at `/links/:id/read` — markdown rendered + sanitised
-  via bluemonday.
-- Per-link LLM TL;DR card pinned above the article body.
-
-**Search**
-- Full-text (FTS5) across title, description, summary, and the
-  extracted markdown body.
-- Semantic search via embeddings (`[]float32` BLOB, cosine in Go).
-- Hybrid ranking that blends both. Falls back to BM25 cleanly when
-  no LLM is configured.
-
-**RAG chat**
-- Streaming answers grounded on retrieved chunks from your library,
-  with inline `[src:N]` citations that link back to the exact source.
-- Sources rail dims rows that were retrieved but not actually cited
-  by the model — easy to spot what mattered.
-- Stella-style starter tiles (Find / Summarize / Organize / Rediscover)
-  when the chat log is empty.
-
-**Per-link AI** (LLM optional)
-- TL;DR + auto-tags generated on ingest. Auto-tags reuse existing tag
-  slugs (Levenshtein dedupe, capped at 5/link).
-- Right-click "✦ Ask about this" opens chat with the link's title
-  pre-filled.
-- Canned-prompt chips above the chat input.
-
-**UX**
-- ⌘K command palette — fuzzy-filter every link, every collection,
-  every page. `?`-prefix routes to the LLM.
-- Keyboard nav: `j`/`k` walk cards, `↵` opens, `x` toggles selection,
-  `del` deletes, `/` focuses search, `?` shows the overlay.
-- Right-click context menu on every row.
-- Sticky filter bar with backdrop-blur. Light / dark / auto theme.
-- Worker activity dot in the topbar — pulsing violet when work is in
-  flight, solid grey when idle.
+- **Smart capture** — paste a link or RSS/Atom feed; the same field
+  handles both. Bookmarklet + Netscape import/export.
+- **Four views per collection** — list / grid / headlines /
+  Pinterest-style moodboard, persisted server-side.
+- **Hybrid search** — FTS5 + semantic (cosine on stored embeddings),
+  with a clean BM25 fallback when no LLM is around.
+- **RAG chat** with inline `[src:N]` citations and a sources rail that
+  dims retrieved-but-unused chunks.
+- **Per-link AI** — TL;DR + auto-tags on ingest. Optional; off by
+  default.
+- **Reader drawer** — in-place preview with size / width /
+  light-sepia-dark.
+- **Type filter** — article / video / image / audio / document / book
+  chips per collection.
+- **⌘K palette**, `j/k` keyboard nav, right-click menu, drag-and-drop
+  reorder, light/dark/auto theme.
+- **Duplicates view** with URL canonicalisation (strips `www.`,
+  trailing slash, fragment, `utm_*`, 17 other tracker keys).
 
 ---
 
