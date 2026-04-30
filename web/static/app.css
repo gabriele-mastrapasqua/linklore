@@ -345,15 +345,16 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 .link-row .summary.note .note-glyph { margin-right: .35rem; opacity: .7; }
 
 /* Pencil icon next to summary/description/note. Tiny inline link that
-   jumps to the link's detail page where the note can be edited. Stays
-   muted until the user hovers the row. */
+   jumps to the link's detail page where the note can be edited.
+   Always visible (just muted) so it's discoverable without hovering;
+   brightens on row hover and pops accent on its own hover. */
 .link-row .note-edit {
 	display: inline-block; margin-left: .4rem;
-	font-size: .85rem; color: var(--muted);
-	text-decoration: none; opacity: 0;
+	font-size: .9rem; color: var(--muted);
+	text-decoration: none; opacity: .55;
 	transition: opacity .12s ease, color .12s ease;
 }
-.link-row:hover .note-edit { opacity: .8; }
+.link-row:hover .note-edit { opacity: .9; }
 .link-row .note-edit:hover { color: var(--accent); opacity: 1; }
 /* "Add note" CTA — only shown when the row has no summary, no
    description, and no note. Visible without hover so the action is
