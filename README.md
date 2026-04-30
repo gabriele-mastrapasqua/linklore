@@ -73,18 +73,22 @@ the migration.
 
 ## Screenshots
 
+The two views the project is built around: a Pinterest-style moodboard
+of your saved links (the hero above), and a RAG chat that answers
+questions in the language of your library and cites the exact source
+chunk it used.
+
 <table>
 <tr>
-<td width="50%"><strong>Collection — list view</strong><br>Favicon + LLM summary + tags per row, big single hero image on the right. Type filter chips above (article / video / image / audio / document / book) narrow the grid to a single content kind.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
-<td width="50%"><strong>RAG chat with citations</strong><br>Streaming answer, <code>[src:N]</code> tokens link back to the exact chunk. Sources rail on the right dims rows that were retrieved but not cited.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat answering with citations"></td>
+<td colspan="2"><strong>Chat with your library</strong> — streaming answer with inline <code>[src:N]</code> citations. The sources rail on the right highlights the chunks the model actually used and dims the ones that were retrieved but irrelevant. Powered by hybrid FTS5 + embedding retrieval over your own SQLite.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat with inline citations"></td>
 </tr>
 <tr>
-<td width="50%"><strong>Moodboard view</strong><br>Same data, Pinterest-style masonry. Three more layouts (grid, headlines, list) one click away — choice is per-collection and persisted.<br><img src="docs/screenshots/06-moodboard.png" alt="Moodboard view"></td>
-<td width="50%"><strong>Type filter</strong><br>Per-collection chip filters narrow the view to one content kind without leaving the page.<br><img src="docs/screenshots/07-types.png" alt="Type filter chips"></td>
+<td width="50%"><strong>Collection — list view</strong><br>Favicon + LLM summary + tags + a single big hero image per row.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
+<td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + a TL;DR card.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
 </tr>
 <tr>
-<td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + an LLM TL;DR card pinned above the article.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
-<td width="50%"><strong>⌘K command palette</strong><br>Fuzzy-search every link, every collection, every page. <code>j/k</code> walks rows; <code>↵</code> opens.<br><img src="docs/screenshots/05-palette.png" alt="Command palette"></td>
+<td width="50%"><strong>Type filter</strong><br>Per-collection chips: article / video / image / audio / document / book.<br><img src="docs/screenshots/07-types.png" alt="Type filter chips"></td>
+<td width="50%"><strong>⌘K command palette</strong><br>Fuzzy-search every link, every collection, every page.<br><img src="docs/screenshots/05-palette.png" alt="Command palette"></td>
 </tr>
 </table>
 
