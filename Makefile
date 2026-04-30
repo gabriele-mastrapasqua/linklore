@@ -3,6 +3,7 @@
         cover cover-summary cover-pkg cover-open bench \
         fmt vet lint tidy check \
         smoke smoke-up smoke-down clean reset-db env-template \
+        seed-demo \
         help
 
 BIN      := bin/linklore
@@ -141,6 +142,9 @@ env-template: ## copy .env.example → .env (skips if .env already exists)
 reset-db: ## delete the local sqlite database (data/linklore.db*)
 	@find data -maxdepth 1 -name 'linklore.db*' -delete 2>/dev/null || true
 	@echo "data/linklore.db cleared"
+
+seed-demo: build ## populate ./data/linklore-demo.db with curated public links (real DB untouched)
+	@bash scripts/seed-demo.sh
 
 clean: ## remove build artefacts and coverage files
 	rm -rf bin coverage.out coverage.html
