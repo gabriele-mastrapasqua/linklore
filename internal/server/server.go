@@ -2040,8 +2040,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	// session id + sources preamble.
 	fmt.Fprintf(w, "event: session\ndata: %d\n\n", turn.SessionID)
 	for _, src := range turn.Sources {
-		fmt.Fprintf(w, "event: source\ndata: %d|%s|%s\n\n",
-			src.LinkID, sseSafe(src.Title), sseSafe(src.URL))
+		fmt.Fprintf(w, "event: source\ndata: %d|%s|%s|%s|%s\n\n",
+			src.LinkID, sseSafe(src.Title), sseSafe(src.URL),
+			sseSafe(src.CollectionSlug), sseSafe(src.CollectionName))
 	}
 	// Retrieval transparency: emit before LLM streaming so the user sees
 	// how broadly RAG fired (chunks|distinct links|context bytes) up front.

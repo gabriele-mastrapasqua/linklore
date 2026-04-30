@@ -46,10 +46,12 @@ func New(store *storage.Store, eng *search.Engine, backend llm.Backend) *Service
 // Citation references one source chunk, exposed so the UI can render a
 // "Sources" footer alongside the streamed answer.
 type Citation struct {
-	LinkID  int64
-	Title   string
-	URL     string
-	Snippet string
+	LinkID         int64
+	Title          string
+	URL            string
+	Snippet        string
+	CollectionSlug string // for "Open in <collection>" link in the UI sidebar
+	CollectionName string
 }
 
 // PrepareTurn does everything except the streaming call. Returned so that
@@ -111,6 +113,7 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 
 	citations := make([]Citation, 0, len(hits))
 	seenLinks := make(map[int64]struct{}, len(hits))
+	colCache := make(map[int64]storage.Collection, 4)
 	contextBytes := 0
 	for _, h := range hits {
 		title := h.Link.Title
@@ -122,8 +125,18 @@ func (s *Service) Prepare(ctx context.Context, sessionID, collectionID int64, us
 		// often hallucinates because it sees only the chunk's first
 		// boilerplate sentence.
 		snip := truncate(h.Chunk.Text, 1800)
+		// Look up the collection once per ID; we mostly hit the same
+		// few collections across a single retrieval pass.
+		col, ok := colCache[h.Link.CollectionID]
+		if !ok {
+			if c, _ := s.store.GetCollectionBySlugByID(ctx, h.Link.CollectionID); c != nil {
+				col = *c
+				colCache[h.Link.CollectionID] = col
+			}
+		}
 		citations = append(citations, Citation{
 			LinkID: h.Link.ID, Title: title, URL: h.Link.URL, Snippet: snip,
+			CollectionSlug: col.Slug, CollectionName: col.Name,
 		})
 		seenLinks[h.Link.ID] = struct{}{}
 		contextBytes += len(snip)

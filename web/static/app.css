@@ -987,12 +987,34 @@ body.density-no-title   .link-row .title   { display: none; }
 .chat-sources ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .5rem; }
 .chat-sources li {
 	padding: .4rem .55rem;
-	border-radius: 6px;
+	border-radius: var(--radius-sm);
 	background: var(--card);
 	border: 1px solid var(--border);
 	line-height: 1.35;
+	font-size: .85rem;
+	transition: opacity .15s ease, border-color .15s ease, background .15s ease;
 }
 .chat-sources li a { word-break: break-word; }
+.chat-sources .src-tag { color: var(--muted); font-size: .75rem; margin-right: .25rem; font-family: var(--ff-mono); }
+.chat-sources .src-title { color: var(--accent); text-decoration: none; }
+.chat-sources .src-title:hover { text-decoration: underline; }
+/* Collection chip — small pill linking to /c/:slug. */
+.chat-sources .src-col {
+	display: inline-block; margin-left: .35rem;
+	padding: .05rem .4rem; border-radius: 999px;
+	font-size: .7rem; line-height: 1.4;
+	color: var(--muted); background: color-mix(in srgb, var(--accent) 10%, var(--card));
+	border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+	text-decoration: none;
+}
+.chat-sources .src-col:hover { color: var(--text); border-color: var(--accent); }
+/* Retrieved-but-not-cited rows fade back so the user can spot the
+   ones the model actually used. */
+.chat-sources .src-dim { opacity: .45; }
+.chat-sources .src-cited {
+	border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+	background: color-mix(in srgb, var(--accent) 6%, var(--card));
+}
 .chat-input-bar {
 	display: flex;
 	gap: .5rem;

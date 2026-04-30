@@ -160,7 +160,9 @@ async function chatSubmit(ev) {
 				if (nearBottom) log.scrollTop = log.scrollHeight;
 			}
 			else if (event === 'source') {
-				const [id, title, url] = data.split('|');
+				const parts = data.split('|');
+				const id = parts[0], title = parts[1] || '', url = parts[2] || '';
+				const colSlug = parts[3] || '', colName = parts[4] || '';
 				// Source events arrive once per chunk — but multiple
 				// chunks often come from the SAME link. Show each link
 				// only once in the sidebar; the answer body still cites
@@ -168,8 +170,16 @@ async function chatSubmit(ev) {
 				if (seenLinkIDs.has(id)) continue;
 				seenLinkIDs.add(id);
 				const li = document.createElement('li');
-				li.innerHTML = '[src:' + id + '] <a href="' + url + '" target="_blank" rel="noopener"></a>';
-				li.querySelector('a').textContent = title;
+				li.className = 'src-row src-dim';   // dimmed until cited
+				li.setAttribute('data-src-id', id);
+				const tagId   = '<span class="src-tag">[src:' + id + ']</span>';
+				const titleA  = '<a class="src-title" href="' + url + '" target="_blank" rel="noopener"></a>';
+				const colChip = colSlug
+					? ' <a class="src-col" href="/c/' + colSlug + '" title="open collection"></a>'
+					: '';
+				li.innerHTML = tagId + ' ' + titleA + colChip;
+				li.querySelector('.src-title').textContent = title;
+				if (colSlug) li.querySelector('.src-col').textContent = colName || colSlug;
 				sourcesList.appendChild(li);
 				sourcesEl.hidden = false;
 			} else if (event === 'stats') {
@@ -186,6 +196,21 @@ async function chatSubmit(ev) {
 			} else if (event === 'error') ansEl.textContent += ' [error: ' + data + ']';
 		}
 	}
+	// Stream is finished: scan the answer body for [src:N] tokens and
+	// promote those sidebar rows from "dimmed" to "cited" so the user
+	// can tell at a glance which retrieved chunks the model actually
+	// used vs which were retrieved-but-irrelevant noise.
+	const cited = new Set();
+	const re = /\[src:(\d+)\]/g;
+	const txt = ansEl.textContent || '';
+	let m;
+	while ((m = re.exec(txt)) !== null) cited.add(m[1]);
+	sourcesList.querySelectorAll('.src-row').forEach(function (row) {
+		if (cited.has(row.getAttribute('data-src-id'))) {
+			row.classList.add('src-cited');
+			row.classList.remove('src-dim');
+		}
+	});
 	return false;
 }
 
