@@ -18,38 +18,20 @@
 > chain, no Docker compose, no Postgres, no Redis. The whole thing
 > is ~14 MB and starts in under a second.
 
-![Home](docs/screenshots/01-home.png)
+![Linklore — grid view](docs/screenshots/00-hero.png)
 
 > Screenshots in this README are taken from a curated public demo
 > library — generate yours with `make seed-demo`.
 
 ---
 
-## Local-first. Privacy-first.
+## Local-first, in one paragraph
 
-This is the part that matters; the rest of the project is built around it.
-
-- **Your data lives on your disk.** A single SQLite file at
-  `./data/linklore.db`. Back it up by copying the file — Syncthing,
-  iCloud Drive, scp, `sqlite3 .backup`, whatever you already use for
-  files. No cross-device sync built in, by design.
-- **Migration is `cp`.** Nothing is locked behind an account, an API,
-  or a proprietary export format. Want to leave? You already have
-  everything.
-- **No accounts. No SaaS. No telemetry.** Linklore makes outbound HTTP
-  only to (1) the URLs you paste, (2) the LLM backend you opted into,
-  (3) the RSS/Atom feeds you subscribed to. There's no analytics
-  endpoint, no "anonymous usage stats", no Sentry, nothing.
-- **The LLM is optional and yours to pick.** Run Ollama on localhost,
-  point at your own LiteLLM gateway, or skip the LLM entirely (search
-  degrades to BM25 only). Endpoints + API keys live in `.env`
-  (gitignored) — the committed yaml never carries secrets.
-- **One Go binary. One SQLite file.** ~14 MB, starts in under a second.
-  No Node, no npm, no JS build chain, no Docker compose, no Postgres,
-  no Redis.
-- **Single-user. Localhost-only by default.** Binds to `127.0.0.1`,
-  no auth, no login. If you want to expose it, you do it on purpose
-  with a reverse proxy you control.
+Your data is one SQLite file. Migration is `cp`. No accounts, no SaaS,
+no telemetry. The LLM is optional and runs wherever you tell it to —
+Ollama on localhost, your own LiteLLM gateway, or none at all (search
+falls back to BM25). Binds to `127.0.0.1` by default; you decide if it
+ever leaves the machine.
 
 ---
 
