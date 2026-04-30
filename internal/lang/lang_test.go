@@ -7,10 +7,10 @@ import (
 
 func TestDetect_basic(t *testing.T) {
 	cases := map[string]string{
-		"":                                  "",
-		"   ":                               "",
+		"":    "",
+		"   ": "",
 		"This is a clearly English passage about software engineering and ownership semantics.": "en",
-		"Questo è un testo chiaramente in italiano che parla di programmazione e di tipi.":     "it",
+		"Questo è un testo chiaramente in italiano che parla di programmazione e di tipi.":      "it",
 		"Ceci est un passage clairement en français à propos de programmation et de types.":     "fr",
 	}
 	for in, want := range cases {

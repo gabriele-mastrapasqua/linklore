@@ -58,9 +58,9 @@ type Worker struct {
 	// unhealthy and skip summary/embed steps until the next probe
 	// succeeds. This keeps fetch+extract working as a plain bookmark
 	// pipeline when the LLM gateway is down or not configured.
-	healthMu     sync.RWMutex
-	llmHealthy   bool
-	lastHealthAt time.Time
+	healthMu      sync.RWMutex
+	llmHealthy    bool
+	lastHealthAt  time.Time
 	lastHealthErr error
 }
 
@@ -395,4 +395,3 @@ func (w *Worker) ProcessOne(ctx context.Context, id int64) error {
 	}
 	return nil
 }
-

@@ -58,11 +58,12 @@ the migration.
 
 <table>
 <tr>
-<td width="50%"><strong>Collection (list view)</strong> — favicons, summaries, type chips, density toggles<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
-<td width="50%"><strong>RAG chat</strong> — Stella-style starter tiles, grounded in your library<br><img src="docs/screenshots/02-chat.png" alt="Chat welcome"></td>
+<td width="50%"><strong>Collection (list view)</strong><br>Favicons, LLM summaries, type chips, density toggles, four view modes.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
+<td width="50%"><strong>RAG chat with citations</strong><br>Streaming answer, <code>[src:4]</code> tokens link back to the chunk. Sources rail on the right dims rows that were retrieved but not cited.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat answering with citations"></td>
 </tr>
 <tr>
-<td colspan="2"><strong>Reader drawer</strong> — slide-in preview with size / width / theme toggles and a TL;DR card<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
+<td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + a TL;DR card.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
+<td width="50%"><strong>⌘K command palette</strong><br>Fuzzy-search every link, every collection, every page. <code>j/k</code> walks rows; <code>↵</code> opens.<br><img src="docs/screenshots/05-palette.png" alt="Command palette"></td>
 </tr>
 </table>
 

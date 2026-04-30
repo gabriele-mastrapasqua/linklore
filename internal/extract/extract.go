@@ -425,4 +425,3 @@ func collapseBlankLines(s string) string {
 	}
 	return strings.Join(out, "\n")
 }
-

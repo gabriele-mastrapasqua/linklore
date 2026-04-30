@@ -7,22 +7,22 @@ import (
 
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
-		"":                    "",
-		"  ":                  "",
-		"!!":                  "",
-		"Go":                  "go",
-		"  Hello, World!  ":   "hello-world",
-		"Machine Learning":    "machine-learning",
+		"":                        "",
+		"  ":                      "",
+		"!!":                      "",
+		"Go":                      "go",
+		"  Hello, World!  ":       "hello-world",
+		"Machine Learning":        "machine-learning",
 		"Artificial-Intelligence": "artificial-intelligence",
-		"AI/ML":               "ai-ml",
-		"Tags":                "tag",   // trailing 's' lemma
-		"Bus":                 "bus",   // length ≤3 keeps the s
-		"databases":           "database",
-		"  multi   space  ":   "multi-space",
-		"NLP":                 "nlp",
-		"©™ Foo":              "foo",
-		"3D":                  "3d",
-		"AI ":                 "ai",
+		"AI/ML":                   "ai-ml",
+		"Tags":                    "tag", // trailing 's' lemma
+		"Bus":                     "bus", // length ≤3 keeps the s
+		"databases":               "database",
+		"  multi   space  ":       "multi-space",
+		"NLP":                     "nlp",
+		"©™ Foo":                  "foo",
+		"3D":                      "3d",
+		"AI ":                     "ai",
 	}
 	for in, want := range cases {
 		if got := Slugify(in); got != want {

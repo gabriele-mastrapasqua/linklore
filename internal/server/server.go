@@ -1689,8 +1689,8 @@ func (s *Server) handleDiscoverFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, _ := s.store.GetCollectionBySlugByID(r.Context(), col.ID)
 	s.renderFragment(w, "collection_feed", map[string]any{
-		"Collection":     updated,
-		"DiscoverdMsg":   feedURL,
+		"Collection":   updated,
+		"DiscoverdMsg": feedURL,
 	})
 }
 

@@ -876,11 +876,11 @@ func TestAddLink_OOB_updatesCountersAndEmptyState(t *testing.T) {
 		t.Fatalf("status=%d body=%s", code, body)
 	}
 	for _, want := range []string{
-		`id="link-`,                              // the freshly inserted row
-		`id="collection-stats-`,                  // OOB stats wrapper
-		`hx-swap-oob="outerHTML"`,                // OOB attribute
-		`1 link`,                                 // updated counter
-		`id="links-empty"`,                       // empty-state OOB
+		`id="link-`,               // the freshly inserted row
+		`id="collection-stats-`,   // OOB stats wrapper
+		`hx-swap-oob="outerHTML"`, // OOB attribute
+		`1 link`,                  // updated counter
+		`id="links-empty"`,        // empty-state OOB
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in OOB response: %s", want, body)

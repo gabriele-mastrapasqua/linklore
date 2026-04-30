@@ -186,10 +186,10 @@ type Tag struct {
 }
 
 const (
-	StatusPending     = "pending"
-	StatusFetched     = "fetched"
-	StatusSummarized  = "summarized"
-	StatusFailed      = "failed"
+	StatusPending    = "pending"
+	StatusFetched    = "fetched"
+	StatusSummarized = "summarized"
+	StatusFailed     = "failed"
 
 	TagSourceAuto = "auto"
 	TagSourceUser = "user"

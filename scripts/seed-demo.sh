@@ -86,10 +86,10 @@ links=(
     "reading|https://martinfowler.com/articles/microservices.html"
     "reading|https://stripe.com/blog/payment-api-design"
     "reading|https://paulgraham.com/airbnbs.html"
-    "reading|https://go.dev/blog/inside-the-go-playground"
+    "reading|https://go.dev/blog/error-handling-and-go"
 
     # Tools — projects + docs
-    "tools|https://github.com/htmx-org/htmx"
+    "tools|https://github.com/bigskysoftware/htmx"
     "tools|https://github.com/sqlite/sqlite"
     "tools|https://github.com/ollama/ollama"
     "tools|https://sqlite.org/wal.html"

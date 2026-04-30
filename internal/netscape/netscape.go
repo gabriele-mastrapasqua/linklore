@@ -77,13 +77,13 @@ func Parse(r io.Reader) ([]Bookmark, error) {
 //
 // goquery's HTML parser nests Netscape's malformed tag soup as:
 //
-//   <dt>           ← folder DT, contains <h3>"Folder"</h3>
-//     <dl>         ← inner DL
-//       <dt>       ← link DT
-//         <a/>     ← the link itself
-//       </dt>
-//     </dl>
-//   </dt>
+//	<dt>           ← folder DT, contains <h3>"Folder"</h3>
+//	  <dl>         ← inner DL
+//	    <dt>       ← link DT
+//	      <a/>     ← the link itself
+//	    </dt>
+//	  </dl>
+//	</dt>
 //
 // So for each <a>, walk up Parent (DT) → Parent (DL) → Parent (folder DT
 // or body), and grab the <h3> child of each "folder DT" we encounter.

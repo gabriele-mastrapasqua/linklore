@@ -176,8 +176,8 @@ func TestExtract_picksLazyLoadAndSrcsetImages(t *testing.T) {
 	all := append([]string{a.ImageURL}, a.ExtraImages...)
 
 	for _, want := range []string{
-		"https://cdn.example.com/lazy.jpg",            // data-src wins over data: src
-		"https://cdn.example.com/hero-2x.jpg",         // <picture><source srcset> highest width
+		"https://cdn.example.com/lazy.jpg",                 // data-src wins over data: src
+		"https://cdn.example.com/hero-2x.jpg",              // <picture><source srcset> highest width
 		"https://news.example.com/article/inline-1440.jpg", // <img srcset> resolved + highest width
 	} {
 		found := false
