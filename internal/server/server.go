@@ -38,7 +38,8 @@ import (
 type Server struct {
 	cfgMu      sync.RWMutex
 	cfg        config.Config
-	cfgPath    string // path to config.yaml; "" disables /settings save
+	cfgPath    string // path to config.yaml (informational; LLM saves go to .env)
+	envPath    string // path to .env; "" disables /settings save
 	store      *storage.Store
 	r          *renderer
 	search     *search.Engine // nil → search routes return empty results
@@ -76,10 +77,14 @@ func New(cfg config.Config, store *storage.Store, eng *search.Engine, chatSvc *c
 	}, nil
 }
 
-// SetConfigPath records the path the server was loaded from so /settings
-// can save back to it. Optional: an empty path leaves /settings save
-// disabled (the form renders with a "no path" notice).
+// SetConfigPath records the yaml path the server was loaded from. Used
+// only for display on /settings; LLM saves go to .env, not yaml.
 func (s *Server) SetConfigPath(path string) { s.cfgPath = path }
+
+// SetDotEnvPath records the .env path /settings writes LLM changes to.
+// An empty path leaves /settings save disabled (the form still renders
+// but Save returns an error banner).
+func (s *Server) SetDotEnvPath(path string) { s.envPath = path }
 
 // currentConfig returns a copy of the live config. Handlers that read
 // config-derived state should call this rather than reading s.cfg
@@ -2235,6 +2240,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"Title":    "Settings",
 		"Form":     s.settingsFormFromConfig(),
 		"CfgPath":  s.cfgPath,
+		"EnvPath":  s.envPath,
 		"Backends": []string{llm.BackendNone, llm.BackendOllama, llm.BackendLitellm},
 	})
 }
@@ -2271,15 +2277,18 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist when we have a path; otherwise just update memory.
-	if s.cfgPath != "" {
-		if err := c.SaveYAML(s.cfgPath); err != nil {
-			s.writeSettingsBanner(w, "err", err.Error())
-			return
-		}
+	// Persist LLM-only fields to .env. Yaml never carries LLM data so
+	// committing config.yaml stays safe.
+	if s.envPath == "" {
+		s.writeSettingsBanner(w, "err", "save disabled: server started without --env-path")
+		return
+	}
+	if err := c.WriteLLMDotEnv(s.envPath); err != nil {
+		s.writeSettingsBanner(w, "err", err.Error())
+		return
 	}
 	s.updateConfig(c)
-	s.writeSettingsBanner(w, "ok", "Settings saved. Worker keeps the previous backend until restart.")
+	s.writeSettingsBanner(w, "ok", "Saved to "+s.envPath+". Restart the server to pick up the new backend in workers/chat.")
 }
 
 func (s *Server) writeSettingsBanner(w http.ResponseWriter, kind, msg string) {

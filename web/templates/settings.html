@@ -3,7 +3,9 @@
 	<h2 style="margin:0 0 .25rem 0">Settings</h2>
 	<div class="muted" style="font-size:.9rem">
 		Edit the LLM backend without restarting the server. Saving rewrites
-		<code>{{if .CfgPath}}{{.CfgPath}}{{else}}(no config path — changes apply in-memory only){{end}}</code>.
+		<code>{{if .EnvPath}}{{.EnvPath}}{{else}}(no .env path — save disabled){{end}}</code>
+		(gitignored — your endpoint and API key never land in a committed file).
+		Worker and chat pick up the new backend at the next process restart.
 	</div>
 </section>
 

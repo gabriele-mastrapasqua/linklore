@@ -136,9 +136,9 @@ func runServe(args []string) {
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}
-	// Wire the config path so /settings can save back to the same YAML
-	// file the user passed in. Empty path leaves /settings save in
-	// in-memory-only mode.
+	// Wire the config + .env paths so /settings can display the live
+	// yaml file path and save LLM changes back to .env (gitignored).
+	// LLM never lands in yaml — see config.Config.WriteLLMDotEnv.
 	resolvedPath := *cfgPath
 	if resolvedPath == "" {
 		if _, err := os.Stat("./configs/config.yaml"); err == nil {
@@ -146,6 +146,17 @@ func runServe(args []string) {
 		}
 	}
 	srv.SetConfigPath(resolvedPath)
+	envPath := "./.env"
+	if resolvedPath != "" {
+		dir := filepath.Dir(resolvedPath)
+		// Prefer .env next to the config when it exists; otherwise fall
+		// back to ./.env (the cwd, where the dotenv loader looks too).
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			envPath = candidate
+		}
+	}
+	srv.SetDotEnvPath(envPath)
 	httpSrv := &http.Server{
 		Addr:              cfg.Server.Addr,
 		Handler:           srv.Handler(),

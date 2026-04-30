@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,12 +50,6 @@ server:
   addr: ":9999"
 database:
   path: "/tmp/x.db"
-llm:
-  backend: "litellm"
-  ollama:
-    host: "http://h:1"
-    model: "m"
-    embed_model: "e"
 worker:
   concurrency: 8
   embed_batch_size: 16
@@ -78,14 +73,50 @@ tags:
 	if c.Server.Addr != ":9999" {
 		t.Errorf("addr = %q", c.Server.Addr)
 	}
-	if c.LLM.Backend != "litellm" {
-		t.Errorf("backend = %q", c.LLM.Backend)
-	}
 	if c.Worker.Concurrency != 8 {
 		t.Errorf("concurrency = %d", c.Worker.Concurrency)
 	}
 	if c.Chunking.TargetTokens != 500 {
 		t.Errorf("target_tokens = %d", c.Chunking.TargetTokens)
+	}
+}
+
+// LLM lives only in env vars now. A stray `llm:` block in yaml must
+// be silently ignored so private endpoints can't be smuggled into a
+// committed yaml.
+func TestLoad_yamlLLMSectionIgnored(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.yaml")
+	body := `
+server:
+  addr: ":9999"
+database:
+  path: "/tmp/x.db"
+llm:
+  backend: "litellm"
+  litellm:
+    base_url: "http://snuck-into-yaml/v1"
+    api_key: "leaked-key"
+worker: {concurrency: 1, embed_batch_size: 1, fetch_timeout_seconds: 1}
+chunking: {target_tokens: 10, overlap_tokens: 1, min_tokens: 1}
+tags: {max_per_link: 1, active_cap: 1, reuse_distance: 1}
+`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.LLM.Backend != "none" {
+		t.Errorf("yaml llm.backend leaked: %q want %q", c.LLM.Backend, "none")
+	}
+	if c.LLM.LiteLLM.BaseURL != "" {
+		t.Errorf("yaml llm.litellm.base_url leaked: %q", c.LLM.LiteLLM.BaseURL)
+	}
+	if c.LLM.LiteLLM.APIKey != "" {
+		t.Errorf("yaml llm.litellm.api_key leaked: %q", c.LLM.LiteLLM.APIKey)
 	}
 }
 
@@ -122,30 +153,12 @@ func TestLoad_envOverrides(t *testing.T) {
 	}
 }
 
-func TestLoad_envExpandInYaml(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("LITELLM_API_KEY", "from-env")
-	dir := t.TempDir()
-	p := filepath.Join(dir, "c.yaml")
-	// Both $VAR and ${VAR} forms must work — the standard config-loader convention.
-	body := "llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if c.LLM.LiteLLM.APIKey != "from-env" {
-		t.Errorf("api key not expanded: %q", c.LLM.LiteLLM.APIKey)
-	}
-}
-
 func TestLoad_dotEnvFile(t *testing.T) {
 	clearEnv(t)
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env")
 	body := []byte(`# comment line
+LINKLORE_LLM_BACKEND=litellm
 LITELLM_API_KEY="from-dotenv"
 export LINKLORE_ADDR=':9991'
 LINKLORE_DB_PATH=/tmp/from-dotenv.db
@@ -154,14 +167,16 @@ LINKLORE_DB_PATH=/tmp/from-dotenv.db
 		t.Fatal(err)
 	}
 	yamlPath := filepath.Join(dir, "c.yaml")
-	yaml := "llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"
-	if err := os.WriteFile(yamlPath, []byte(yaml), 0o600); err != nil {
+	if err := os.WriteFile(yamlPath, []byte(""), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	c, err := Load(yamlPath)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	if c.LLM.Backend != "litellm" {
+		t.Errorf("backend from .env: %q", c.LLM.Backend)
 	}
 	if c.LLM.LiteLLM.APIKey != "from-dotenv" {
 		t.Errorf("api key from .env: %q", c.LLM.LiteLLM.APIKey)
@@ -183,8 +198,7 @@ func TestLoad_processEnvBeatsDotEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	yamlPath := filepath.Join(dir, "c.yaml")
-	if err := os.WriteFile(yamlPath,
-		[]byte("llm:\n  litellm:\n    api_key: \"${LITELLM_API_KEY}\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(yamlPath, []byte(""), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := Load(yamlPath)
@@ -193,6 +207,79 @@ func TestLoad_processEnvBeatsDotEnv(t *testing.T) {
 	}
 	if c.LLM.LiteLLM.APIKey != "from-shell" {
 		t.Errorf("expected shell to win: got %q", c.LLM.LiteLLM.APIKey)
+	}
+}
+
+// Round-trip a /settings save: the writer must replace existing keys
+// in place, append missing ones, leave unrelated lines + comments
+// untouched, and round-trip through Load() with the new values.
+func TestWriteLLMDotEnv_roundtrips(t *testing.T) {
+	clearEnv(t)
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+
+	// Pre-existing .env has some unrelated lines + an old LLM key we
+	// expect to be REPLACED in place (not duplicated).
+	initial := `# my header
+SOMETHING_ELSE=keep-me
+LINKLORE_LLM_BACKEND=ollama
+`
+	if err := os.WriteFile(envPath, []byte(initial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Default()
+	cfg.LLM.Backend = "litellm"
+	cfg.LLM.LiteLLM.BaseURL = "http://x:8000/v1"
+	cfg.LLM.LiteLLM.APIKey = "secret # value"
+	cfg.LLM.LiteLLM.Model = "qwen3"
+	cfg.LLM.LiteLLM.EmbedModel = "nomic"
+
+	if err := cfg.WriteLLMDotEnv(envPath); err != nil {
+		t.Fatalf("WriteLLMDotEnv: %v", err)
+	}
+	written, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(written)
+
+	// Unrelated lines preserved.
+	if !strings.Contains(got, "# my header") || !strings.Contains(got, "SOMETHING_ELSE=keep-me") {
+		t.Errorf("unrelated lines lost:\n%s", got)
+	}
+	// Backend replaced in place — must not appear twice.
+	if strings.Count(got, "LINKLORE_LLM_BACKEND=") != 1 {
+		t.Errorf("backend not replaced in place:\n%s", got)
+	}
+	if !strings.Contains(got, "LINKLORE_LLM_BACKEND=litellm") {
+		t.Errorf("backend not updated:\n%s", got)
+	}
+	// API key has '#' so must be quoted.
+	if !strings.Contains(got, `LITELLM_API_KEY="secret # value"`) {
+		t.Errorf("api key not quoted:\n%s", got)
+	}
+
+	// Round-trip via Load — yaml is empty, all values come from .env.
+	yamlPath := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(yamlPath, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Also need to disable cwd ./.env autoload so the test only reads
+	// the dir-local .env. Load reads ./.env first; we rely on
+	// clearEnv(t) so a process-level value can't lurk.
+	loaded, err := Load(yamlPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.LLM.Backend != "litellm" {
+		t.Errorf("loaded backend: %q", loaded.LLM.Backend)
+	}
+	if loaded.LLM.LiteLLM.BaseURL != "http://x:8000/v1" {
+		t.Errorf("loaded base_url: %q", loaded.LLM.LiteLLM.BaseURL)
+	}
+	if loaded.LLM.LiteLLM.APIKey != "secret # value" {
+		t.Errorf("loaded api_key: %q", loaded.LLM.LiteLLM.APIKey)
 	}
 }
 

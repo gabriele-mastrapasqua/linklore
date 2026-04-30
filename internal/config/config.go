@@ -9,15 +9,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Config is the runtime config tree.
+//
+// Privacy boundary: yaml carries non-secret tunables only (server,
+// database, worker, extract, chunking, tags, ui). LLM endpoint + API
+// key + models live ONLY in env vars (loaded from .env at startup).
+// The yaml file is safe to commit; .env is gitignored. The /settings
+// page writes LLM changes to .env, never to yaml.
 type Config struct {
-	Server    Server    `yaml:"server"`
-	Database  Database  `yaml:"database"`
-	LLM       LLM       `yaml:"llm"`
-	Worker    Worker    `yaml:"worker"`
-	Extract   Extract   `yaml:"extract"`
-	Chunking  Chunking  `yaml:"chunking"`
-	Tags      Tags      `yaml:"tags"`
-	UI        UI        `yaml:"ui"`
+	Server   Server   `yaml:"server"`
+	Database Database `yaml:"database"`
+	LLM      LLM      `yaml:"-"` // env-only — see applyEnv + WriteLLMDotEnv
+	Worker   Worker   `yaml:"worker"`
+	Extract  Extract  `yaml:"extract"`
+	Chunking Chunking `yaml:"chunking"`
+	Tags     Tags     `yaml:"tags"`
+	UI       UI       `yaml:"ui"`
 }
 
 type Server struct {
@@ -28,26 +35,30 @@ type Database struct {
 	Path string `yaml:"path"`
 }
 
+// LLM is loaded EXCLUSIVELY from env vars — yaml tags are intentionally
+// absent so a stray `llm:` block in config.yaml is ignored. The keys
+// live in .env (gitignored) so private endpoints + API keys don't end
+// up in the public yaml.
 type LLM struct {
-	Backend string  `yaml:"backend"`
-	Ollama  Ollama  `yaml:"ollama"`
-	LiteLLM LiteLLM `yaml:"litellm"`
+	Backend string
+	Ollama  Ollama
+	LiteLLM LiteLLM
 }
 
 type Ollama struct {
-	Host           string `yaml:"host"`
-	Model          string `yaml:"model"`
-	EmbedModel     string `yaml:"embed_model"`
-	NumCtx         int    `yaml:"num_ctx"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	Host           string
+	Model          string
+	EmbedModel     string
+	NumCtx         int
+	TimeoutSeconds int
 }
 
 type LiteLLM struct {
-	BaseURL        string `yaml:"base_url"`
-	Model          string `yaml:"model"`
-	EmbedModel     string `yaml:"embed_model"`
-	APIKey         string `yaml:"api_key"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	BaseURL        string
+	Model          string
+	EmbedModel     string
+	APIKey         string
+	TimeoutSeconds int
 }
 
 type Worker struct {
@@ -157,10 +168,7 @@ func Load(path string) (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("read config %s: %w", path, err)
 		}
-		// Expand ${VAR} / $VAR refs in the YAML against the (now loaded) env
-		// so api_key: "${LITELLM_API_KEY}" lands in the parsed struct directly.
-		expanded := os.ExpandEnv(string(data))
-		if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
@@ -221,13 +229,9 @@ func applyEnv(c *Config) {
 	}
 }
 
-// SaveYAML writes the current config back to path. Re-marshals the
-// whole struct via gopkg.in/yaml.v3 and writes atomically (write to
-// .tmp, then rename). Comment preservation is intentionally NOT
-// attempted for v1 — keeping it simple beats a half-working diff.
-//
-// The directory is created if it doesn't exist (mode 0o755). The
-// resulting file is mode 0o600 because it can carry an api_key.
+// SaveYAML writes non-LLM config back to path. LLM is yaml-skipped at
+// the struct level, so a saved yaml never carries endpoints or keys.
+// Atomic write (.tmp + rename). Mode 0o644 because it has no secrets.
 func (c Config) SaveYAML(path string) error {
 	if path == "" {
 		return fmt.Errorf("save config: empty path")
@@ -246,7 +250,7 @@ func (c Config) SaveYAML(path string) error {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -254,6 +258,131 @@ func (c Config) SaveYAML(path string) error {
 		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
 	}
 	return nil
+}
+
+// llmEnvKeys lists every env var that drives LLM config — single source
+// of truth shared by the writer (WriteLLMDotEnv) and the loader
+// (applyEnv). Order matters: the writer appends in this order when keys
+// are missing from the existing .env, so the file stays grouped sensibly.
+var llmEnvKeys = []string{
+	"LINKLORE_LLM_BACKEND",
+	"LITELLM_BASE_URL",
+	"LITELLM_API_KEY",
+	"LINKLORE_LLM_MODEL",
+	"LINKLORE_LLM_EMBED_MODEL",
+	"OLLAMA_HOST",
+}
+
+// llmEnvKeysFor returns the keys + values to write for the active
+// backend. Keys irrelevant to the backend are omitted so the file
+// doesn't grow noisy stubs ("LITELLM_BASE_URL=" when on Ollama).
+func (c Config) llmEnvKeysFor() map[string]string {
+	out := map[string]string{
+		"LINKLORE_LLM_BACKEND": c.LLM.Backend,
+	}
+	switch c.LLM.Backend {
+	case "litellm":
+		out["LITELLM_BASE_URL"] = c.LLM.LiteLLM.BaseURL
+		out["LITELLM_API_KEY"] = c.LLM.LiteLLM.APIKey
+		out["LINKLORE_LLM_MODEL"] = c.LLM.LiteLLM.Model
+		out["LINKLORE_LLM_EMBED_MODEL"] = c.LLM.LiteLLM.EmbedModel
+	case "ollama":
+		out["OLLAMA_HOST"] = c.LLM.Ollama.Host
+		out["LINKLORE_LLM_MODEL"] = c.LLM.Ollama.Model
+		out["LINKLORE_LLM_EMBED_MODEL"] = c.LLM.Ollama.EmbedModel
+	}
+	return out
+}
+
+// WriteLLMDotEnv updates the LLM-related keys in .env at path. Existing
+// occurrences of those keys are replaced in-place; missing ones are
+// appended under a "linklore — written by /settings" header. Comments
+// and unrelated KEY=VALUE lines are preserved verbatim.
+//
+// Mode 0o600 because the file can carry LITELLM_API_KEY.
+func (c Config) WriteLLMDotEnv(path string) error {
+	if path == "" {
+		return fmt.Errorf("write .env: empty path")
+	}
+	managed := c.llmEnvKeysFor()
+
+	var lines []string
+	if data, err := os.ReadFile(path); err == nil {
+		lines = strings.Split(string(data), "\n")
+		// strings.Split on a trailing newline yields a trailing "" element —
+		// drop it so we don't double the blank line on rewrite.
+		if n := len(lines); n > 0 && lines[n-1] == "" {
+			lines = lines[:n-1]
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	seen := map[string]bool{}
+	for i, line := range lines {
+		body := strings.TrimSpace(line)
+		if body == "" || strings.HasPrefix(body, "#") {
+			continue
+		}
+		export := false
+		if strings.HasPrefix(body, "export ") {
+			export = true
+			body = strings.TrimPrefix(body, "export ")
+		}
+		eq := strings.IndexByte(body, '=')
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(body[:eq])
+		val, ok := managed[key]
+		if !ok {
+			continue
+		}
+		seen[key] = true
+		lines[i] = formatEnvLine(key, val, export)
+	}
+
+	var missing []string
+	for _, k := range llmEnvKeys {
+		if val, ok := managed[k]; ok && !seen[k] {
+			missing = append(missing, formatEnvLine(k, val, false))
+		}
+	}
+	if len(missing) > 0 {
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "# linklore — written by /settings")
+		lines = append(lines, missing...)
+	}
+
+	out := strings.Join(lines, "\n") + "\n"
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(out), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
+	}
+	return nil
+}
+
+// formatEnvLine emits a single KEY=VAL .env line. Values containing
+// shell-significant characters (whitespace, '#', quotes) are
+// double-quoted with embedded double quotes escaped. The dotenv
+// loader strips quotes symmetrically.
+func formatEnvLine(key, val string, export bool) string {
+	prefix := ""
+	if export {
+		prefix = "export "
+	}
+	if strings.ContainsAny(val, " \t#'\"") {
+		escaped := strings.ReplaceAll(val, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		return prefix + key + `="` + escaped + `"`
+	}
+	return prefix + key + "=" + val
 }
 
 func (c Config) Validate() error {

@@ -1143,7 +1143,9 @@ func TestSettings_postRoundtrips(t *testing.T) {
 	}
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
+	envPath := dir + "/.env"
 	srv.SetConfigPath(cfgPath)
+	srv.SetDotEnvPath(envPath)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -1161,8 +1163,13 @@ func TestSettings_postRoundtrips(t *testing.T) {
 	if !strings.Contains(body, "status-pill status-ok") {
 		t.Errorf("expected status-ok pill on save: %s", body)
 	}
-	if _, err := os.Stat(cfgPath); err != nil {
-		t.Errorf("expected config saved at %s, got %v", cfgPath, err)
+	// /settings now writes LLM to .env, not yaml. The yaml file must
+	// stay untouched (still safe to commit).
+	if _, err := os.Stat(envPath); err != nil {
+		t.Errorf("expected .env saved at %s, got %v", envPath, err)
+	}
+	if _, err := os.Stat(cfgPath); err == nil {
+		t.Errorf("yaml must NOT be written by /settings save: file exists at %s", cfgPath)
 	}
 	// GET reflects the new backend.
 	_, body2 := get(t, ts, "/settings")

@@ -1,34 +1,14 @@
+# Linklore — non-secret tunables only. SAFE TO COMMIT.
+#
+# LLM endpoint, API key and model names are NOT loaded from this file.
+# They live in .env (gitignored) so private values never end up in git.
+# See .env.example for the env-var names.
+
 server:
   addr: "127.0.0.1:8080"
 
 database:
   path: "./data/linklore.db"
-
-# LLM backend. Set to "none" to run without an LLM (search degrades to
-# BM25-only, chat is disabled, ingestion still fetches + extracts).
-# "ollama" talks to a local Ollama daemon; "litellm" talks to any
-# LiteLLM-compatible OpenAI gateway (LiteLLM itself, llama.cpp's
-# server, vLLM, etc).
-llm:
-  backend: "none"              # none | ollama | litellm
-
-  litellm:
-    # LiteLLM / OpenAI-compatible gateway. Empty base_url disables this
-    # backend cleanly. Override with LITELLM_BASE_URL.
-    base_url: ""
-    model: ""
-    embed_model: ""
-    # Optional master key. Override with LITELLM_API_KEY env var.
-    api_key: "${LITELLM_API_KEY}"
-    timeout_seconds: 600
-
-  ollama:
-    # Default Ollama runs on localhost. Override with OLLAMA_HOST.
-    host: "http://localhost:11434"
-    model: ""
-    embed_model: ""
-    num_ctx: 32768
-    timeout_seconds: 600
 
 worker:
   concurrency: 4
