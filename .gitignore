@@ -17,3 +17,10 @@ configs/*.local.yaml
 *.swp
 .tmp/
 node_modules/
+
+# Local-only artefacts from MCP / browser tooling sessions —
+# Playwright snapshots and screenshots Claude takes while working.
+.playwright-mcp/
+*.png
+*.jpeg
+*.jpg
