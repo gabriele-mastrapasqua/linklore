@@ -14,7 +14,9 @@
 > RSS/Atom subscriptions, dead-link checker, drag-and-drop. SQLite under
 > the hood. No accounts. No SaaS. No telemetry.
 
-![Home](docs/screenshots/01-home.png)
+> Screenshots are coming back once a curated demo dataset is in place
+> (a few public articles, a video, a GitHub repo, an RSS subscription)
+> so the UI can be shown without leaking anyone's private library.
 
 ---
 
@@ -43,20 +45,6 @@ the migration.
 | **Per-link AI** | TL;DR + auto-tags generated on ingest (LLM optional — degrades to BM25-only without). |
 | **UX** | ⌘K command palette, `j`/`k` keyboard nav, right-click context menu, sticky filters, light/dark/auto theme. |
 | **Privacy** | Local-first by design. Zero outbound HTTP except the URLs you paste, the LLM you configured, and the feeds you subscribed to. |
-
----
-
-## Screenshots
-
-<table>
-<tr>
-<td width="50%"><strong>Collection (list view)</strong><br><img src="docs/screenshots/03-collection.png" alt="Collection page"></td>
-<td width="50%"><strong>RAG chat</strong><br><img src="docs/screenshots/02-chat.png" alt="Chat welcome"></td>
-</tr>
-<tr>
-<td colspan="2"><strong>Reader drawer</strong> — slide-in preview with size/width/theme controls<br><img src="docs/screenshots/04-drawer.png" alt="Drawer"></td>
-</tr>
-</table>
 
 ---
 
