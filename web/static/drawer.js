@@ -83,18 +83,49 @@
 	ns.drawerWidth = function (v) { drawer().setAttribute('data-width', v); localStorage.setItem(KEY_WIDTH, v); applySaved(); };
 	ns.drawerTheme = function (v) { drawer().setAttribute('data-theme', v); localStorage.setItem(KEY_THEME, v); applySaved(); };
 
-	// Intercept clicks on the link title (and only the title) so the
-	// drawer opens instead of navigating. Modifier-keyed clicks fall
-	// through to the browser's default — cmd-click new tab still works.
+	// Intercept clicks anywhere on a row body that isn't an interactive
+	// element. Title click → drawer (deep link still works for cmd/middle
+	// click). Body click on the URL line, summary, description, badges
+	// → drawer. Buttons / inputs / external "open link" anchors / "ask"
+	// chat link / "add note" anchor / kind icon all keep their own
+	// behaviour because they sit inside <a>, <button>, <input>, <label>,
+	// <img>.
+	var DRAWER_IGNORE_TAGS = { A: 1, BUTTON: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, IMG: 1, LABEL: 1 };
+	function isInteractiveTarget(target, row) {
+		for (var el = target; el && el !== row; el = el.parentElement) {
+			if (DRAWER_IGNORE_TAGS[el.tagName]) return true;
+		}
+		return false;
+	}
+
 	document.addEventListener('click', function (e) {
 		if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		if (e.button !== 0) return;
-		var a = e.target.closest('.link-row .title a[href^="/links/"]');
-		if (!a) return;
-		var m = a.getAttribute('href').match(/^\/links\/(\d+)$/);
-		if (!m) return;
+		// Title link → open drawer instead of navigating.
+		var titleAnchor = e.target.closest('.link-row .title a[href^="/links/"]');
+		if (titleAnchor) {
+			var m = titleAnchor.getAttribute('href').match(/^\/links\/(\d+)$/);
+			if (m) {
+				e.preventDefault();
+				ns.drawerOpen(m[1]);
+				return;
+			}
+		}
+		// Body click (anywhere on the row that isn't a link/button/input)
+		// → open drawer. Mirrors the title-click behaviour without forcing
+		// the user to hit a small target. Selection state lives in the
+		// checkbox alone now (see bulk.js).
+		var row = e.target.closest('.link-row');
+		if (!row) return;
+		if (isInteractiveTarget(e.target, row)) return;
+		// Avoid hijacking native text-selection: if the user dragged to
+		// highlight, leave them alone.
+		var sel = window.getSelection && window.getSelection();
+		if (sel && sel.toString().length > 0) return;
+		var id = row.getAttribute('data-link-id');
+		if (!id) return;
 		e.preventDefault();
-		ns.drawerOpen(m[1]);
+		ns.drawerOpen(id);
 	});
 
 	// esc dismisses (and beats keys.js's overlay path because that one

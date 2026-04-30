@@ -343,6 +343,28 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 	opacity: .9; font-style: normal;
 }
 .link-row .summary.note .note-glyph { margin-right: .35rem; opacity: .7; }
+
+/* Pencil icon next to summary/description/note. Tiny inline link that
+   jumps to the link's detail page where the note can be edited. Stays
+   muted until the user hovers the row. */
+.link-row .note-edit {
+	display: inline-block; margin-left: .4rem;
+	font-size: .85rem; color: var(--muted);
+	text-decoration: none; opacity: 0;
+	transition: opacity .12s ease, color .12s ease;
+}
+.link-row:hover .note-edit { opacity: .8; }
+.link-row .note-edit:hover { color: var(--accent); opacity: 1; }
+/* "Add note" CTA — only shown when the row has no summary, no
+   description, and no note. Visible without hover so the action is
+   discoverable. */
+.link-row .note-edit-empty {
+	display: inline-block; margin-top: var(--space-2);
+	font-size: .8rem; color: var(--muted); text-decoration: none;
+	border: 1px dashed var(--border); border-radius: var(--radius-sm);
+	padding: .15rem .5rem;
+}
+.link-row .note-edit-empty:hover { color: var(--accent); border-color: var(--accent); }
 .link-row .badges { margin-top: var(--space-2); display: flex; gap: .25rem; flex-wrap: wrap; }
 .badge {
 	display: inline-block; padding: .15rem .55rem; border-radius: 999px;
@@ -395,6 +417,12 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 }
 .actions button:hover, .actions a:hover { color: var(--text); border-color: var(--muted); }
 .actions button.danger { color: var(--danger); }
+
+/* Select mode is off by default: per-row checkboxes + the bulk action
+   bar stay hidden until the user flips the "select" toggle on the
+   filter bar. Avoids the row-of-empty-boxes look at first glance. */
+body.select-off .bulk-select-wrap,
+body.select-off .bulk-bar { display: none !important; }
 
 .bulk-select-wrap {
 	display: inline-flex; align-items: center; justify-content: center;
@@ -449,11 +477,11 @@ button[disabled], .htmx-request button { cursor: wait !important; }
 
 /* Sticky bar that appears once at least one row is selected. */
 .bulk-bar {
-	position: sticky; top: 0; z-index: 5;
+	position: sticky; top: 56px; z-index: 5;
 	display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
-	background: var(--card); border: 1px solid var(--accent);
-	border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
-	box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+	background: var(--card); border: 1px solid var(--border);
+	border-radius: var(--radius-md); padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
+	box-shadow: var(--shadow-1);
 }
 .bulk-bar .bulk-count { color: var(--muted); }
 .bulk-bar .bulk-count strong { color: var(--text); }

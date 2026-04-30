@@ -12,11 +12,19 @@
 		</div>
 		<div class="url">{{.URL}}</div>
 		{{if .Summary}}
-			<div class="summary">{{.Summary}}</div>
+			<div class="summary">
+				{{.Summary}}
+				<a class="note-edit" href="/links/{{.ID}}#note" title="edit note">✎</a>
+			</div>
 		{{else if .Description}}
-			<div class="summary description">{{.Description}}</div>
+			<div class="summary description">
+				{{.Description}}
+				<a class="note-edit" href="/links/{{.ID}}#note" title="edit note">✎</a>
+			</div>
+		{{else}}
+			<a class="note-edit-empty" href="/links/{{.ID}}#note" title="add a note">✎ add note</a>
 		{{end}}
-		{{if .Note}}<div class="summary note"><span class="note-glyph">📝</span>{{.Note}}</div>{{end}}
+		{{if .Note}}<div class="summary note"><span class="note-glyph">📝</span>{{.Note}}<a class="note-edit" href="/links/{{.ID}}#note" title="edit note">✎</a></div>{{end}}
 		<div class="badges">
 			<span class="badge {{.Status}}">{{.Status}}</span>
 			{{if .ContentLang}}<span class="badge">{{.ContentLang}}</span>{{end}}

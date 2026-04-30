@@ -39,6 +39,32 @@
 		applyDensity();
 	};
 
-	document.addEventListener('DOMContentLoaded', applyDensity);
-	document.body.addEventListener('htmx:afterSwap', applyDensity);
+	// Select mode: when off (default), per-row checkboxes are hidden via
+	// CSS. Flipping it on shows the checkboxes so the user can bulk-pick
+	// rows and move/delete them. Persisted per browser.
+	function applySelectMode() {
+		var on = localStorage.getItem('linklore.select') === 'on';
+		document.body.classList.toggle('select-on', on);
+		document.body.classList.toggle('select-off', !on);
+		var btn = document.getElementById('select-toggle');
+		if (btn) {
+			btn.textContent = on ? 'on' : 'off';
+			btn.classList.toggle('active', on);
+		}
+		if (!on && typeof ns.bulkClear === 'function') ns.bulkClear();
+	}
+	ns.toggleSelectMode = function () {
+		var cur = localStorage.getItem('linklore.select') === 'on';
+		localStorage.setItem('linklore.select', cur ? 'off' : 'on');
+		applySelectMode();
+	};
+
+	document.addEventListener('DOMContentLoaded', function () {
+		applyDensity();
+		applySelectMode();
+	});
+	document.body.addEventListener('htmx:afterSwap', function () {
+		applyDensity();
+		applySelectMode();
+	});
 })();

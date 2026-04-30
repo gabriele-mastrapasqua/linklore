@@ -55,30 +55,10 @@
 		}
 	});
 
-	// Tags that the user almost certainly clicked ON PURPOSE — leave their
-	// behaviour intact. Anything else inside .link-row toggles selection.
-	var IGNORE_TAGS = { A: 1, BUTTON: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, IMG: 1, LABEL: 1 };
-
-	function shouldIgnore(target, row) {
-		for (var el = target; el && el !== row; el = el.parentElement) {
-			if (IGNORE_TAGS[el.tagName]) return true;
-		}
-		return false;
-	}
-
-	document.addEventListener('click', function (e) {
-		var row = e.target.closest && e.target.closest('.link-row');
-		if (!row) return;
-		if (shouldIgnore(e.target, row)) return;
-		// Avoid hijacking text-selection: if the user actually highlighted
-		// a range (e.g. dragged across the URL to copy it), leave it alone.
-		var sel = window.getSelection && window.getSelection();
-		if (sel && sel.toString().length > 0) return;
-		var cb = row.querySelector('.bulk-select');
-		if (!cb) return;
-		cb.checked = !cb.checked;
-		refreshBar();
-	});
+	// Click-on-row-to-toggle-selection was confusing: users expected
+	// the click to OPEN the link (drawer.js already does that). Selection
+	// now only happens via the explicit checkbox, which itself is hidden
+	// unless the user enabled "Select mode" via the topbar/header toggle.
 
 	// After any HTMX swap (e.g. row removal from a bulk action), the
 	// remaining selection state lives entirely in the surviving
