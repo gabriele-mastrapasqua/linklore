@@ -1,8 +1,21 @@
 name: test
 
+# Skip CI on docs-only / screenshots-only / Makefile-only pushes —
+# every README tweak was burning ~4 minutes of runner time on three
+# OSes for no real check. Path filters only run when something the
+# build actually depends on changed. PRs still trigger on the full
+# set so reviewers always see a green check before merging.
 on:
   push:
     branches: [main]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'web/**'
+      - 'configs/**'
+      - 'Makefile'
+      - '.github/workflows/test.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
