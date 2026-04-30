@@ -94,7 +94,26 @@ chunk it used.
 
 ---
 
-## Quick start
+## Install
+
+### Pre-built binaries (recommended)
+
+Grab a release archive from the
+[releases page](https://github.com/gabriele-mastrapasqua/linklore/releases/latest)
+for your OS/arch — `linux-amd64`, `linux-arm64`, `darwin-amd64`,
+`darwin-arm64`, or `windows-amd64`. Each archive bundles the binary,
+`README.md`, `LICENSE`, and `configs/config.yaml`.
+
+```bash
+# example: macOS arm64
+curl -LO https://github.com/gabriele-mastrapasqua/linklore/releases/latest/download/linklore-<version>-darwin-arm64.tar.gz
+tar -xzf linklore-*-darwin-arm64.tar.gz
+./linklore-*-darwin-arm64 serve
+```
+
+Open `http://127.0.0.1:8080`. That's the whole onboarding.
+
+### From source
 
 You need **Go 1.25+** and `make`. An LLM is optional — Linklore boots
 cleanly without one.
@@ -106,8 +125,6 @@ make build           # ./bin/linklore (~14 MB)
 make run             # serves on http://127.0.0.1:8080
 ```
 
-Open `http://127.0.0.1:8080`. That's the whole onboarding.
-
 Want a local LLM (RAG chat + per-link TL;DR)? Two extra steps:
 
 ```bash
@@ -117,7 +134,7 @@ $EDITOR .env         # uncomment the Ollama or LiteLLM block
 
 See **[Configuration](#configuration)** below for the env-var values.
 
-### One-shot dev loop
+### Dev loop
 
 ```bash
 make dev             # reset DB + build + run (handy when iterating)
@@ -247,46 +264,6 @@ LINKLORE_WORKER_CONCURRENCY   parallel ingest workers
 
 ---
 
-## Architecture
-
-```
-cmd/linklore/        single binary: serve | add | reindex
-internal/
-  archive/           gzipped raw-HTML snapshots
-  chat/              RAG context builder + streaming SSE
-  chunking/          paragraph + heading chunker
-  classify/          URL → article|video|image|audio|document|book
-  config/            yaml + env override loader (LLM = env-only)
-  embed/             []float32 ↔ BLOB encode + cosine in Go
-  events/            in-process pub/sub for SSE
-  extract/           HTTP fetch + readability + html→md
-  feed/              outbound Atom export per collection
-  feedimport/        gofeed-based RSS/Atom importer + auto-discover
-  llm/               Backend interface: ollama, litellm, fake
-  netscape/          Netscape Bookmark File reader/writer
-  reader/            content_md → sanitised HTML
-  search/            FTS5 + cosine hybrid ranking
-  server/            http.ServeMux + handlers + html/template
-  storage/           SQLite WAL + FTS5 + embeddings (BLOB) + migrations
-  summarize/         LLM TL;DR + auto-tags JSON pipeline
-  tags/              slugify, dedupe, normalisation
-  urlnorm/           URL canonicalisation for duplicate detection
-  worker/            background fetch / extract / summary / embed queue
-web/
-  templates/         html/template — base.html + per-page + partials/
-  static/            app.css + small JS files (no build step)
-configs/config.yaml  non-secret tunables
-.env                 LLM endpoint + secrets (gitignored)
-data/linklore.db     created on first boot
-```
-
-**Stack**: Go stdlib `net/http.ServeMux` (Go 1.22+ pattern routing),
-`html/template`, SQLite via `mattn/go-sqlite3` with FTS5 + WAL,
-HTMX + a handful of small JS modules under `web/static/`. No Node, no
-npm, no JS build chain.
-
----
-
 ## Tests
 
 ```bash
@@ -304,7 +281,8 @@ client wrappers that are exercised end-to-end via `make smoke`.
 ## Contributing
 
 Personal project, but PRs that fit the spirit (local-first,
-single-user, no SaaS, no JS build) are welcome.
+single-user, no SaaS, no JS build) are welcome. Package layout and
+stack notes live in [`docs/architecture.md`](docs/architecture.md).
 
 1. `make check` — fmt + vet + lint + race test.
 2. New features go behind a config flag if their cost is non-trivial.
