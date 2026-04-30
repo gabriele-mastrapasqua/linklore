@@ -2097,6 +2097,11 @@ func (s *Server) renderPage(w http.ResponseWriter, name string, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Single-user app served from localhost — every reload should show
+	// the latest UI. Without this header browsers heuristically cache
+	// the HTML, which means a stale page keeps referencing the old
+	// /static/app.css?v=N even after a redeploy bumps the version.
+	w.Header().Set("Cache-Control", "no-store")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("render %s: %v", name, err)
 	}

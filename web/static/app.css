@@ -344,18 +344,22 @@ form.inline input[type="url"], form.inline input[type="text"] { flex: 1; min-wid
 }
 .link-row .summary.note .note-glyph { margin-right: .35rem; opacity: .7; }
 
-/* Pencil icon next to summary/description/note. Tiny inline link that
-   jumps to the link's detail page where the note can be edited.
-   Always visible (just muted) so it's discoverable without hovering;
-   brightens on row hover and pops accent on its own hover. */
+/* Pencil chip next to summary/description/note. Always visible as a
+   small framed glyph so it reads unmistakably as an action. Tightens
+   on hover. */
 .link-row .note-edit {
 	display: inline-block; margin-left: .4rem;
-	font-size: .9rem; color: var(--muted);
-	text-decoration: none; opacity: .55;
-	transition: opacity .12s ease, color .12s ease;
+	font-size: .75rem; line-height: 1;
+	color: var(--muted); text-decoration: none;
+	border: 1px solid var(--border); border-radius: var(--radius-sm);
+	padding: .15rem .35rem;
+	background: var(--card);
+	transition: color .12s ease, border-color .12s ease, background .12s ease;
 }
-.link-row:hover .note-edit { opacity: .9; }
-.link-row .note-edit:hover { color: var(--accent); opacity: 1; }
+.link-row .note-edit:hover {
+	color: var(--accent); border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
 /* "Add note" CTA — only shown when the row has no summary, no
    description, and no note. Visible without hover so the action is
    discoverable. */
@@ -778,18 +782,38 @@ body.density-no-title   .link-row .title   { display: none; }
 
 /* Theme overrides for the article only. Drawer chrome (head/toolbar)
    keeps the site palette so controls stay legible against the cover. */
-.drawer[data-theme="light"] .drawer-article { color: #1a1a1a; background: #fafafa; border-color: #e8e8e8; }
-.drawer[data-theme="dark"]  .drawer-article { color: #ecf0f6; background: var(--card); border-color: var(--border); }
-.drawer[data-theme="sepia"] {
-	--drawer-paper: #f6eedb;
-	--drawer-ink:   #4d3c1c;
+/* Reader themes use FIXED colour pairs so the drawer always renders
+   correctly regardless of the site palette (auto/light/dark). The
+   reader is a separate reading context — its theme dropdown should
+   win, full stop. */
+.drawer[data-theme="light"] .drawer-article {
+	color: #1a1a1a; background: #ffffff; border-color: #e8e8e8;
 }
+.drawer[data-theme="light"] .drawer-article a { color: #2563eb; }
+.drawer[data-theme="light"] .drawer-article code,
+.drawer[data-theme="light"] .drawer-article pre  { background: #f4f4f6; color: #111; }
+.drawer[data-theme="light"] .drawer-article blockquote { border-left-color: #c7d2fe; color: #4b5563; }
+
+.drawer[data-theme="dark"] .drawer-article {
+	color: #ecf0f6; background: #1a1d23; border-color: #2a2f37;
+}
+.drawer[data-theme="dark"] .drawer-article a { color: #7bb3ff; }
+.drawer[data-theme="dark"] .drawer-article code,
+.drawer[data-theme="dark"] .drawer-article pre  { background: #1f2329; color: #ecf0f6; }
+.drawer[data-theme="dark"] .drawer-article blockquote { border-left-color: #3b4663; color: #b1bcca; }
+
+.drawer[data-theme="sepia"] { --drawer-paper: #f6eedb; --drawer-ink: #4d3c1c; }
 .drawer[data-theme="sepia"] .drawer-article {
 	background: var(--drawer-paper);
 	color: var(--drawer-ink);
 	border-color: color-mix(in srgb, var(--drawer-ink) 18%, transparent);
 }
 .drawer[data-theme="sepia"] .drawer-article a { color: #1d4ed8; }
+.drawer[data-theme="sepia"] .drawer-article code,
+.drawer[data-theme="sepia"] .drawer-article pre {
+	background: color-mix(in srgb, var(--drawer-ink) 8%, var(--drawer-paper));
+	color: var(--drawer-ink);
+}
 .drawer[data-theme="sepia"] .drawer-article blockquote {
 	border-left-color: color-mix(in srgb, var(--drawer-ink) 35%, transparent);
 	color: color-mix(in srgb, var(--drawer-ink) 75%, var(--drawer-paper));
