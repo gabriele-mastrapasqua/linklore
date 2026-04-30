@@ -1,35 +1,39 @@
 {{define "content"}}
-<section class="card" id="new-collection">
-	<h2>Add a collection</h2>
+<section class="card collections-add" id="new-collection">
+	<div class="hflex">
+		<h2 class="hflex-fill" style="margin:0">Add a collection</h2>
+		<details class="collections-import">
+			<summary class="muted" title="Import a Netscape Bookmark File from Chrome/Firefox/Pinboard">↥ import HTML</summary>
+			<form method="POST" action="/import" enctype="multipart/form-data" class="inline" style="margin-top:.5rem">
+				<input type="file" name="file" accept=".html,.htm" required>
+				<button type="submit">Import</button>
+			</form>
+			<small class="muted" style="display:block; margin-top:.25rem; font-size:.75rem">
+				Links are bucketed into collections matching the source folders in the file.
+			</small>
+		</details>
+	</div>
 	<form class="inline" hx-post="/collections" hx-target="#collections-list" hx-swap="beforeend"
 	      hx-on::after-request="this.reset()">
 		<input type="text" name="name" placeholder="e.g. Reading list" required autofocus>
 		<button type="submit">Create</button>
 	</form>
 	<small class="muted">URL slug is derived from the name.</small>
-
-	<details style="margin-top:1rem">
-		<summary class="muted" style="cursor:pointer; font-size:.85rem">↥ import a Netscape Bookmark File</summary>
-		<form method="POST" action="/import" enctype="multipart/form-data" class="inline" style="margin-top:.5rem">
-			<input type="file" name="file" accept=".html,.htm" required>
-			<button type="submit">Import</button>
-		</form>
-		<small class="muted" style="display:block; margin-top:.25rem; font-size:.75rem">
-			Links are bucketed into collections matching the source folders in the file.
-		</small>
-	</details>
 </section>
 
 <section class="card">
-	<div style="display:flex; align-items:center; gap:.5rem">
-		<h2 style="margin:0; flex:1">Your collections</h2>
+	<div class="hflex">
+		<h2 class="hflex-fill" style="margin:0">Your collections</h2>
+		{{if .Collections}}
+		<small class="muted" style="font-size:.8rem">{{len .Collections}} total</small>
+		{{end}}
 		<button type="button" class="link-button"
 		        hx-post="/collections/prune" hx-swap="none"
 		        hx-confirm="Delete every collection that has 0 links and no RSS feed? RSS-backed collections are kept."
 		        title="Sweep all empty collections">✕ prune empty</button>
 	</div>
 
-	<div id="collections-list">
+	<div id="collections-list" class="col-grid">
 	{{if not .Collections}}
 		<div class="empty">
 			<div class="empty-glyph">🗂️</div>

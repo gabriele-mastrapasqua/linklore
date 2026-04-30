@@ -33,7 +33,35 @@
 	</header>
 
 	<div class="chat-body">
-		<div id="chat-log" class="chat-log"></div>
+		<div id="chat-log" class="chat-log">
+			<div id="chat-welcome" class="chat-welcome">
+				<div class="chat-welcome-glyph">✦</div>
+				<h3>Chat with your library</h3>
+				<p class="muted">Grounded in <strong>{{.Ready}}</strong> summarised link{{if ne .Ready 1}}s{{end}}. Citations like <code>[src:N]</code> point at exact chunks. Pick a starter or type your own question below.</p>
+				<div class="chat-welcome-grid">
+					<button type="button" class="chat-welcome-tile" onclick="chatFill('What are the recurring themes across my saved links?')">
+						<span class="chat-welcome-icon">🧭</span>
+						<strong>Find</strong>
+						<small>Surface themes across your library.</small>
+					</button>
+					<button type="button" class="chat-welcome-tile" onclick="chatFill('Summarize the key ideas from the last 10 things I saved.')">
+						<span class="chat-welcome-icon">📝</span>
+						<strong>Summarize</strong>
+						<small>Distil what you saved recently.</small>
+					</button>
+					<button type="button" class="chat-welcome-tile" onclick="chatFill('Suggest tag merges and renames to consolidate the tag pool.')">
+						<span class="chat-welcome-icon">🏷️</span>
+						<strong>Organize</strong>
+						<small>Clean up duplicate or messy tags.</small>
+					</button>
+					<button type="button" class="chat-welcome-tile" onclick="chatFill('Show me forgotten gems — interesting older links I rarely revisit.')">
+						<span class="chat-welcome-icon">⏳</span>
+						<strong>Rediscover</strong>
+						<small>Resurface things worth a second look.</small>
+					</button>
+				</div>
+			</div>
+		</div>
 		<aside id="chat-sources" class="chat-sources" hidden>
 			<strong>Sources</strong>
 			<ul id="chat-sources-list"></ul>
@@ -99,6 +127,8 @@ async function chatSubmit(ev) {
 	const inp = document.getElementById('chat-input');
 	const msg = inp.value.trim();
 	if (!msg) return false;
+	const welcome = document.getElementById('chat-welcome');
+	if (welcome) welcome.remove();
 	chatAppend('you', msg);
 	inp.value = '';
 
@@ -226,8 +256,12 @@ function chatFill(text) {
 // drop the session id back to 0 so the next message starts a fresh
 // chat_session row server-side. Doesn't touch the LLM backend itself.
 function chatNew() {
-	var log = document.getElementById('chat-log');
-	if (log) log.innerHTML = '';
+	// If real messages exist, reload — gives a clean welcome tile + new
+	// session id without rebuilding DOM by hand.
+	if (document.querySelectorAll('#chat-log .chat-row').length > 0) {
+		window.location.href = '/chat';
+		return;
+	}
 	var srcEl  = document.getElementById('chat-sources');
 	var srcUL  = document.getElementById('chat-sources-list');
 	if (srcUL) srcUL.innerHTML = '';

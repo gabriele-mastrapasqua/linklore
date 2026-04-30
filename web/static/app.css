@@ -1440,3 +1440,184 @@ body.previews-off .preview:not(.preview-favicon) { display: none !important; }
 }
 [data-theme="dark"] .status-pill.status-ok { color: #4ade80; }
 [data-theme="dark"] .status-pill.status-err { color: #fca5a5; }
+
+/* ============================================================
+   v13 polish: sidebar groups, dense collection tiles, chat
+   welcome, hover-revealed link actions. Additive — never rename
+   pre-existing classes so JS keeps working.
+   ============================================================ */
+
+/* --- sidebar v2: groups, glyphs, accent left-bar active state --- */
+.sidebar-section + .sidebar-section { margin-top: var(--space-4); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 1px; }
+.sidebar-link {
+	gap: .55rem;
+	padding: .35rem .55rem;
+	font-size: .88rem;
+	border-radius: var(--radius-sm);
+	position: relative;
+	transition: background .12s ease, color .12s ease;
+}
+.sidebar-link.active {
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+	color: var(--text);
+}
+.sidebar-link.active::before {
+	content: ""; position: absolute;
+	left: -1px; top: .35rem; bottom: .35rem; width: 3px;
+	background: var(--accent); border-radius: 2px;
+}
+.sidebar-link.active .sidebar-count { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
+.sidebar-glyph {
+	width: 18px; flex-shrink: 0;
+	display: inline-flex; align-items: center; justify-content: center;
+	color: var(--muted); font-size: .85rem; font-weight: 600;
+}
+.sidebar-link:hover .sidebar-glyph,
+.sidebar-link.active .sidebar-glyph { color: var(--text); }
+.sidebar-link.ai-link .sidebar-glyph { color: var(--accent-ai); }
+
+/* --- collection grid tiles on home page --- */
+.col-grid {
+	display: grid;
+	gap: var(--space-3);
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	margin-top: var(--space-3);
+}
+.col-tile {
+	position: relative;
+	display: flex; align-items: center; gap: var(--space-3);
+	padding: var(--space-3);
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow-card);
+	transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+	overflow: hidden;
+	background-size: cover; background-position: center;
+}
+.col-tile:hover {
+	border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-2);
+}
+.col-tile-avatar {
+	width: 40px; height: 40px; flex-shrink: 0;
+	display: inline-flex; align-items: center; justify-content: center;
+	background: color-mix(in srgb, var(--accent) 18%, var(--card));
+	color: var(--accent);
+	border-radius: var(--radius-sm);
+	font-weight: 700; font-size: 1.15rem; text-transform: uppercase;
+	letter-spacing: -.02em;
+}
+.col-tile.has-cover .col-tile-avatar { background: rgba(255,255,255,.85); color: #111; }
+.col-tile-meta { flex: 1; min-width: 0; }
+.col-tile-name {
+	display: block; font-weight: 600; font-size: .98rem; color: var(--text);
+	text-decoration: none; line-height: 1.25;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.col-tile-name:hover { color: var(--accent); }
+.col-tile-slug {
+	color: var(--muted); font-size: .78rem; margin-top: .1rem;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	font-family: var(--ff-mono);
+}
+.col-tile-badges { margin-top: .35rem; display: flex; gap: .3rem; flex-wrap: wrap; }
+.col-tile-del {
+	position: absolute; top: .35rem; right: .35rem;
+	width: 22px; height: 22px; padding: 0; line-height: 1;
+	font-size: .9rem; opacity: 0; transition: opacity .12s ease;
+}
+.col-tile:hover .col-tile-del,
+.col-tile:focus-within .col-tile-del { opacity: 1; }
+
+/* --- compact home-page Add box: import details inline on the right --- */
+.collections-add .hflex { gap: .5rem; align-items: center; margin-bottom: .5rem; }
+.collections-import summary {
+	cursor: pointer; font-size: .8rem;
+	padding: .25rem .55rem; border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	list-style: none;
+}
+.collections-import summary::-webkit-details-marker { display: none; }
+.collections-import summary:hover { color: var(--text); border-color: var(--muted); }
+.collections-import[open] summary { color: var(--text); border-color: var(--accent); }
+
+/* --- search polish: domain-only URL line + result hover --- */
+.url-domain {
+	max-width: 100%;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	word-break: keep-all;
+}
+.search-summary {
+	display: flex; align-items: center; gap: .75rem;
+	padding: .55rem .9rem; font-size: .9rem;
+}
+.search-summary strong { color: var(--text); }
+.search-summary em { color: var(--text); font-style: normal; font-weight: 600; }
+.search-summary .link-button { margin-left: auto; }
+.search-result { transition: border-color .12s ease, background .12s ease; }
+.search-result:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+
+/* --- chat welcome card --- */
+.chat-welcome {
+	max-width: 720px; margin: 1.5rem auto 0;
+	padding: 1.25rem 1rem 1.5rem; text-align: center;
+}
+.chat-welcome-glyph {
+	font-size: 2rem; color: var(--accent-ai);
+	width: 56px; height: 56px; margin: 0 auto .5rem;
+	display: inline-flex; align-items: center; justify-content: center;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--accent-ai) 16%, transparent);
+	border: 1px solid color-mix(in srgb, var(--accent-ai) 30%, transparent);
+}
+.chat-welcome h3 { margin: 0 0 .35rem; font-size: 1.15rem; }
+.chat-welcome p { margin: 0 auto 1.1rem; max-width: 540px; font-size: .9rem; line-height: 1.5; }
+.chat-welcome p code { font-size: .85em; padding: .05rem .3rem; border-radius: 4px; background: var(--code-bg); }
+.chat-welcome-grid {
+	display: grid; gap: .55rem;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	max-width: 640px; margin: 0 auto;
+}
+.chat-welcome-tile {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: .7rem .75rem;
+	text-align: left;
+	cursor: pointer;
+	color: var(--text);
+	font-family: inherit;
+	transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+	display: flex; flex-direction: column; gap: .15rem;
+}
+.chat-welcome-tile:hover {
+	border-color: color-mix(in srgb, var(--accent-ai) 60%, var(--border));
+	transform: translateY(-1px);
+	box-shadow: var(--shadow-2);
+}
+.chat-welcome-icon { font-size: 1.05rem; }
+.chat-welcome-tile strong { font-size: .9rem; font-weight: 600; }
+.chat-welcome-tile small { color: var(--muted); font-size: .78rem; line-height: 1.4; }
+
+/* --- link row hover-revealed actions: keep them visible on touch but
+   fade in on hover for desktop, so rows feel cleaner at rest. --- */
+@media (hover: hover) and (pointer: fine) {
+	.link-row .actions { opacity: .55; transition: opacity .12s ease; }
+	.link-row:hover .actions,
+	.link-row:focus-within .actions { opacity: 1; }
+}
+
+/* --- topbar tightening: with nav-main gone, give the search more room --- */
+.topbar-search { max-width: 640px; }
+@media (max-width: 720px) {
+	.topbar-search { max-width: 100%; }
+}
+
+/* --- HTML5 hidden must beat display:flex on form.inline + others.
+   Without this, the rename/inline forms remain visible despite the
+   attribute, because the explicit display rule wins specificity. --- */
+[hidden] { display: none !important; }
+

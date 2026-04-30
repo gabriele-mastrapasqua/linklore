@@ -1,24 +1,32 @@
 {{define "search_results"}}
 {{if not .Query}}
 {{else if not .Results}}
-	<div class="empty">No matches.</div>
+	<div class="empty">
+		<div class="empty-glyph">🔎</div>
+		<h3>No matches for “{{.Query}}”</h3>
+		<p class="muted" style="font-size:.9rem">Try a shorter keyword, or <a href="/chat?ask={{.Query | urlquery}}">ask the AI ✦</a> instead.</p>
+	</div>
 {{else}}
-<div class="card">
-	<small class="muted">{{len .Results}} result(s) for <em>{{.Query}}</em></small>
+<div class="search-summary card">
+	<strong>{{len .Results}}</strong> result{{if ne (len .Results) 1}}s{{end}} for <em>{{.Query}}</em>
+	<a class="link-button ai-link" href="/chat?ask={{.Query | urlquery}}" title="open chat scoped to this query">✦ ask the AI</a>
 </div>
 {{range .Results}}
-<div class="card link-row">
+<div class="card link-row search-result">
 	<div class="meta">
-		<div class="title"><a href="/links/{{.Link.ID}}">{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</a></div>
-		<div class="url">{{.Link.URL}}</div>
+		<div class="title">
+			{{if .Link.FaviconURL}}<img src="{{.Link.FaviconURL}}" alt="" class="preview preview-favicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">{{end}}
+			<a href="/links/{{.Link.ID}}">{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</a>
+		</div>
+		<div class="url url-domain">{{.Link.URL}}</div>
 		{{if .Snippet}}<div class="summary">{{.Snippet}}</div>{{end}}
 		<div class="badges">
 			<span class="badge {{.Link.Status}}">{{.Link.Status}}</span>
-			<span class="badge">score {{printf "%.2f" .Score}}</span>
+			<span class="badge" title="hybrid score">score {{printf "%.2f" .Score}}</span>
 		</div>
 	</div>
 	<div class="actions">
-		<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer">open link ↗</a>
+		<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer">open ↗</a>
 	</div>
 </div>
 {{end}}

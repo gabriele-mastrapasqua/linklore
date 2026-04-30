@@ -1,18 +1,20 @@
 {{define "collection_card"}}
-<div class="card collection-card{{if .CoverURL}} has-cover{{end}}"
-     id="collection-{{.ID}}"{{if .CoverURL}} style="background-image: linear-gradient(180deg, color-mix(in srgb, var(--card) 60%, transparent), var(--card)), url('{{.CoverURL}}')"{{end}}>
-	<div class="collection-card-head">
-		<h3 style="margin:0 0 .25rem 0;flex:1"><a href="/c/{{.Slug}}">{{.Name}}</a></h3>
-		<button type="button" class="link-button danger"
-		        hx-delete="/c/{{.Slug}}"
-		        hx-confirm="Delete collection “{{.Name}}” and all {{.Total}} link{{if ne .Total 1}}s{{end}} inside it? This cannot be undone."
-		        title="delete this collection and all its links">✕</button>
+<div class="col-tile{{if .CoverURL}} has-cover{{end}}"
+     id="collection-{{.ID}}"
+     {{if .CoverURL}}style="background-image: linear-gradient(180deg, color-mix(in srgb, var(--card) 55%, transparent), var(--card)), url('{{.CoverURL}}')"{{end}}>
+	<div class="col-tile-avatar" aria-hidden="true">{{slice .Name 0 1}}</div>
+	<div class="col-tile-meta">
+		<a class="col-tile-name" href="/c/{{.Slug}}">{{.Name}}</a>
+		<div class="col-tile-slug">/{{.Slug}}{{if .Description}} · {{.Description}}{{end}}</div>
+		<div class="col-tile-badges">
+			<span class="badge">{{.Total}} link{{if ne .Total 1}}s{{end}}</span>
+			{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
+			{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
+		</div>
 	</div>
-	<div class="muted" style="font-size:.85rem">/{{.Slug}}{{if .Description}} · {{.Description}}{{end}}</div>
-	<div class="badges" style="margin-top:.4rem">
-		<span class="badge">{{.Total}} link{{if ne .Total 1}}s{{end}}</span>
-		{{if gt .InProgress 0}}<span class="badge pending">{{.InProgress}} processing</span>{{end}}
-		{{if gt .Failed 0}}<span class="badge failed">{{.Failed}} failed</span>{{end}}
-	</div>
+	<button type="button" class="col-tile-del link-button danger"
+	        hx-delete="/c/{{.Slug}}"
+	        hx-confirm="Delete collection “{{.Name}}” and all {{.Total}} link{{if ne .Total 1}}s{{end}} inside it? This cannot be undone."
+	        title="delete this collection and all its links">✕</button>
 </div>
 {{end}}

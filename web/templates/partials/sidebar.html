@@ -2,16 +2,59 @@
 <aside class="sidebar">
 	<div class="sidebar-section">
 		<div class="sidebar-title-row">
+			<span class="sidebar-title">Library</span>
+		</div>
+		<nav class="sidebar-nav">
+			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">
+				<span class="sidebar-glyph">▦</span>
+				<span class="sidebar-name">All collections</span>
+			</a>
+			<a href="/tags" class="sidebar-link">
+				<span class="sidebar-glyph">#</span>
+				<span class="sidebar-name">Tags</span>
+			</a>
+			<a href="/duplicates" class="sidebar-link">
+				<span class="sidebar-glyph">⧉</span>
+				<span class="sidebar-name">Duplicates</span>
+			</a>
+			<a href="/checks" class="sidebar-link" title="dead-link checker">
+				<span class="sidebar-glyph">⚠</span>
+				<span class="sidebar-name">Broken links</span>
+			</a>
+			<a href="/chat" class="sidebar-link ai-link">
+				<span class="sidebar-glyph">✦</span>
+				<span class="sidebar-name">Ask</span>
+			</a>
+		</nav>
+	</div>
+
+	<div class="sidebar-section">
+		<div class="sidebar-title-row">
 			<span class="sidebar-title">Collections</span>
 			<a href="/#new-collection" class="sidebar-add" title="new collection">+</a>
 		</div>
-		<nav id="sidebar-collections">
-			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">All</a>
+		<nav id="sidebar-collections" class="sidebar-nav">
 			{{range .Sidebar}}
 			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}
 			{{else}}
-			<div class="muted" style="padding:.4rem .6rem">none yet</div>
+			<div class="muted" style="padding:.4rem .6rem;font-size:.8rem">none yet</div>
 			{{end}}
+		</nav>
+	</div>
+
+	<div class="sidebar-section">
+		<div class="sidebar-title-row">
+			<span class="sidebar-title">Tools</span>
+		</div>
+		<nav class="sidebar-nav">
+			<a href="/bookmarklet" class="sidebar-link">
+				<span class="sidebar-glyph">📎</span>
+				<span class="sidebar-name">Bookmarklet</span>
+			</a>
+			<a href="/settings" class="sidebar-link">
+				<span class="sidebar-glyph">⚙</span>
+				<span class="sidebar-name">Settings</span>
+			</a>
 		</nav>
 	</div>
 </aside>

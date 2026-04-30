@@ -834,7 +834,7 @@ func TestSidebar_listsActiveCollection(t *testing.T) {
 	if !strings.Contains(body, `class="sidebar-link active"`) {
 		t.Errorf("home should have an active sidebar link")
 	}
-	if !strings.Contains(body, ">All<") {
+	if !strings.Contains(body, "All collections") {
 		t.Errorf("All entry missing from sidebar")
 	}
 
