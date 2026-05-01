@@ -1,11 +1,23 @@
 {{define "search_suggest"}}
 <div class="search-pop-body">
 	{{if .Query}}
+	{{if .Scope}}
+	<a class="search-pop-row search-pop-go" href="/search?q={{.Query | urlquery}}&scope={{.Scope | urlquery}}">
+		<span class="search-pop-glyph">⌕</span>
+		<span class="search-pop-text">Search <em>"{{.Query}}"</em> in <strong>{{.ScopeName}}</strong></span>
+		<span class="search-pop-kbd">↵</span>
+	</a>
+	<a class="search-pop-row" href="/search?q={{.Query | urlquery}}">
+		<span class="search-pop-glyph">⌕</span>
+		<span class="search-pop-text muted">Search everywhere</span>
+	</a>
+	{{else}}
 	<a class="search-pop-row search-pop-go" href="/search?q={{.Query | urlquery}}">
 		<span class="search-pop-glyph">⌕</span>
 		<span class="search-pop-text">Search <em>"{{.Query}}"</em></span>
 		<span class="search-pop-kbd">↵</span>
 	</a>
+	{{end}}
 	{{end}}
 
 	{{if .Collections}}

@@ -15,7 +15,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=25">
+	<link rel="stylesheet" href="/static/app.css?v=26">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -50,13 +50,14 @@
 	</h1>
 	<div class="topbar-search">
 		<form method="get" action="/search" class="topbar-search-form" role="search">
-			<input type="search" name="q" placeholder="search…" autocomplete="off"
-			       hx-get="/search/suggest"
+			<input type="search" name="q" placeholder="{{if .ActiveSlug}}search in {{.ActiveSlug}}…{{else}}search…{{end}}" autocomplete="off"
+			       hx-get="/search/suggest{{if .ActiveSlug}}?scope={{.ActiveSlug}}{{end}}"
 			       hx-trigger="focus, keyup changed delay:200ms"
 			       hx-target="#search-pop"
 			       hx-swap="innerHTML"
 			       onfocus="document.getElementById('search-pop').hidden=false"
 			       onblur="setTimeout(function(){document.getElementById('search-pop').hidden=true},150)">
+			{{if .ActiveSlug}}<input type="hidden" name="scope" value="{{.ActiveSlug}}">{{end}}
 			<a class="topbar-ask ai-link" href="/chat" title="Ask the LLM (✦)">✦</a>
 			<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
 		</form>

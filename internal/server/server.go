@@ -160,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /links/{id}/tags", s.handleAddUserTag)
 	mux.HandleFunc("DELETE /links/{id}/tags/{slug}", s.handleRemoveTag)
 
+	mux.HandleFunc("GET /links", s.handleGlobalLinks)
 	mux.HandleFunc("GET /search", s.handleSearchPage)
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 	mux.HandleFunc("GET /search/suggest", s.handleSearchSuggest)
@@ -1991,13 +1992,102 @@ func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 		n, plural(n))
 }
 
+// handleGlobalLinks renders a cross-collection list with optional
+// filters (kind, notags, status). Backs the sidebar Filters section
+// — gives the user a "show me every Article in the library" view
+// without forcing them into a search.
+func (s *Server) handleGlobalLinks(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	kindFilter := strings.TrimSpace(q.Get("kind"))
+	notagsOnly := q.Get("notags") == "1" || q.Get("notags") == "true"
+	statusFilter := strings.TrimSpace(q.Get("status"))
+
+	all, err := s.store.ListAllLinks(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Build a tag presence map for the notags filter — single query, then
+	// each link is O(1) check.
+	tagPresence := map[int64]bool{}
+	if notagsOnly {
+		for i := range all {
+			tags, _ := s.store.ListTagsByLink(r.Context(), all[i].ID)
+			tagPresence[all[i].ID] = len(tags) > 0
+		}
+	}
+
+	out := all[:0]
+	for i := range all {
+		l := &all[i]
+		if kindFilter != "" && l.Kind != kindFilter {
+			continue
+		}
+		if statusFilter != "" && l.Status != statusFilter {
+			continue
+		}
+		if notagsOnly && tagPresence[l.ID] {
+			continue
+		}
+		out = append(out, *l)
+	}
+
+	// Compose a page title that reflects the active filters.
+	title := "All links"
+	switch {
+	case notagsOnly:
+		title = "Without tags"
+	case statusFilter == "failed":
+		title = "Failed links"
+	case kindFilter != "":
+		title = strings.ToUpper(kindFilter[:1]) + kindFilter[1:] + "s"
+	}
+
+	s.renderPageRq(w, r, "links_global", map[string]any{
+		"Title":      title,
+		"Heading":    title,
+		"Links":      out,
+		"Total":      len(out),
+		"KindFilter": kindFilter,
+		"NoTags":     notagsOnly,
+		"Status":     statusFilter,
+	})
+}
+
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	results := s.runSearch(r.Context(), q, 0, 20)
+	scopeSlug := strings.TrimSpace(r.URL.Query().Get("scope"))
+	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
+	if sort != "date" {
+		sort = "relevance"
+	}
+	var scopeCol *storage.Collection
+	var scopeID int64
+	if scopeSlug != "" {
+		scopeCol, _ = s.store.GetCollectionBySlug(r.Context(), scopeSlug)
+		if scopeCol != nil {
+			scopeID = scopeCol.ID
+		}
+	}
+	cleaned, facets := search.ParseFacets(q)
+	results := s.runSearch(r.Context(), cleaned, scopeID, 50)
+	results = s.applyFacets(r.Context(), results, facets)
+	if sort == "date" {
+		s.sortByDate(results)
+	}
+	if len(results) > 20 {
+		results = results[:20]
+	}
 	s.renderPageRq(w, r, "search", map[string]any{
-		"Title":   "Search",
-		"Query":   q,
-		"Results": results,
+		"Title":     "Search",
+		"Query":     q,
+		"Cleaned":   cleaned,
+		"Facets":    facets,
+		"Sort":      sort,
+		"Scope":     scopeSlug,
+		"ScopeName": collectionName(scopeCol),
+		"Results":   results,
 	})
 }
 
@@ -2005,19 +2095,84 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 // driven by the top-bar input.
 func (s *Server) handleSearchLive(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	results := s.runSearch(r.Context(), q, 0, 8)
+	scopeSlug := strings.TrimSpace(r.URL.Query().Get("scope"))
+	var scopeID int64
+	if scopeSlug != "" {
+		if c, _ := s.store.GetCollectionBySlug(r.Context(), scopeSlug); c != nil {
+			scopeID = c.ID
+		}
+	}
+	cleaned, facets := search.ParseFacets(q)
+	results := s.runSearch(r.Context(), cleaned, scopeID, 24)
+	results = s.applyFacets(r.Context(), results, facets)
+	if len(results) > 8 {
+		results = results[:8]
+	}
 	s.renderFragment(w, "search_results", map[string]any{
 		"Query":   q,
+		"Cleaned": cleaned,
+		"Facets":  facets,
 		"Results": results,
 	})
+}
+
+// applyFacets is a thin wrapper around search.Facets.Apply that loads
+// the per-link tag sets needed to evaluate tag: / -tag: predicates.
+// Skipped when facets are empty so plain text queries pay nothing.
+func (s *Server) applyFacets(ctx context.Context, in []search.LinkResult, f search.Facets) []search.LinkResult {
+	if f.Empty() || len(in) == 0 {
+		return in
+	}
+	tags, err := search.BuildLinkTags(ctx, s.store, in)
+	if err != nil {
+		log.Printf("apply facets: build link tags: %v", err)
+		return in
+	}
+	return f.Apply(in, tags)
+}
+
+// sortByDate orders results by the underlying link's FetchedAt
+// descending. Used when the user picks sort=date in /search. Links
+// without a FetchedAt sink to the bottom.
+func (s *Server) sortByDate(results []search.LinkResult) {
+	sort.SliceStable(results, func(i, j int) bool {
+		ti, tj := results[i].Link.FetchedAt, results[j].Link.FetchedAt
+		switch {
+		case ti == nil && tj == nil:
+			return false
+		case ti == nil:
+			return false
+		case tj == nil:
+			return true
+		}
+		return ti.After(*tj)
+	})
+}
+
+func collectionName(c *storage.Collection) string {
+	if c == nil {
+		return ""
+	}
+	return c.Name
 }
 
 // handleSearchSuggest returns the popover fragment shown under the
 // topbar input on focus / keyup. It surfaces matched collections and
 // matched tags as fast jumps, plus the literal "Search 'q'" entry.
 // Heavy text matching stays on /search/live.
+//
+// The optional ?scope=<slug> param turns on a "Search in <collection>"
+// affordance — when present, the popover shows two Search entries
+// (in-scope first, then everywhere) so the user can pivot.
 func (s *Server) handleSearchSuggest(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	scopeSlug := strings.TrimSpace(r.URL.Query().Get("scope"))
+	var scopeName string
+	if scopeSlug != "" {
+		if c, _ := s.store.GetCollectionBySlug(r.Context(), scopeSlug); c != nil {
+			scopeName = c.Name
+		}
+	}
 	var matchedCols []storage.Collection
 	var matchedTags []storage.Tag
 	if q != "" {
@@ -2036,6 +2191,8 @@ func (s *Server) handleSearchSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	s.renderFragment(w, "search_suggest", map[string]any{
 		"Query":       q,
+		"Scope":       scopeSlug,
+		"ScopeName":   scopeName,
 		"Collections": matchedCols,
 		"Tags":        matchedTags,
 	})
@@ -2212,6 +2369,18 @@ func (s *Server) renderPageRq(w http.ResponseWriter, r *http.Request, name strin
 	}
 	if _, has := data["ActiveSlug"]; !has {
 		data["ActiveSlug"] = activeSlug(r.URL.Path)
+	}
+	// Per-active-collection tag panel. Skipped when no collection is
+	// active (the tag panel is meaningless on the home/duplicates/etc).
+	if slug, _ := data["ActiveSlug"].(string); slug != "" {
+		if _, hide := data["HideSidebar"]; !hide {
+			if col, err := s.store.GetCollectionBySlug(r.Context(), slug); err == nil && col != nil {
+				if tags, err := s.store.ListTagsByCollectionWithCounts(r.Context(), col.ID, 30); err == nil {
+					data["ActiveTags"] = tags
+					data["ActiveCollectionName"] = col.Name
+				}
+			}
+		}
 	}
 	s.renderPage(w, name, data)
 }

@@ -1,0 +1,28 @@
+{{define "content"}}
+<section class="card">
+	<div class="hflex">
+		<h2 class="hflex-fill">{{.Heading}}</h2>
+		<a class="link-button" href="/" title="back to all collections">← all collections</a>
+	</div>
+	<div class="muted collection-subhead">
+		{{.Total}} link{{if ne .Total 1}}s{{end}} across the library
+		{{if .KindFilter}} · type: <strong>{{.KindFilter}}</strong>{{end}}
+		{{if .NoTags}} · without tags{{end}}
+		{{if .Status}} · status: <strong>{{.Status}}</strong>{{end}}
+	</div>
+</section>
+
+<div id="links-list" class="layout-list">
+	{{if not .Links}}
+	<div class="empty">
+		<div class="empty-glyph">📭</div>
+		<h3>Nothing matches</h3>
+		<p>Tweak the filter or save a link first.</p>
+	</div>
+	{{else}}
+	{{range .Links}}
+		{{template "link_row" .}}
+	{{end}}
+	{{end}}
+</div>
+{{end}}

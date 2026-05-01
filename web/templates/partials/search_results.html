@@ -9,6 +9,23 @@
 {{else}}
 <div class="search-summary card">
 	<strong>{{len .Results}}</strong> result{{if ne (len .Results) 1}}s{{end}} for <em>{{.Query}}</em>
+	{{with .Facets}}
+		{{if or .Tags .NotTags .Kind .Scope}}
+		<span class="search-facet-chips">
+			{{if .Kind}}<span class="badge facet-chip" title="kind:{{.Kind}}">kind:{{.Kind}}</span>{{end}}
+			{{range .Tags}}<span class="badge facet-chip" title="tag:{{.}}">tag:{{.}}</span>{{end}}
+			{{range .NotTags}}<span class="badge facet-chip facet-chip-neg" title="-tag:{{.}}">-tag:{{.}}</span>{{end}}
+			{{if .Scope}}<span class="badge facet-chip" title="in:{{.Scope}}">in:{{.Scope}}</span>{{end}}
+		</span>
+		{{end}}
+	{{end}}
+	{{if .ScopeName}}<span class="muted" style="margin-left:.4rem">in <strong>{{.ScopeName}}</strong></span>{{end}}
+	{{if .Sort}}
+	<span class="search-sort-toggle">
+		<a class="seg-opt {{if eq .Sort "relevance"}}active{{end}}" href="?q={{.Query | urlquery}}{{if .Scope}}&scope={{.Scope | urlquery}}{{end}}&sort=relevance">By relevance</a>
+		<a class="seg-opt {{if eq .Sort "date"}}active{{end}}" href="?q={{.Query | urlquery}}{{if .Scope}}&scope={{.Scope | urlquery}}{{end}}&sort=date">By date</a>
+	</span>
+	{{end}}
 	<a class="link-button ai-link" href="/chat?ask={{.Query | urlquery}}" title="open chat scoped to this query">✦ ask the AI</a>
 </div>
 {{range .Results}}

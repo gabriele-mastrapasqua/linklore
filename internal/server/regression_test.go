@@ -1086,6 +1086,86 @@ func TestSearchSuggest_matchesCollectionsAndTags(t *testing.T) {
 	}
 }
 
+// ---------- /links global filter view ----------
+
+// /links lists across all collections and accepts kind=, notags=,
+// status= filters.
+func TestGlobalLinks_kindFilter(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	la, _ := st.CreateLink(ctx, col.ID, "https://example.com/article")
+	lv, _ := st.CreateLink(ctx, col.ID, "https://example.com/video.mp4")
+	_ = la
+	_ = lv
+
+	// Prime kinds via UpdateLinkExtraction (sets Kind defaults to article).
+	_ = st.UpdateLinkExtraction(ctx, la.ID, "Article", "", "", "body", "en", "")
+	_ = st.UpdateLinkExtraction(ctx, lv.ID, "Video", "", "", "body", "en", "")
+	// Force a non-default kind on the second link.
+	if err := st.SetLinkKind(ctx, lv.ID, "video"); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := get(t, ts, "/links?kind=video")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "Video") {
+		t.Errorf("video link should appear, body excerpt: %s", excerpt(body, "Video", 80))
+	}
+	if strings.Contains(body, ">Article<") {
+		t.Errorf("Article should not appear when kind=video; body: %q", body)
+	}
+}
+
+func TestGlobalLinks_notagsFilter(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	tagged, _ := st.CreateLink(ctx, col.ID, "https://example.com/tagged")
+	untagged, _ := st.CreateLink(ctx, col.ID, "https://example.com/untagged")
+	_ = st.UpdateLinkExtraction(ctx, tagged.ID, "TaggedOne", "", "", "body", "en", "")
+	_ = st.UpdateLinkExtraction(ctx, untagged.ID, "BareOne", "", "", "body", "en", "")
+	tg, _ := st.UpsertTag(ctx, "ai", "AI")
+	_ = st.AttachTag(ctx, tagged.ID, tg.ID, "user")
+
+	code, body := get(t, ts, "/links?notags=1")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "BareOne") {
+		t.Errorf("untagged link should appear, body: %q", body)
+	}
+	if strings.Contains(body, "TaggedOne") {
+		t.Errorf("tagged link should be hidden, body: %q", body)
+	}
+}
+
+// ---------- /search facet syntax ----------
+
+// Searching with a facet token like `tag:apollo` parses cleanly:
+// the query keeps "graphql" as the residual text and the facet shows
+// up as a chip on the result header. (Result filtering proper is
+// covered by the unit test on search.Facets.Apply — newTestServer
+// runs without a real search engine, so we focus on the parser/UI
+// side of the integration here.)
+//
+// We also assert the chip renders even when the result list is empty
+// so users see what their query was understood as.
+func TestSearch_facetChipRenders(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/search?q=graphql+tag:apollo+kind:article")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	for _, want := range []string{`tag:apollo`, `kind:article`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("parsed facet chip %q missing from body: %q", want, excerpt(body, "facet", 200))
+		}
+	}
+}
+
 // ---------- favicon link in <head> ----------
 
 func TestBase_includesFaviconLink(t *testing.T) {

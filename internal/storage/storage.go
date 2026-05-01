@@ -1205,6 +1205,37 @@ func (s *Store) ListTagsWithCounts(ctx context.Context) ([]TagCount, error) {
 	return out, rows.Err()
 }
 
+// ListTagsByCollectionWithCounts returns the tags whose links live in
+// the given collection, ordered by usage count desc. Backs the per-
+// collection tag panel in the sidebar.
+func (s *Store) ListTagsByCollectionWithCounts(ctx context.Context, collectionID int64, limit int) ([]TagCount, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.id, t.slug, t.name, COUNT(DISTINCT lt.link_id) AS n
+		  FROM tags t
+		  JOIN link_tags lt ON lt.tag_id = t.id
+		  JOIN links l ON l.id = lt.link_id
+		 WHERE l.collection_id = ?
+		 GROUP BY t.id
+		 ORDER BY n DESC, t.slug ASC
+		 LIMIT ?`, collectionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TagCount
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.ID, &tc.Slug, &tc.Name, &tc.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, tc)
+	}
+	return out, rows.Err()
+}
+
 // MergeTag re-attaches every link from src into dst (preserving source) and
 // then deletes the now-orphan src tag. Idempotent: merging a tag into itself
 // is a no-op.

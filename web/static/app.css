@@ -214,6 +214,34 @@ header.topbar nav a:hover { color: var(--text); }
 	background: var(--code-bg);
 }
 .search-pop-go { font-weight: 500; }
+
+/* Facet chips on the search results header. Smaller pill variant of
+   .badge so they sit comfortably on a single line next to the result
+   count. Negated facets (-tag:foo) get a strikethrough cue. */
+.search-facet-chips {
+	display: inline-flex; gap: var(--space-1);
+	margin-left: .4rem; flex-wrap: wrap;
+}
+.facet-chip {
+	font-family: var(--ff-mono); font-size: .72rem;
+	padding: .1rem .45rem;
+}
+.facet-chip-neg { text-decoration: line-through; opacity: .75; }
+
+.search-sort-toggle {
+	display: inline-flex; gap: var(--space-1);
+	margin-left: .6rem;
+}
+
+/* Per-collection tag panel in the sidebar — slimmer than the main
+   sidebar nav so 30 tags fit without scrolling on a tall screen. */
+.sidebar-section-tags { margin-bottom: var(--space-2); }
+.sidebar-tags { gap: 0; }
+.sidebar-tag-link {
+	padding: .25rem .6rem;
+	font-size: .85rem;
+}
+.sidebar-tag-link .sidebar-glyph { color: var(--muted); }
 .search-pop-help {
 	font-size: .75rem; line-height: 1.5;
 	padding: var(--space-2) var(--space-3) var(--space-3);

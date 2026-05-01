@@ -28,6 +28,30 @@
 		</nav>
 	</div>
 
+	<div class="sidebar-section sidebar-section-filters">
+		<div class="sidebar-title-row">
+			<span class="sidebar-title">Filters</span>
+		</div>
+		<nav class="sidebar-nav">
+			<a href="/links?kind=article" class="sidebar-link">
+				<span class="sidebar-glyph kind-icon kind-article" aria-hidden="true"></span>
+				<span class="sidebar-name">Articles</span>
+			</a>
+			<a href="/links?kind=video" class="sidebar-link">
+				<span class="sidebar-glyph kind-icon kind-video" aria-hidden="true"></span>
+				<span class="sidebar-name">Videos</span>
+			</a>
+			<a href="/links?notags=1" class="sidebar-link">
+				<span class="sidebar-glyph">⊘</span>
+				<span class="sidebar-name">Without tags</span>
+			</a>
+			<a href="/links?status=failed" class="sidebar-link">
+				<span class="sidebar-glyph">⚠</span>
+				<span class="sidebar-name">Failed</span>
+			</a>
+		</nav>
+	</div>
+
 	<details class="sidebar-section sidebar-section-collections sidebar-new-collection">
 		<summary class="sidebar-title-row">
 			<span class="sidebar-title">Collections</span>
@@ -48,6 +72,23 @@
 			{{end}}
 		</nav>
 	</div>
+
+	{{if .ActiveTags}}
+	<div class="sidebar-section sidebar-section-tags">
+		<div class="sidebar-title-row">
+			<span class="sidebar-title">Tags in {{.ActiveCollectionName}}</span>
+		</div>
+		<nav class="sidebar-nav sidebar-nav-scroll sidebar-tags">
+			{{range .ActiveTags}}
+			<a href="/tags/{{.Slug}}" class="sidebar-link sidebar-tag-link">
+				<span class="sidebar-glyph">#</span>
+				<span class="sidebar-name">{{.Name}}</span>
+				<span class="sidebar-count">{{.Count}}</span>
+			</a>
+			{{end}}
+		</nav>
+	</div>
+	{{end}}
 
 	<div class="sidebar-section sidebar-section-tools">
 		<div class="sidebar-title-row">

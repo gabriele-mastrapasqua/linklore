@@ -455,6 +455,43 @@ func TestSearchTagsByPrefix(t *testing.T) {
 	}
 }
 
+func TestListTagsByCollectionWithCounts(t *testing.T) {
+	ctx := context.Background()
+	st := mustOpen(t)
+	colA, _ := st.CreateCollection(ctx, "a", "A", "")
+	colB, _ := st.CreateCollection(ctx, "b", "B", "")
+	la1, _ := st.CreateLink(ctx, colA.ID, "https://example.com/a1")
+	la2, _ := st.CreateLink(ctx, colA.ID, "https://example.com/a2")
+	lb1, _ := st.CreateLink(ctx, colB.ID, "https://example.com/b1")
+	tAI, _ := st.UpsertTag(ctx, "ai", "AI")
+	tLLM, _ := st.UpsertTag(ctx, "llm", "LLM")
+	// In collection A: ai used by 2 links, llm by 1.
+	_ = st.AttachTag(ctx, la1.ID, tAI.ID, "user")
+	_ = st.AttachTag(ctx, la2.ID, tAI.ID, "user")
+	_ = st.AttachTag(ctx, la1.ID, tLLM.ID, "user")
+	// In collection B: only llm.
+	_ = st.AttachTag(ctx, lb1.ID, tLLM.ID, "user")
+
+	got, err := st.ListTagsByCollectionWithCounts(ctx, colA.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d tags, want 2 in collection A", len(got))
+	}
+	if got[0].Slug != "ai" || got[0].Count != 2 {
+		t.Errorf("first tag = %+v, want ai/count=2", got[0])
+	}
+	if got[1].Slug != "llm" || got[1].Count != 1 {
+		t.Errorf("second tag = %+v, want llm/count=1", got[1])
+	}
+	// Collection B: only llm shows up, scoped correctly.
+	gotB, _ := st.ListTagsByCollectionWithCounts(ctx, colB.ID, 10)
+	if len(gotB) != 1 || gotB[0].Slug != "llm" || gotB[0].Count != 1 {
+		t.Errorf("collection B tags = %+v, want [llm/1]", gotB)
+	}
+}
+
 // ---------- LinkStatusCounts (the chat header relies on this) ----------
 
 func TestLinkStatusCounts(t *testing.T) {
