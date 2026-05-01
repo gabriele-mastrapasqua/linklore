@@ -1,7 +1,8 @@
-// Package litellm implements llm.Backend against an OpenAI-compatible
-// proxy (LiteLLM in front of vLLM/etc). Only the subset linklore actually
+// Package openai implements llm.Backend against any OpenAI-compatible
+// HTTP API: vLLM, llama.cpp's `server`, LM Studio, LiteLLM proxy,
+// Ollama via /v1, OpenAI itself. Only the subset linklore actually
 // uses is wired: /chat/completions (with stream=true SSE) and /embeddings.
-package litellm
+package openai
 
 import (
 	"bufio"
@@ -33,7 +34,7 @@ type Backend struct {
 
 func New(cfg Config) (*Backend, error) {
 	if cfg.BaseURL == "" {
-		return nil, errors.New("litellm: base_url required")
+		return nil, errors.New("openai: base_url required")
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 120 * time.Second
@@ -95,12 +96,12 @@ func (b *Backend) Healthcheck(ctx context.Context) error {
 	hc := &http.Client{Timeout: 5 * time.Second}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("litellm health: %w", err)
+		return fmt.Errorf("openai health: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("litellm health: status %d: %s", resp.StatusCode, raw)
+		return fmt.Errorf("openai health: status %d: %s", resp.StatusCode, raw)
 	}
 	return nil
 }
@@ -135,19 +136,19 @@ func (b *Backend) Generate(ctx context.Context, prompt string, opts *llm.Generat
 	}
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("litellm chat: %w", err)
+		return nil, fmt.Errorf("openai chat: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("litellm chat: status %d: %s", resp.StatusCode, raw)
+		return nil, fmt.Errorf("openai chat: status %d: %s", resp.StatusCode, raw)
 	}
 	var cr chatResp
 	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
 		return nil, err
 	}
 	if len(cr.Choices) == 0 {
-		return nil, errors.New("litellm: no choices in response")
+		return nil, errors.New("openai: no choices in response")
 	}
 	return &llm.GenerateResult{Text: cr.Choices[0].Message.Content, Tokens: cr.Usage.CompletionTokens}, nil
 }
@@ -163,12 +164,12 @@ func (b *Backend) GenerateStream(ctx context.Context, prompt string, opts *llm.G
 	}
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("litellm stream: %w", err)
+		return nil, fmt.Errorf("openai stream: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("litellm stream: status %d: %s", resp.StatusCode, raw)
+		return nil, fmt.Errorf("openai stream: status %d: %s", resp.StatusCode, raw)
 	}
 
 	out := make(chan llm.StreamChunk, 16)
@@ -221,7 +222,7 @@ func (b *Backend) Embed(ctx context.Context, texts []string, opts *llm.EmbedOpti
 		}
 	}
 	if model == "" {
-		return nil, errors.New("litellm: embed_model required")
+		return nil, errors.New("openai: embed_model required")
 	}
 
 	all := make([][]float32, 0, len(texts))
@@ -237,25 +238,25 @@ func (b *Backend) Embed(ctx context.Context, texts []string, opts *llm.EmbedOpti
 		}
 		resp, err := b.client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("litellm embed: %w", err)
+			return nil, fmt.Errorf("openai embed: %w", err)
 		}
 		raw, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("litellm embed: status %d: %s", resp.StatusCode, raw)
+			return nil, fmt.Errorf("openai embed: status %d: %s", resp.StatusCode, raw)
 		}
 		var er embedResp
 		if err := json.Unmarshal(raw, &er); err != nil {
 			return nil, fmt.Errorf("decode embed: %w", err)
 		}
 		if len(er.Data) != end-start {
-			return nil, fmt.Errorf("litellm embed: expected %d vectors, got %d", end-start, len(er.Data))
+			return nil, fmt.Errorf("openai embed: expected %d vectors, got %d", end-start, len(er.Data))
 		}
 		// data items are unordered in theory; sort by Index defensively.
 		batchOut := make([][]float32, end-start)
 		for _, it := range er.Data {
 			if it.Index < 0 || it.Index >= len(batchOut) {
-				return nil, fmt.Errorf("litellm embed: bad index %d", it.Index)
+				return nil, fmt.Errorf("openai embed: bad index %d", it.Index)
 			}
 			batchOut[it.Index] = it.Embedding
 		}

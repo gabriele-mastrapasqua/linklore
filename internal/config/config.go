@@ -43,40 +43,32 @@ type Database struct {
 // live in .env (gitignored) so private endpoints + API keys don't end
 // up in the public yaml.
 //
-// Backend is one of: "openai" (any OpenAI-compatible HTTP gateway —
-// vLLM, llama.cpp server, LM Studio, LiteLLM proxy, Ollama via /v1),
-// "ollama" (Ollama's native /api/* endpoints — legacy, prefer
-// "openai"), or "none" (disable). The historical "litellm" value is
-// accepted as a deprecated alias and silently rewritten to "openai"
-// at load time.
+// Backend is one of: "openai" (any OpenAI-compatible HTTP API — vLLM,
+// llama.cpp server, LM Studio, LiteLLM proxy, Ollama via /v1, OpenAI
+// itself), "ollama" (Ollama's native /api/* endpoints — legacy,
+// prefer "openai"), or "none" (disable).
 type LLM struct {
 	Backend string
 	Ollama  Ollama
-	OpenAI  OpenAICompat
-	// LiteLLM is kept as a deprecated alias of OpenAI; values are
-	// copied between the two at load time so old callers and old yaml
-	// keep working.
-	LiteLLM OpenAICompat
+	OpenAI  OpenAI
 }
 
-// OpenAICompat holds the connection details for any OpenAI-compatible
-// HTTP API. The concrete URL points at /v1 of whichever local server
-// you're running.
-type OpenAICompat = LiteLLM
+// OpenAI holds the connection details for any OpenAI-compatible HTTP
+// API. BaseURL points at the /v1 root of whichever server you're
+// running.
+type OpenAI struct {
+	BaseURL        string
+	Model          string
+	EmbedModel     string
+	APIKey         string
+	TimeoutSeconds int
+}
 
 type Ollama struct {
 	Host           string
 	Model          string
 	EmbedModel     string
 	NumCtx         int
-	TimeoutSeconds int
-}
-
-type LiteLLM struct {
-	BaseURL        string
-	Model          string
-	EmbedModel     string
-	APIKey         string
 	TimeoutSeconds int
 }
 
@@ -125,11 +117,11 @@ type Reminders struct {
 // Used as the base before YAML/env overrides.
 //
 // LLM defaults are intentionally NEUTRAL — empty model names, localhost
-// for Ollama, no LiteLLM URL. A fresh `go install` of linklore should
+// for Ollama, no OpenAI URL. A fresh `go install` of linklore should
 // not auto-target anyone's private gateway; users opt into a real
-// backend via configs/config.yaml or env vars (LITELLM_BASE_URL,
-// OLLAMA_HOST, LINKLORE_LLM_BACKEND, etc.). The shipped configs/config.yaml
-// carries the project-specific values.
+// backend via env vars (OPENAI_BASE_URL, OLLAMA_HOST,
+// LINKLORE_LLM_BACKEND, etc.). The shipped configs/config.yaml only
+// carries non-secret tunables.
 func Default() Config {
 	return Config{
 		Server:   Server{Addr: "127.0.0.1:8080"},
@@ -137,8 +129,8 @@ func Default() Config {
 		LLM: LLM{
 			// "none" = run without an LLM. Search degrades to BM25,
 			// chat is disabled, ingestion still fetches + extracts.
-			Backend: "none",
-			LiteLLM: LiteLLM{
+			Backend: llm.BackendNone,
+			OpenAI: OpenAI{
 				BaseURL:        "",
 				Model:          "",
 				EmbedModel:     "",
@@ -162,9 +154,10 @@ func Default() Config {
 	}
 }
 
-// litellmDefaultAPIKey is the master key our LiteLLM gateway accepts when
-// no real key is set. Only consulted when Backend == "litellm".
-const litellmDefaultAPIKey = "sk-local"
+// openAIDefaultAPIKey is what we send when the user hasn't set one.
+// Many local OpenAI-compatible servers (Ollama /v1, LM Studio,
+// llama.cpp) accept any non-empty bearer token.
+const openAIDefaultAPIKey = "sk-local"
 
 // Load reads a YAML config from path, falls back to defaults for missing
 // fields, then applies env overrides. An empty path returns Default()+env.
@@ -175,7 +168,7 @@ const litellmDefaultAPIKey = "sk-local"
 //  2. <dir of the config file>/.env (when path != "")
 //
 // Anything already set in the process env wins, so a one-shot
-// `LITELLM_API_KEY=… ./linklore serve` still overrides the .env file.
+// `OPENAI_API_KEY=… ./linklore serve` still overrides the .env file.
 func Load(path string) (Config, error) {
 	// .env is best-effort: parsing failures are fatal, "no such file" is fine.
 	if err := LoadDotEnv(".env"); err != nil {
@@ -204,51 +197,16 @@ func Load(path string) (Config, error) {
 		}
 	}
 	applyEnv(&cfg)
-	cfg.canonicaliseLLM()
 	// Only fill in the OpenAI master-key fallback when OpenAI is the
 	// active backend. Ollama/none configs should never carry a phantom
 	// API key in their dump.
 	if cfg.LLM.Backend == llm.BackendOpenAI && cfg.LLM.OpenAI.APIKey == "" {
-		cfg.LLM.OpenAI.APIKey = litellmDefaultAPIKey
-		cfg.LLM.LiteLLM.APIKey = litellmDefaultAPIKey
+		cfg.LLM.OpenAI.APIKey = openAIDefaultAPIKey
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
-}
-
-// canonicaliseLLM rewrites deprecated names into their canonical
-// counterparts:
-//   - backend "litellm" → "openai" (with a warning log).
-//   - llm.litellm yaml block / LITELLM_* env vars → llm.openai /
-//     OPENAI_*. Both struct fields stay in sync so callers reading
-//     either side see the same data.
-func (c *Config) canonicaliseLLM() {
-	if c.LLM.Backend == llm.BackendLitellm {
-		log.Printf("config: llm.backend=%q is deprecated, use %q", llm.BackendLitellm, llm.BackendOpenAI)
-		c.LLM.Backend = llm.BackendOpenAI
-	}
-	// Merge the two structs: any non-empty field wins. OpenAI takes
-	// priority on conflicts (canonical name).
-	merged := c.LLM.OpenAI
-	if merged.BaseURL == "" {
-		merged.BaseURL = c.LLM.LiteLLM.BaseURL
-	}
-	if merged.Model == "" {
-		merged.Model = c.LLM.LiteLLM.Model
-	}
-	if merged.EmbedModel == "" {
-		merged.EmbedModel = c.LLM.LiteLLM.EmbedModel
-	}
-	if merged.APIKey == "" {
-		merged.APIKey = c.LLM.LiteLLM.APIKey
-	}
-	if merged.TimeoutSeconds == 0 {
-		merged.TimeoutSeconds = c.LLM.LiteLLM.TimeoutSeconds
-	}
-	c.LLM.OpenAI = merged
-	c.LLM.LiteLLM = merged
 }
 
 func applyEnv(c *Config) {
@@ -259,28 +217,36 @@ func applyEnv(c *Config) {
 		c.Database.Path = v
 	}
 	if v := os.Getenv("LINKLORE_LLM_BACKEND"); v != "" {
+		// Soft migration for the historical "litellm" value: rewrite to
+		// the canonical "openai" with a one-line warning. Everything
+		// downstream sees only the canonical set.
+		if v == "litellm" {
+			log.Printf(`config: LINKLORE_LLM_BACKEND=%q is deprecated, use "openai" (it covers every OpenAI-compatible local server, Ollama via /v1 included)`, v)
+			v = llm.BackendOpenAI
+		}
 		c.LLM.Backend = v
 	}
 	if v := os.Getenv("OLLAMA_HOST"); v != "" {
 		c.LLM.Ollama.Host = v
 	}
-	// Canonical OPENAI_* env vars first; legacy LITELLM_* vars only
-	// fill in fields the canonical didn't already set. Both write to
-	// LiteLLM struct (it's the storage; canonicaliseLLM mirrors back).
 	if v := os.Getenv("OPENAI_BASE_URL"); v != "" {
 		c.LLM.OpenAI.BaseURL = v
 	} else if v := os.Getenv("LITELLM_BASE_URL"); v != "" {
+		// Same one-shot migration for the env var: silent except for a
+		// startup warning so users notice and update their .env.
+		log.Printf(`config: LITELLM_BASE_URL is deprecated, use OPENAI_BASE_URL`)
 		c.LLM.OpenAI.BaseURL = v
 	}
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		c.LLM.OpenAI.APIKey = v
 	} else if v := os.Getenv("LITELLM_API_KEY"); v != "" {
+		log.Printf(`config: LITELLM_API_KEY is deprecated, use OPENAI_API_KEY`)
 		c.LLM.OpenAI.APIKey = v
 	}
 	// Model overrides apply to whichever backend is active so the user
 	// can switch model without editing YAML.
 	if v := os.Getenv("LINKLORE_LLM_MODEL"); v != "" {
-		switch llm.CanonicalBackend(c.LLM.Backend) {
+		switch c.LLM.Backend {
 		case llm.BackendOpenAI:
 			c.LLM.OpenAI.Model = v
 		case llm.BackendOllama:
@@ -288,7 +254,7 @@ func applyEnv(c *Config) {
 		}
 	}
 	if v := os.Getenv("LINKLORE_LLM_EMBED_MODEL"); v != "" {
-		switch llm.CanonicalBackend(c.LLM.Backend) {
+		switch c.LLM.Backend {
 		case llm.BackendOpenAI:
 			c.LLM.OpenAI.EmbedModel = v
 		case llm.BackendOllama:
@@ -348,12 +314,12 @@ var llmEnvKeys = []string{
 
 // llmEnvKeysFor returns the keys + values to write for the active
 // backend. Keys irrelevant to the backend are omitted so the file
-// doesn't grow noisy stubs ("LITELLM_BASE_URL=" when on Ollama).
+// doesn't grow noisy stubs ("OPENAI_BASE_URL=" when on Ollama).
 func (c Config) llmEnvKeysFor() map[string]string {
 	out := map[string]string{
 		"LINKLORE_LLM_BACKEND": c.LLM.Backend,
 	}
-	switch llm.CanonicalBackend(c.LLM.Backend) {
+	switch c.LLM.Backend {
 	case llm.BackendOpenAI:
 		out["OPENAI_BASE_URL"] = c.LLM.OpenAI.BaseURL
 		out["OPENAI_API_KEY"] = c.LLM.OpenAI.APIKey
@@ -372,7 +338,7 @@ func (c Config) llmEnvKeysFor() map[string]string {
 // appended under a "linklore — written by /settings" header. Comments
 // and unrelated KEY=VALUE lines are preserved verbatim.
 //
-// Mode 0o600 because the file can carry LITELLM_API_KEY.
+// Mode 0o600 because the file can carry OPENAI_API_KEY.
 func (c Config) WriteLLMDotEnv(path string) error {
 	if path == "" {
 		return fmt.Errorf("write .env: empty path")
@@ -465,7 +431,7 @@ func (c Config) Validate() error {
 	if c.Database.Path == "" {
 		return fmt.Errorf("database.path required")
 	}
-	switch llm.CanonicalBackend(c.LLM.Backend) {
+	switch c.LLM.Backend {
 	case llm.BackendOllama, llm.BackendOpenAI, llm.BackendNone:
 	default:
 		return fmt.Errorf("llm.backend must be openai, ollama or none, got %q", c.LLM.Backend)

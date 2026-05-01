@@ -1610,7 +1610,7 @@ func TestSettingsTest_noneBackend(t *testing.T) {
 	}
 }
 
-func TestSettingsTest_litellmReachable(t *testing.T) {
+func TestSettingsTest_openaiReachable(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"data":[{"id":"m1"},{"id":"m2"}]}`)
@@ -1619,7 +1619,7 @@ func TestSettingsTest_litellmReachable(t *testing.T) {
 
 	ts, _ := newTestServer(t)
 	code, body := postForm(t, ts, "/settings/test", url.Values{
-		"backend":  {"litellm"},
+		"backend":  {"openai"},
 		"endpoint": {upstream.URL},
 		"api_key":  {"sk-test"},
 	})
@@ -1634,7 +1634,7 @@ func TestSettingsTest_litellmReachable(t *testing.T) {
 	}
 }
 
-func TestSettingsTest_litellmAuthFail(t *testing.T) {
+func TestSettingsTest_openaiAuthFail(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprint(w, `{"error":"unauthorized"}`)
@@ -1643,7 +1643,7 @@ func TestSettingsTest_litellmAuthFail(t *testing.T) {
 
 	ts, _ := newTestServer(t)
 	code, body := postForm(t, ts, "/settings/test", url.Values{
-		"backend":  {"litellm"},
+		"backend":  {"openai"},
 		"endpoint": {upstream.URL},
 		"api_key":  {"sk-bad"},
 	})

@@ -18,8 +18,8 @@ import (
 	"github.com/gabriele-mastrapasqua/linklore/internal/events"
 	"github.com/gabriele-mastrapasqua/linklore/internal/extract"
 	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
-	"github.com/gabriele-mastrapasqua/linklore/internal/llm/litellm"
 	"github.com/gabriele-mastrapasqua/linklore/internal/llm/ollama"
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm/openai"
 	"github.com/gabriele-mastrapasqua/linklore/internal/search"
 	"github.com/gabriele-mastrapasqua/linklore/internal/server"
 	"github.com/gabriele-mastrapasqua/linklore/internal/storage"
@@ -97,7 +97,7 @@ func runServe(args []string) {
 		log.Printf("llm backend disabled: %v — UI runs in BM25-only / no-summary mode", backendErr)
 	}
 	if backend != nil {
-		switch llm.CanonicalBackend(cfg.LLM.Backend) {
+		switch cfg.LLM.Backend {
 		case llm.BackendOpenAI:
 			log.Printf("llm: openai-compatible %s (model=%s, embed=%s, key=%s)",
 				cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.Model, cfg.LLM.OpenAI.EmbedModel,
@@ -209,7 +209,7 @@ func runAdd(args []string) {
 // are skipped). A non-nil error also drops into degraded mode but with
 // a log line so the user sees why their backend didn't come up.
 func newLLMBackend(cfg config.Config) (llm.Backend, error) {
-	switch llm.CanonicalBackend(cfg.LLM.Backend) {
+	switch cfg.LLM.Backend {
 	case llm.BackendNone, "":
 		return nil, nil
 	case llm.BackendOllama:
@@ -221,10 +221,7 @@ func newLLMBackend(cfg config.Config) (llm.Backend, error) {
 			Timeout:    time.Duration(cfg.LLM.Ollama.TimeoutSeconds) * time.Second,
 		})
 	case llm.BackendOpenAI:
-		// The "litellm" sub-package is the OpenAI-compatible HTTP client.
-		// Kept by that name internally; the user-facing backend value is
-		// "openai".
-		return litellm.New(litellm.Config{
+		return openai.New(openai.Config{
 			BaseURL:    cfg.LLM.OpenAI.BaseURL,
 			Model:      cfg.LLM.OpenAI.Model,
 			EmbedModel: cfg.LLM.OpenAI.EmbedModel,

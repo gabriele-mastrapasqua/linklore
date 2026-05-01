@@ -96,12 +96,12 @@ func TestNewLLMBackend_ollama(t *testing.T) {
 	}
 }
 
-func TestNewLLMBackend_litellmRejectsEmptyURL(t *testing.T) {
+func TestNewLLMBackend_openaiRejectsEmptyURL(t *testing.T) {
 	cfg := config.Default()
-	cfg.LLM.Backend = llm.BackendLitellm
-	cfg.LLM.LiteLLM.BaseURL = ""
+	cfg.LLM.Backend = llm.BackendOpenAI
+	cfg.LLM.OpenAI.BaseURL = ""
 	if _, err := newLLMBackend(cfg); err == nil {
-		t.Error("expected error when litellm base_url is empty")
+		t.Error("expected error when openai base_url is empty")
 	}
 }
 

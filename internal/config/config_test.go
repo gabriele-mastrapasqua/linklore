@@ -17,13 +17,13 @@ func TestDefault(t *testing.T) {
 	}
 	// Defaults are intentionally NEUTRAL: a fresh `go install` should
 	// not auto-target anyone's private gateway. Backend defaults to
-	// "none" (degraded mode) — users opt into ollama or litellm via
-	// configs/config.yaml or env vars.
+	// "none" (degraded mode) — users opt into openai or ollama via
+	// env vars (yaml never carries LLM config).
 	if c.LLM.Backend != "none" {
 		t.Errorf("default backend = %q, want none", c.LLM.Backend)
 	}
-	if c.LLM.LiteLLM.BaseURL != "" {
-		t.Errorf("default litellm base_url = %q, want empty", c.LLM.LiteLLM.BaseURL)
+	if c.LLM.OpenAI.BaseURL != "" {
+		t.Errorf("default openai base_url = %q, want empty", c.LLM.OpenAI.BaseURL)
 	}
 	if c.LLM.Ollama.Host != "http://localhost:11434" {
 		t.Errorf("default ollama host = %q, want http://localhost:11434", c.LLM.Ollama.Host)
@@ -94,8 +94,8 @@ server:
 database:
   path: "/tmp/x.db"
 llm:
-  backend: "litellm"
-  litellm:
+  backend: "openai"
+  openai:
     base_url: "http://snuck-into-yaml/v1"
     api_key: "leaked-key"
 worker: {concurrency: 1, embed_batch_size: 1, fetch_timeout_seconds: 1}
@@ -112,11 +112,11 @@ tags: {max_per_link: 1, active_cap: 1, reuse_distance: 1}
 	if c.LLM.Backend != "none" {
 		t.Errorf("yaml llm.backend leaked: %q want %q", c.LLM.Backend, "none")
 	}
-	if c.LLM.LiteLLM.BaseURL != "" {
-		t.Errorf("yaml llm.litellm.base_url leaked: %q", c.LLM.LiteLLM.BaseURL)
+	if c.LLM.OpenAI.BaseURL != "" {
+		t.Errorf("yaml llm.openai.base_url leaked: %q", c.LLM.OpenAI.BaseURL)
 	}
-	if c.LLM.LiteLLM.APIKey != "" {
-		t.Errorf("yaml llm.litellm.api_key leaked: %q", c.LLM.LiteLLM.APIKey)
+	if c.LLM.OpenAI.APIKey != "" {
+		t.Errorf("yaml llm.openai.api_key leaked: %q", c.LLM.OpenAI.APIKey)
 	}
 }
 
@@ -124,11 +124,10 @@ func TestLoad_envOverrides(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("LINKLORE_ADDR", ":7777")
 	t.Setenv("LINKLORE_DB_PATH", "/tmp/env.db")
-	// Use the deprecated alias on purpose — Load must canonicalise it
-	// to "openai" + the LITELLM_API_KEY var must populate OPENAI side.
-	t.Setenv("LINKLORE_LLM_BACKEND", "litellm")
+	t.Setenv("LINKLORE_LLM_BACKEND", "openai")
 	t.Setenv("OLLAMA_HOST", "http://envhost:11434")
-	t.Setenv("LITELLM_API_KEY", "secret")
+	t.Setenv("OPENAI_API_KEY", "secret")
+	t.Setenv("OPENAI_BASE_URL", "http://gateway:4000/v1")
 	t.Setenv("LINKLORE_WORKER_CONCURRENCY", "16")
 
 	c, err := Load("")
@@ -141,23 +140,43 @@ func TestLoad_envOverrides(t *testing.T) {
 	if c.Database.Path != "/tmp/env.db" {
 		t.Errorf("path = %q", c.Database.Path)
 	}
-	// "litellm" alias must canonicalise to "openai".
 	if c.LLM.Backend != "openai" {
-		t.Errorf("backend = %q, want openai (canonical)", c.LLM.Backend)
+		t.Errorf("backend = %q, want openai", c.LLM.Backend)
 	}
 	if c.LLM.Ollama.Host != "http://envhost:11434" {
 		t.Errorf("ollama.host = %q", c.LLM.Ollama.Host)
 	}
-	// LITELLM_API_KEY (deprecated alias) populates the canonical OpenAI
-	// struct; LiteLLM struct is mirrored for back-compat.
+	if c.LLM.OpenAI.BaseURL != "http://gateway:4000/v1" {
+		t.Errorf("openai.base_url = %q", c.LLM.OpenAI.BaseURL)
+	}
 	if c.LLM.OpenAI.APIKey != "secret" {
 		t.Errorf("openai.apikey = %q", c.LLM.OpenAI.APIKey)
 	}
-	if c.LLM.LiteLLM.APIKey != "secret" {
-		t.Errorf("litellm.apikey alias = %q", c.LLM.LiteLLM.APIKey)
-	}
 	if c.Worker.Concurrency != 16 {
 		t.Errorf("concurrency = %d", c.Worker.Concurrency)
+	}
+}
+
+// Deprecated "litellm" backend value + LITELLM_* env vars are
+// silently rewritten to the canonical OpenAI surface so existing
+// .env files keep working through the rename window.
+func TestLoad_legacyLitellmAliases(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("LINKLORE_LLM_BACKEND", "litellm")
+	t.Setenv("LITELLM_BASE_URL", "http://old:4000/v1")
+	t.Setenv("LITELLM_API_KEY", "old-key")
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.LLM.Backend != "openai" {
+		t.Errorf("backend = %q, want openai (rewritten from litellm)", c.LLM.Backend)
+	}
+	if c.LLM.OpenAI.BaseURL != "http://old:4000/v1" {
+		t.Errorf("openai.base_url = %q (LITELLM_BASE_URL alias not honoured)", c.LLM.OpenAI.BaseURL)
+	}
+	if c.LLM.OpenAI.APIKey != "old-key" {
+		t.Errorf("openai.api_key = %q", c.LLM.OpenAI.APIKey)
 	}
 }
 
@@ -199,10 +218,10 @@ LINKLORE_DB_PATH=/tmp/from-dotenv.db
 
 func TestLoad_processEnvBeatsDotEnv(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("LITELLM_API_KEY", "from-shell")
+	t.Setenv("OPENAI_API_KEY", "from-shell")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"),
-		[]byte("LITELLM_API_KEY=from-dotenv\n"), 0o600); err != nil {
+		[]byte("OPENAI_API_KEY=from-dotenv\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	yamlPath := filepath.Join(dir, "c.yaml")
@@ -213,8 +232,8 @@ func TestLoad_processEnvBeatsDotEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.LLM.LiteLLM.APIKey != "from-shell" {
-		t.Errorf("expected shell to win: got %q", c.LLM.LiteLLM.APIKey)
+	if c.LLM.OpenAI.APIKey != "from-shell" {
+		t.Errorf("expected shell to win: got %q", c.LLM.OpenAI.APIKey)
 	}
 }
 

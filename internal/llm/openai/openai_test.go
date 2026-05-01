@@ -1,4 +1,4 @@
-package litellm
+package openai
 
 import (
 	"context"

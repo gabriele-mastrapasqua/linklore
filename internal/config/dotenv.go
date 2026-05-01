@@ -9,7 +9,7 @@ import (
 
 // LoadDotEnv reads simple KEY=VALUE lines from path and exports them via
 // os.Setenv, but ONLY for keys that are not already set in the process
-// environment — so an explicit `LITELLM_API_KEY=… ./linklore` always wins
+// environment — so an explicit `OPENAI_API_KEY=… ./linklore` always wins
 // over the .env file. Returns nil silently if the file does not exist
 // (the .env is optional by design).
 //
