@@ -406,6 +406,55 @@ func TestSearchLinksByTagPrefix(t *testing.T) {
 	}
 }
 
+func TestSearchTagsByPrefix(t *testing.T) {
+	ctx := context.Background()
+	st := mustOpen(t)
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l1, _ := st.CreateLink(ctx, col.ID, "https://example.com/a")
+	l2, _ := st.CreateLink(ctx, col.ID, "https://example.com/b")
+	l3, _ := st.CreateLink(ctx, col.ID, "https://example.com/c")
+	t1, _ := st.UpsertTag(ctx, "ai", "AI")
+	t2, _ := st.UpsertTag(ctx, "audio", "Audio")
+	t3, _ := st.UpsertTag(ctx, "go", "Go")
+	// "ai" used by 2 links, "audio" by 1, "go" by 0.
+	_ = st.AttachTag(ctx, l1.ID, t1.ID, "user")
+	_ = st.AttachTag(ctx, l2.ID, t1.ID, "user")
+	_ = st.AttachTag(ctx, l3.ID, t2.ID, "user")
+	_ = t3
+
+	// Prefix "a" matches both ai + audio. Order: ai (2 uses) before audio (1 use).
+	got, err := st.SearchTagsByPrefix(ctx, "a", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Slug != "ai" || got[1].Slug != "audio" {
+		t.Errorf("prefix=a → got %v, want [ai, audio] (by usage desc)", got)
+	}
+
+	// Tighter prefix: only ai.
+	got2, _ := st.SearchTagsByPrefix(ctx, "ai", 10)
+	if len(got2) != 1 || got2[0].Slug != "ai" {
+		t.Errorf("prefix=ai → got %v, want [ai]", got2)
+	}
+
+	// Unused tag is still returned (the LEFT JOIN counts to 0 but the
+	// WHERE-clause match wins).
+	got3, _ := st.SearchTagsByPrefix(ctx, "go", 10)
+	if len(got3) != 1 || got3[0].Slug != "go" {
+		t.Errorf("prefix=go → got %v, want [go] even with no link uses", got3)
+	}
+
+	// Blank query returns nil, not all tags.
+	if g, _ := st.SearchTagsByPrefix(ctx, "  ", 10); g != nil {
+		t.Errorf("blank prefix should return nil, got %v", g)
+	}
+
+	// limit cap applies.
+	if g, _ := st.SearchTagsByPrefix(ctx, "a", 1); len(g) != 1 {
+		t.Errorf("limit=1 should cap, got len=%d", len(g))
+	}
+}
+
 // ---------- LinkStatusCounts (the chat header relies on this) ----------
 
 func TestLinkStatusCounts(t *testing.T) {

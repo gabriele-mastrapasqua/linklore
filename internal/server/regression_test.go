@@ -1030,6 +1030,62 @@ func TestSearchLive_linksOnly_noSegOptOrCreateCollection(t *testing.T) {
 	}
 }
 
+// ---------- /search/suggest backs the topbar popover ----------
+
+// Empty query should still render the help line (so focus alone shows
+// useful copy) but skip the "Search 'q'" entry and the section
+// headers.
+func TestSearchSuggest_emptyQuery(t *testing.T) {
+	ts, _ := newTestServer(t)
+	code, body := get(t, ts, "/search/suggest")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "search-pop-help") {
+		t.Errorf("empty suggest missing help line, body: %q", body)
+	}
+	for _, bad := range []string{"search-pop-go", `Search <em>"`, "Collections</div>", "Tags</div>"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("empty suggest should not render %q, got: %q", bad, body)
+		}
+	}
+}
+
+// With a query that matches a collection name + a tag, both sections
+// render plus the "Search '<q>'" entry. The popover never lists raw
+// link results — that's /search/live's job.
+func TestSearchSuggest_matchesCollectionsAndTags(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	colA, _ := st.CreateCollection(ctx, "ai", "AI", "")
+	_, _ = st.CreateCollection(ctx, "videos", "Videos", "")
+	l, _ := st.CreateLink(ctx, colA.ID, "https://example.com/p")
+	tag, _ := st.UpsertTag(ctx, "ai", "AI")
+	_ = st.AttachTag(ctx, l.ID, tag.ID, "user")
+
+	code, body := get(t, ts, "/search/suggest?q=ai")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, `Search <em>"ai"</em>`) {
+		t.Errorf("expected literal Search 'ai' entry, got: %q", body)
+	}
+	if !strings.Contains(body, `href="/c/ai"`) {
+		t.Errorf("expected matched collection link, got: %q", body)
+	}
+	if !strings.Contains(body, `href="/tags/ai"`) {
+		t.Errorf("expected matched tag link, got: %q", body)
+	}
+	// Non-matching collection should NOT appear.
+	if strings.Contains(body, `href="/c/videos"`) {
+		t.Errorf("non-matching collection leaked into suggest: %q", body)
+	}
+	// Popover never shows snippets / link results.
+	if strings.Contains(body, "search-result") || strings.Contains(body, "link-row") {
+		t.Errorf("suggest should not render link results: %q", body)
+	}
+}
+
 // ---------- favicon link in <head> ----------
 
 func TestBase_includesFaviconLink(t *testing.T) {
