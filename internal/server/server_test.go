@@ -803,7 +803,10 @@ func TestTheme_cookieAndPersistence(t *testing.T) {
 	// Following request with the cookie reflects it.
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
 	req.AddCookie(&http.Cookie{Name: "theme", Value: "dark"})
-	resp2, _ := ts.Client().Do(req)
+	resp2, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp2.Body.Close()
 	body, _ := io.ReadAll(resp2.Body)
 	if !strings.Contains(string(body), `data-theme="dark"`) {

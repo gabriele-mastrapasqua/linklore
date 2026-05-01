@@ -15,7 +15,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=16">
+	<link rel="stylesheet" href="/static/app.css?v=25">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -29,7 +29,10 @@
 	<script src="/static/palette.js" defer></script>
 </head>
 <body class="{{if .Previews}}previews-on{{else}}previews-off{{end}}">
+<input type="checkbox" id="sidebar-toggle" aria-label="Toggle sidebar">
+<label for="sidebar-toggle" class="sidebar-scrim" aria-hidden="true"></label>
 <header class="topbar">
+	{{if not .HideSidebar}}<label class="menu-btn" for="sidebar-toggle" aria-label="Open menu" title="Menu"></label>{{end}}
 	<h1>
 		<a href="/" class="brand" title="Bookmarks you actually own">
 			<svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
@@ -46,10 +49,18 @@
 		</a>
 	</h1>
 	<div class="topbar-search">
-		<input type="search" name="q" placeholder="search…"
-		       hx-get="/search/live" hx-trigger="keyup changed delay:300ms" hx-target="#search-results">
-		<a class="topbar-ask ai-link" href="/chat" title="Ask the LLM (✦)">✦</a>
-		<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
+		<form method="get" action="/search" class="topbar-search-form" role="search">
+			<input type="search" name="q" placeholder="search…" autocomplete="off"
+			       hx-get="/search/suggest"
+			       hx-trigger="focus, keyup changed delay:200ms"
+			       hx-target="#search-pop"
+			       hx-swap="innerHTML"
+			       onfocus="document.getElementById('search-pop').hidden=false"
+			       onblur="setTimeout(function(){document.getElementById('search-pop').hidden=true},150)">
+			<a class="topbar-ask ai-link" href="/chat" title="Ask the LLM (✦)">✦</a>
+			<kbd class="topbar-kbd" title="⌘K opens command palette · / focuses search">⌘K</kbd>
+		</form>
+		<div id="search-pop" class="search-pop" hidden></div>
 	</div>
 	<nav class="topbar-nav">
 		<div class="topbar-nav-side">

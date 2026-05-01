@@ -19,7 +19,58 @@
 			});
 			sw.setAttribute('data-current', name);
 		}
+		applyViewControls();
 	};
+
+	// Cover-size slider (Cards/Moodboard). Drives --card-min on #links-list.
+	// Persisted per-browser; range 140–360px in 20px steps.
+	ns.setCardSize = function (px) {
+		var list = document.getElementById('links-list');
+		if (!list) return;
+		list.style.setProperty('--card-min', px + 'px');
+		localStorage.setItem('linklore.cardSize', String(px));
+	};
+
+	// Cover position for List view. Adds .cover-right on #links-list and
+	// flips the row direction via CSS. Persisted per-browser.
+	ns.setCoverPosition = function (pos) {
+		var list = document.getElementById('links-list');
+		if (!list) return;
+		var left = pos === 'left';
+		list.classList.toggle('cover-left', left);
+		localStorage.setItem('linklore.coverPos', left ? 'left' : 'right');
+		document.querySelectorAll('.cover-pos-opt').forEach(function (b) {
+			b.classList.toggle('active', b.getAttribute('data-cover') === (left ? 'left' : 'right'));
+		});
+	};
+
+	// Hide controls that don't apply to the active view: size slider only
+	// for grid/moodboard, cover-position only for list.
+	function applyViewControls() {
+		var list = document.getElementById('links-list');
+		if (!list) return;
+		var layout = (list.className.match(/layout-(\w+)/) || [])[1] || 'list';
+		var hasCards = layout === 'grid' || layout === 'moodboard';
+		var hasCoverPos = layout === 'list';
+		document.querySelectorAll('.cover-size-slider, .cover-size-label')
+			.forEach(function (el) { el.hidden = !hasCards; });
+		document.querySelectorAll('.cover-pos-switch, .cover-pos-label')
+			.forEach(function (el) { el.hidden = !hasCoverPos; });
+	}
+
+	function applySavedViewState() {
+		var list = document.getElementById('links-list');
+		if (!list) return;
+		var size = localStorage.getItem('linklore.cardSize');
+		if (size) {
+			list.style.setProperty('--card-min', size + 'px');
+			var slider = document.querySelector('.cover-size-slider');
+			if (slider) slider.value = size;
+		}
+		var cover = localStorage.getItem('linklore.coverPos') || 'right';
+		ns.setCoverPosition(cover);
+		applyViewControls();
+	}
 
 	function applyDensity() {
 		var saved = (localStorage.getItem('linklore.density') || '').split(',').filter(Boolean);
@@ -62,9 +113,11 @@
 	document.addEventListener('DOMContentLoaded', function () {
 		applyDensity();
 		applySelectMode();
+		applySavedViewState();
 	});
 	document.body.addEventListener('htmx:afterSwap', function () {
 		applyDensity();
 		applySelectMode();
+		applySavedViewState();
 	});
 })();

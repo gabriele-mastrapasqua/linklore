@@ -1,0 +1,24 @@
+{{define "drawer_chat"}}
+<div class="drawer-chat">
+	<div class="drawer-chat-card">
+		<h3>✦ Chat about this link</h3>
+		<p class="muted">
+			Ask anything about <em>{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</em>.
+			The chat opens in the main pane with this link pinned to the context.
+		</p>
+		<div class="drawer-chat-prompts">
+			{{$q1 := printf "Summarise %q in 5 bullets." (or .Link.Title .Link.URL)}}
+			{{$q2 := printf "What are the key takeaways from %q?" (or .Link.Title .Link.URL)}}
+			{{$q3 := printf "List counter-arguments to %q." (or .Link.Title .Link.URL)}}
+			<a class="ai-chip" href="/chat?ask={{$q1 | urlquery}}&link={{.Link.ID}}">Summarise in 5 bullets</a>
+			<a class="ai-chip" href="/chat?ask={{$q2 | urlquery}}&link={{.Link.ID}}">Key takeaways</a>
+			<a class="ai-chip" href="/chat?ask={{$q3 | urlquery}}&link={{.Link.ID}}">Counter-arguments</a>
+		</div>
+		<form action="/chat" method="get" class="drawer-chat-form">
+			<input type="hidden" name="link" value="{{.Link.ID}}">
+			<input type="text" name="ask" placeholder="ask your own question…" autofocus>
+			<button type="submit" class="seg-opt ai-link">Ask ↗</button>
+		</form>
+	</div>
+</div>
+{{end}}

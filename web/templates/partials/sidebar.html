@@ -28,11 +28,18 @@
 		</nav>
 	</div>
 
-	<div class="sidebar-section sidebar-section-collections">
-		<div class="sidebar-title-row">
+	<details class="sidebar-section sidebar-section-collections sidebar-new-collection">
+		<summary class="sidebar-title-row">
 			<span class="sidebar-title">Collections</span>
-			<a href="/#new-collection" class="sidebar-add" title="new collection">+</a>
-		</div>
+			<span class="sidebar-add" title="new collection">+</span>
+		</summary>
+		<form class="sidebar-new-collection-form" hx-post="/collections"
+		      hx-swap="none"
+		      hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}">
+			<input type="text" name="name" placeholder="New collection name…" required autocomplete="off">
+		</form>
+	</details>
+	<div class="sidebar-section sidebar-section-collections">
 		<nav id="sidebar-collections" class="sidebar-nav sidebar-nav-scroll">
 			{{range .Sidebar}}
 			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}

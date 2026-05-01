@@ -278,6 +278,21 @@ client wrappers that are exercised end-to-end via `make smoke`.
 
 ---
 
+## Docs
+
+| Topic | Where |
+|-------|-------|
+| Architecture, package map, stack | [`docs/architecture.md`](docs/architecture.md) |
+| The four view modes | [`docs/views.md`](docs/views.md) |
+| Search engine and popover | [`docs/search.md`](docs/search.md) |
+| Preview drawer + 5 tabs | [`docs/preview.md`](docs/preview.md) |
+| Responsive layout (breakpoints, off-canvas) | [`docs/responsive.md`](docs/responsive.md) |
+| Drag-and-drop chip + insertion bar | [`docs/dnd.md`](docs/dnd.md) |
+| Keyboard shortcuts | [`docs/keyboard.md`](docs/keyboard.md) |
+| LLM modes (`none` / `ollama` / `litellm`) | [`docs/llm-modes.md`](docs/llm-modes.md) |
+
+---
+
 ## Contributing
 
 Personal project, but PRs that fit the spirit (local-first,

@@ -8,15 +8,34 @@
 		</a>
 	</div>
 	<div class="drawer-actions">
+		<button type="button" class="seg-opt drawer-maximize" onclick="linklore.drawerMaximize()" title="expand drawer to full width">⤢</button>
 		<a class="seg-opt" href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer"
 		   title="open original">↗ open</a>
-		{{$q := printf "What's interesting about \"%s\"?" (or .Link.Title .Link.URL)}}
-		<a class="seg-opt ai-link" href="/chat?ask={{$q | urlquery}}&link={{.Link.ID}}"
-		   title="ask the LLM about this link">✦ ask</a>
 		<button type="button" class="seg-opt" onclick="linklore.drawerClose()" title="close (esc)">✕</button>
 	</div>
 </header>
 
+<nav class="drawer-tabs" role="tablist" aria-label="Drawer tabs">
+	<button type="button" class="drawer-tab" role="tab" data-tab="edit"
+	        hx-get="/links/{{.Link.ID}}/drawer/edit" hx-target="#drawer-tab-body" hx-swap="innerHTML">Edit</button>
+	<button type="button" class="drawer-tab drawer-tab-active" role="tab" aria-selected="true" data-tab="preview"
+	        hx-get="/links/{{.Link.ID}}/drawer/preview" hx-target="#drawer-tab-body" hx-swap="innerHTML">Preview</button>
+	<button type="button" class="drawer-tab" role="tab" data-tab="web"
+	        hx-get="/links/{{.Link.ID}}/drawer/web" hx-target="#drawer-tab-body" hx-swap="innerHTML">Web</button>
+	<button type="button" class="drawer-tab" role="tab" data-tab="archive"
+	        hx-get="/links/{{.Link.ID}}/drawer/archive" hx-target="#drawer-tab-body" hx-swap="innerHTML">Archive</button>
+	{{if .LLMOn}}
+	<button type="button" class="drawer-tab ai-link" role="tab" data-tab="chat"
+	        hx-get="/links/{{.Link.ID}}/drawer/chat" hx-target="#drawer-tab-body" hx-swap="innerHTML">✦ Chat</button>
+	{{end}}
+</nav>
+
+<div id="drawer-tab-body" class="drawer-tab-body">
+	{{template "drawer_preview_body" .}}
+</div>
+{{end}}
+
+{{define "drawer_preview_body"}}
 <div class="drawer-toolbar">
 	<span class="muted">size:</span>
 	<div class="seg-switch">

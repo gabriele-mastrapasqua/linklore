@@ -83,6 +83,32 @@
 	ns.drawerWidth = function (v) { drawer().setAttribute('data-width', v); localStorage.setItem(KEY_WIDTH, v); applySaved(); };
 	ns.drawerTheme = function (v) { drawer().setAttribute('data-theme', v); localStorage.setItem(KEY_THEME, v); applySaved(); };
 
+	// Toggle full-width drawer mode by flipping data-drawer on <body>;
+	// CSS scales width: min(820px, 96vw) → 100vw under [data-drawer="full"].
+	ns.drawerMaximize = function () {
+		var b = document.body;
+		if (b.getAttribute('data-drawer') === 'full') {
+			b.removeAttribute('data-drawer');
+		} else {
+			b.setAttribute('data-drawer', 'full');
+		}
+	};
+
+	// Mark the clicked tab as active so users see which tab they're on.
+	// We listen on the tab strip itself so the listener survives drawer
+	// content swaps (the strip lives in #drawer-content, not #drawer-tab-body).
+	document.addEventListener('click', function (e) {
+		var tab = e.target.closest('.drawer-tab');
+		if (!tab) return;
+		var strip = tab.parentElement;
+		strip.querySelectorAll('.drawer-tab').forEach(function (t) {
+			t.classList.remove('drawer-tab-active');
+			t.removeAttribute('aria-selected');
+		});
+		tab.classList.add('drawer-tab-active');
+		tab.setAttribute('aria-selected', 'true');
+	});
+
 	// Intercept clicks anywhere on a row body that isn't an interactive
 	// element. Title click → drawer (deep link still works for cmd/middle
 	// click). Body click on the URL line, summary, description, badges

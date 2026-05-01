@@ -1,0 +1,74 @@
+{{define "drawer_edit"}}
+<div class="drawer-edit">
+	<div class="drawer-edit-head">
+		{{if .Link.ImageURL}}
+		<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" class="drawer-edit-cover">
+			<img src="{{.Link.ImageURL}}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">
+		</a>
+		{{end}}
+		<div class="drawer-edit-title">
+			<h3>{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}</h3>
+			{{if .Link.Description}}<p class="muted">{{.Link.Description}}</p>{{end}}
+		</div>
+	</div>
+
+	<form class="drawer-edit-form" id="drawer-edit-note-{{.Link.ID}}"
+	      hx-post="/links/{{.Link.ID}}/note"
+	      hx-target="this" hx-swap="outerHTML">
+		<label class="drawer-edit-label" for="drawer-note-{{.Link.ID}}">Note</label>
+		<textarea id="drawer-note-{{.Link.ID}}" name="note" rows="3"
+		          placeholder="your private note about this link…">{{.Link.Note}}</textarea>
+		<div class="drawer-edit-row-end">
+			<button type="submit" class="seg-opt">Save note</button>
+			{{if .JustSaved}}<span class="muted">saved ✓</span>{{end}}
+		</div>
+	</form>
+
+	<div class="drawer-edit-row">
+		<span class="drawer-edit-label">Collection</span>
+		<form class="inline"
+		      hx-post="/links/{{.Link.ID}}/move"
+		      hx-on::after-request="window.location='/c/'+this.querySelector('select').selectedOptions[0].dataset.slug">
+			<select name="collection_id">
+				{{range .AllCollections}}
+				<option value="{{.ID}}" data-slug="{{.Slug}}" {{if eq .ID $.Collection.ID}}selected{{end}}>{{.Name}}</option>
+				{{end}}
+			</select>
+			<button type="submit" class="seg-opt">Move</button>
+		</form>
+	</div>
+
+	<div class="drawer-edit-row">
+		<span class="drawer-edit-label">Tags</span>
+		<div style="flex:1;min-width:0">
+			{{template "tag_chips" (dict "LinkID" .Link.ID "Tags" .Tags)}}
+			<form class="inline" style="margin-top:.4rem"
+			      hx-post="/links/{{.Link.ID}}/tags"
+			      hx-target="#tag-chips-{{.Link.ID}}" hx-swap="outerHTML"
+			      hx-on::after-request="this.reset()">
+				<input type="text" name="tag" placeholder="add tag…">
+				<button type="submit" class="seg-opt">+</button>
+			</form>
+		</div>
+	</div>
+
+	<div class="drawer-edit-row">
+		<span class="drawer-edit-label">URL</span>
+		<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" class="drawer-url">{{.Link.URL}}</a>
+	</div>
+
+	<div class="drawer-edit-meta muted">
+		{{if .Link.FetchedAt}}Saved {{.Link.FetchedAt.Format "2 Jan 2006, 15:04"}}{{end}}
+		{{if .Link.ContentLang}} · {{.Link.ContentLang}}{{end}}
+	</div>
+
+	<div class="drawer-edit-foot">
+		<button type="button" class="danger seg-opt"
+		        hx-delete="/links/{{.Link.ID}}"
+		        hx-confirm="Delete this link?"
+		        hx-on::after-request="linklore.drawerClose(); document.getElementById('link-{{.Link.ID}}')?.remove()">
+			Delete
+		</button>
+	</div>
+</div>
+{{end}}

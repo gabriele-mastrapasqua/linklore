@@ -153,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /links/{id}/header", s.handleLinkHeader)
 	mux.HandleFunc("GET /links/{id}/read", s.handleReaderMode)
 	mux.HandleFunc("GET /links/{id}/preview", s.handlePreview)
+	mux.HandleFunc("GET /links/{id}/drawer/{tab}", s.handleDrawerTab)
 	mux.HandleFunc("POST /links/{id}/refetch", s.handleRefetch)
 	mux.HandleFunc("POST /links/{id}/reindex", s.handleReindex)
 	mux.HandleFunc("POST /links/{id}/note", s.handleSaveNote)
@@ -161,6 +162,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /search", s.handleSearchPage)
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
+	mux.HandleFunc("GET /search/suggest", s.handleSearchSuggest)
 
 	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
 	mux.HandleFunc("GET /healthz/llm", s.handleLLMHealth)
@@ -995,20 +997,69 @@ func (s *Server) handleLinkRow(w http.ResponseWriter, r *http.Request) {
 // global #drawer-content target. The full /links/:id/read page stays
 // as the deep link.
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
+	link, ctx, ok := s.drawerContext(w, r)
+	if !ok {
+		return
+	}
+	ctx["Article"] = reader.Render(link.ContentMD)
+	s.renderFragment(w, "preview_drawer", ctx)
+}
+
+// drawerContext loads the link plus the metadata every drawer tab
+// needs (collection, tags, all collections for the move selector,
+// LLM-on flag for the chat tab). Returns false when an error has
+// already been written to w.
+func (s *Server) drawerContext(w http.ResponseWriter, r *http.Request) (*storage.Link, map[string]any, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
-		return
+		return nil, nil, false
 	}
 	link, err := s.store.GetLink(r.Context(), id)
 	if err != nil {
 		s.notFound(w, err)
+		return nil, nil, false
+	}
+	col, _ := s.store.GetCollectionBySlugByID(r.Context(), link.CollectionID)
+	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
+	allCollections, _ := s.store.ListCollections(r.Context())
+	return link, map[string]any{
+		"Link":           link,
+		"Collection":     col,
+		"Tags":           linkTags,
+		"AllCollections": allCollections,
+		"LLMOn":          s.cfg.LLM.Backend != llm.BackendNone,
+	}, true
+}
+
+// handleDrawerTab returns the body fragment for one of the drawer tabs
+// (edit | preview | web | archive | chat). The tab strip itself stays
+// rendered above #drawer-tab-body so switching tabs only swaps the body.
+func (s *Server) handleDrawerTab(w http.ResponseWriter, r *http.Request) {
+	tab := r.PathValue("tab")
+	link, ctx, ok := s.drawerContext(w, r)
+	if !ok {
 		return
 	}
-	s.renderFragment(w, "preview_drawer", map[string]any{
-		"Link":    link,
-		"Article": reader.Render(link.ContentMD),
-	})
+	switch tab {
+	case "edit":
+		s.renderFragment(w, "drawer_edit", ctx)
+	case "preview":
+		ctx["Article"] = reader.Render(link.ContentMD)
+		s.renderFragment(w, "drawer_preview_body", ctx)
+	case "web":
+		s.renderFragment(w, "drawer_web", ctx)
+	case "archive":
+		s.renderFragment(w, "drawer_archive", ctx)
+	case "chat":
+		if s.cfg.LLM.Backend == llm.BackendNone {
+			http.Error(w, "chat disabled (llm.backend=none)", http.StatusForbidden)
+			return
+		}
+		s.renderFragment(w, "drawer_chat", ctx)
+	default:
+		http.Error(w, "unknown tab", http.StatusBadRequest)
+	}
 }
 
 func (s *Server) handleReaderMode(w http.ResponseWriter, r *http.Request) {
@@ -1958,6 +2009,35 @@ func (s *Server) handleSearchLive(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "search_results", map[string]any{
 		"Query":   q,
 		"Results": results,
+	})
+}
+
+// handleSearchSuggest returns the popover fragment shown under the
+// topbar input on focus / keyup. It surfaces matched collections and
+// matched tags as fast jumps, plus the literal "Search 'q'" entry.
+// Heavy text matching stays on /search/live.
+func (s *Server) handleSearchSuggest(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	var matchedCols []storage.Collection
+	var matchedTags []storage.Tag
+	if q != "" {
+		all, _ := s.store.ListCollections(r.Context())
+		ql := strings.ToLower(q)
+		for _, c := range all {
+			if strings.Contains(strings.ToLower(c.Name), ql) ||
+				strings.Contains(strings.ToLower(c.Slug), ql) {
+				matchedCols = append(matchedCols, c)
+				if len(matchedCols) >= 6 {
+					break
+				}
+			}
+		}
+		matchedTags, _ = s.store.SearchTagsByPrefix(r.Context(), q, 6)
+	}
+	s.renderFragment(w, "search_suggest", map[string]any{
+		"Query":       q,
+		"Collections": matchedCols,
+		"Tags":        matchedTags,
 	})
 }
 

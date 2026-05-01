@@ -71,6 +71,17 @@
 				        onclick="linklore.setLayout('{{$name}}')">{{$name}}</button>
 			{{end}}
 		</div>
+		<span class="muted density-label cover-size-label">size:</span>
+		<input type="range" class="cover-size-slider" min="140" max="360" step="20" value="220"
+		       title="card size (Cards/Moodboard only)"
+		       oninput="linklore.setCardSize(this.value)">
+		<span class="muted density-label cover-pos-label">cover:</span>
+		<div class="seg-switch cover-pos-switch">
+			<button type="button" class="seg-opt cover-pos-opt" data-cover="left"
+			        onclick="linklore.setCoverPosition('left')">left</button>
+			<button type="button" class="seg-opt cover-pos-opt" data-cover="right"
+			        onclick="linklore.setCoverPosition('right')">right</button>
+		</div>
 		<span class="muted density-label">density:</span>
 		<button type="button" class="seg-opt density-toggle" data-density="title"
 		        onclick="linklore.toggleDensity('title')">titles</button>

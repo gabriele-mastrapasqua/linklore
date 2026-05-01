@@ -12,6 +12,16 @@
 (function () {
 	'use strict';
 
+	// Close the off-canvas sidebar when a link inside it is followed.
+	// Pure click delegation — htmx navigations don't reload the page so
+	// :checked state would otherwise persist forever on phones.
+	document.addEventListener('click', function (e) {
+		var t = e.target.closest && e.target.closest('.sidebar a, .sidebar-link');
+		if (!t) return;
+		var cb = document.getElementById('sidebar-toggle');
+		if (cb && cb.checked) cb.checked = false;
+	});
+
 	if (!window.EventSource) {
 		// Older browsers — leave the page static, the manual buttons still work.
 		return;

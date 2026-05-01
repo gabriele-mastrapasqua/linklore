@@ -304,7 +304,10 @@ func TestDeleteCollection_fromOtherPageReturnsOOB(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/c/x", nil)
 	// No HX-Current-URL — request comes from /collections home.
-	resp, _ := ts.Client().Do(req)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.Header.Get("HX-Redirect") != "" {
@@ -354,7 +357,10 @@ func TestImportNetscape_missingFile(t *testing.T) {
 	_ = mw.Close()
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/import", &buf)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, _ := ts.Client().Do(req)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 400 {
 		t.Errorf("expected 4xx without a file, got %d", resp.StatusCode)
@@ -420,7 +426,10 @@ func TestRenameCollection_HtmxOnlySendsHXRedirect(t *testing.T) {
 	c := &http.Client{
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	resp, _ := c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
@@ -444,7 +453,10 @@ func TestRenameCollection_plainFormReturns303(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/c/old/rename",
 		strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, _ := c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 303 {
 		t.Errorf("status %d, want 303", resp.StatusCode)
@@ -721,7 +733,10 @@ func TestSetCover_htmxRefresh(t *testing.T) {
 		strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
-	resp, _ := ts.Client().Do(req)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	if resp.Header.Get("HX-Refresh") != "true" {
 		t.Errorf("HX-Refresh = %q, want true", resp.Header.Get("HX-Refresh"))
@@ -754,12 +769,44 @@ func TestPreview_renders(t *testing.T) {
 		t.Fatalf("status %d", code)
 	}
 	for _, want := range []string{
-		"drawer-head", "drawer-toolbar", "drawer-article",
-		"Title Here", "✦ ask", "drawerSize",
+		"drawer-head", "drawer-tabs", "drawer-tab-body",
+		"drawer-toolbar", "drawer-article",
+		"Title Here", "drawerSize",
+		`data-tab="edit"`, `data-tab="preview"`, `data-tab="web"`, `data-tab="archive"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("preview body missing %q", want)
 		}
+	}
+}
+
+func TestDrawerTabs_eachTabRendersStandalone(t *testing.T) {
+	ts, st := newTestServer(t)
+	col, _ := st.CreateCollection(context.Background(), "c", "C", "")
+	l, _ := st.CreateLink(context.Background(), col.ID, "https://example.com/p")
+	_ = st.UpdateLinkExtraction(context.Background(), l.ID,
+		"Title Here", "desc", "", "## Heading\n\nBody.", "en", "")
+	cases := []struct {
+		tab  string
+		want []string
+	}{
+		{"edit", []string{"drawer-edit", "Note", "Collection", "Tags", "Delete"}},
+		{"preview", []string{"drawer-toolbar", "drawer-article"}},
+		{"web", []string{"drawer-web", "iframe", "X-Frame-Options"}},
+		{"archive", []string{"Wayback Machine", "All snapshots", "web.archive.org"}},
+	}
+	for _, c := range cases {
+		t.Run(c.tab, func(t *testing.T) {
+			code, body := get(t, ts, fmt.Sprintf("/links/%d/drawer/%s", l.ID, c.tab))
+			if code != 200 {
+				t.Fatalf("status %d", code)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(body, w) {
+					t.Errorf("%s body missing %q", c.tab, w)
+				}
+			}
+		})
 	}
 }
 
@@ -845,7 +892,10 @@ func TestPruneEmpty_emitsToast(t *testing.T) {
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/collections/prune", nil)
-	resp, _ := c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	if !strings.Contains(resp.Header.Get("HX-Trigger"), "Pruned 1 empty") {
 		t.Errorf("trigger = %q", resp.Header.Get("HX-Trigger"))
@@ -896,11 +946,16 @@ func TestSidebar_hasNewCollectionShortcut(t *testing.T) {
 	if !strings.Contains(body, `class="sidebar-add"`) {
 		t.Errorf("sidebar + button missing")
 	}
-	if !strings.Contains(body, `href="/#new-collection"`) {
-		t.Errorf("sidebar + button doesn't link to the create form")
+	// Inline form replaced the legacy /#new-collection anchor; clicking
+	// the + pill now toggles a <details> that posts directly to /collections.
+	if !strings.Contains(body, `class="sidebar-new-collection`) {
+		t.Errorf("sidebar inline new-collection <details> missing")
+	}
+	if !strings.Contains(body, `hx-post="/collections"`) {
+		t.Errorf("inline new-collection form not wired to POST /collections")
 	}
 	if !strings.Contains(body, `id="new-collection"`) {
-		t.Errorf("create-form anchor target missing on home page")
+		t.Errorf("create-form anchor target missing on home page (kept for direct deep-links)")
 	}
 }
 
@@ -1083,10 +1138,17 @@ func TestCollections_pageStructure(t *testing.T) {
 	if !strings.Contains(body, "Your collections") {
 		t.Errorf(`expected "Your collections" heading on /`)
 	}
-	// Import form is collapsed inside a <details>.
-	di := strings.Index(body, "<details")
+	// Import form is collapsed inside a <details>. Find the specific
+	// details that wraps it (there are now multiple <details> blocks on
+	// the home page, e.g. the sidebar's inline new-collection toggle —
+	// scanning forward until we hit the one with action="/import").
+	importIdx := strings.Index(body, `action="/import"`)
+	if importIdx < 0 {
+		t.Fatalf(`no import form on / (expected action="/import")`)
+	}
+	di := strings.LastIndex(body[:importIdx], "<details")
 	if di < 0 {
-		t.Fatalf("no <details> wrapper for the import form")
+		t.Fatalf("import form not wrapped in <details>")
 	}
 	dEnd := strings.Index(body[di:], "</details>")
 	if dEnd < 0 {

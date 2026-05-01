@@ -1277,6 +1277,41 @@ func (s *Store) SearchLinksByTagPrefix(ctx context.Context, q string, limit int)
 	return out, rows.Err()
 }
 
+// SearchTagsByPrefix returns up to limit tags whose slug or display name
+// starts with q (case-insensitive), ordered by their link count so the
+// most-used tags surface first. Backs the search popover suggestions.
+func (s *Store) SearchTagsByPrefix(ctx context.Context, q string, limit int) ([]Tag, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 8
+	}
+	pat := strings.ToLower(q) + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.id, t.slug, t.name
+		  FROM tags t
+		  LEFT JOIN link_tags lt ON lt.tag_id = t.id
+		 WHERE LOWER(t.slug) LIKE ? OR LOWER(t.name) LIKE ?
+		 GROUP BY t.id
+		 ORDER BY COUNT(lt.link_id) DESC, t.name ASC
+		 LIMIT ?`, pat, pat, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Tag
+	for rows.Next() {
+		var t Tag
+		if err := rows.Scan(&t.ID, &t.Slug, &t.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // ListAllLinks streams every link in the database. Used by the
 // duplicates view (small enough to scan in Go) and the planned
 // global filters.

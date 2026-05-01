@@ -51,19 +51,60 @@
 		return ev.dataTransfer ? ev.dataTransfer.getData('text/plain') : null;
 	}
 
-	// Build (once) a tiny custom drag image — a chip showing the link's
-	// title or URL prefixed with a "↕" icon. Way less visually heavy
-	// than dragging the entire card.
-	function buildDragImage(row) {
+	// selectedRows returns all checked rows (excluding the source row,
+	// which we always include separately). Used to extend a drag to the
+	// full bulk selection so multi-row moves are possible.
+	function selectedRows() {
+		var out = [];
+		document.querySelectorAll('.bulk-select:checked').forEach(function (cb) {
+			var row = cb.closest('[data-link-id]');
+			if (row) out.push(row);
+		});
+		return out;
+	}
+
+	// Build a tiny drag chip — favicon + label (or count when multiple).
+	// Compact pill that follows the cursor without obscuring the drop
+	// targets, raindrop-style.
+	function buildDragImage(sourceRow) {
+		var sel = selectedRows();
+		// If the source isn't part of the selection, treat it as a
+		// single-row drag (matches user expectation: "I started dragging
+		// THIS row").
+		var inSel = sel.some(function (r) { return r === sourceRow; });
+		var rows = inSel && sel.length > 1 ? sel : [sourceRow];
+
 		var chip = document.createElement('div');
 		chip.className = 'dnd-drag-image';
-		var label = '';
-		var titleEl = row.querySelector('.title a, .title');
-		if (titleEl) label = (titleEl.textContent || '').trim();
-		if (label.length > 60) label = label.slice(0, 57) + '…';
-		if (!label) label = 'link #' + row.dataset.linkId;
-		chip.innerHTML = '<span class="dnd-drag-icon">↕</span><span class="dnd-drag-label"></span>';
-		chip.querySelector('.dnd-drag-label').textContent = label;
+
+		var firstFavicon = sourceRow.querySelector('.preview-favicon, .title img');
+		var icon;
+		if (firstFavicon && firstFavicon.src) {
+			icon = document.createElement('img');
+			icon.src = firstFavicon.src;
+			icon.className = 'dnd-drag-favicon';
+			icon.alt = '';
+		} else {
+			icon = document.createElement('span');
+			icon.className = 'dnd-drag-icon';
+			icon.textContent = '↕';
+		}
+		chip.appendChild(icon);
+
+		var label = document.createElement('span');
+		label.className = 'dnd-drag-label';
+		if (rows.length > 1) {
+			label.textContent = rows.length + ' items';
+			chip.classList.add('dnd-drag-multi');
+		} else {
+			var titleEl = sourceRow.querySelector('.title a, .title');
+			var t = (titleEl && titleEl.textContent || '').trim();
+			if (t.length > 60) t = t.slice(0, 57) + '…';
+			if (!t) t = 'link #' + sourceRow.dataset.linkId;
+			label.textContent = t;
+		}
+		chip.appendChild(label);
+
 		// Must be on-screen for setDragImage to render it; we pull it
 		// off-screen with negative top while the drag is in flight, then
 		// remove it on dragend.
@@ -71,6 +112,7 @@
 		chip.style.top = '-9999px';
 		chip.style.left = '-9999px';
 		document.body.appendChild(chip);
+		chip._dndRows = rows;
 		return chip;
 	}
 

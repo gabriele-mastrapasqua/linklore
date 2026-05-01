@@ -1,0 +1,32 @@
+{{define "drawer_archive"}}
+<div class="drawer-archive">
+	<div class="drawer-archive-card">
+		<h3>Wayback Machine</h3>
+		<p class="muted">
+			Linklore stores the extracted markdown locally, but the live page
+			may have changed since you saved it. The Internet Archive's Wayback
+			Machine often has a snapshot.
+		</p>
+		<div class="drawer-archive-actions">
+			<a class="seg-opt" target="_blank" rel="noopener noreferrer"
+			   href="https://web.archive.org/web/*/{{.Link.URL}}"
+			   title="see all snapshots">
+				All snapshots ↗
+			</a>
+			<a class="seg-opt" target="_blank" rel="noopener noreferrer"
+			   href="https://web.archive.org/web/2/{{.Link.URL}}"
+			   title="open the most recent snapshot">
+				Latest snapshot ↗
+			</a>
+			<a class="seg-opt" target="_blank" rel="noopener noreferrer"
+			   href="https://web.archive.org/save/{{.Link.URL}}"
+			   title="ask the Wayback Machine to capture this page now">
+				Save now ↗
+			</a>
+		</div>
+		<p class="muted drawer-archive-foot">
+			URL: <a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" class="drawer-url">{{.Link.URL}}</a>
+		</p>
+	</div>
+</div>
+{{end}}

@@ -1,0 +1,19 @@
+{{define "drawer_web"}}
+<div class="drawer-web">
+	<div class="drawer-web-bar muted">
+		<span class="drawer-url">{{.Link.URL}}</span>
+		<a class="seg-opt" href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" title="open original">↗ open in new tab</a>
+	</div>
+	<iframe class="drawer-web-frame"
+	        src="{{.Link.URL}}"
+	        title="{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}"
+	        loading="lazy"
+	        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+	        referrerpolicy="no-referrer">
+	</iframe>
+	<p class="drawer-web-note muted">
+		Some sites block embedding via <code>X-Frame-Options</code> / <code>frame-ancestors</code>.
+		If the page stays blank, use <strong>↗ open in new tab</strong>.
+	</p>
+</div>
+{{end}}

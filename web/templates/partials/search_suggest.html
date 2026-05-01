@@ -1,0 +1,36 @@
+{{define "search_suggest"}}
+<div class="search-pop-body">
+	{{if .Query}}
+	<a class="search-pop-row search-pop-go" href="/search?q={{.Query | urlquery}}">
+		<span class="search-pop-glyph">⌕</span>
+		<span class="search-pop-text">Search <em>"{{.Query}}"</em></span>
+		<span class="search-pop-kbd">↵</span>
+	</a>
+	{{end}}
+
+	{{if .Collections}}
+	<div class="search-pop-section">Collections</div>
+	{{range .Collections}}
+	<a class="search-pop-row" href="/c/{{.Slug}}">
+		<span class="search-pop-glyph">▦</span>
+		<span class="search-pop-text">{{.Name}}</span>
+		<span class="muted">/c/{{.Slug}}</span>
+	</a>
+	{{end}}
+	{{end}}
+
+	{{if .Tags}}
+	<div class="search-pop-section">Tags</div>
+	{{range .Tags}}
+	<a class="search-pop-row" href="/tags/{{.Slug}}">
+		<span class="search-pop-glyph">#</span>
+		<span class="search-pop-text">{{.Name}}</span>
+	</a>
+	{{end}}
+	{{end}}
+
+	<div class="search-pop-help muted">
+		Tip: type a few letters to jump to a collection or tag, or hit ↵ to run full-text search.
+	</div>
+</div>
+{{end}}
