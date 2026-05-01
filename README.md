@@ -28,10 +28,11 @@
 ## Local-first, in one paragraph
 
 Your data is one SQLite file. Migration is `cp`. No accounts, no SaaS,
-no telemetry. The LLM is optional and runs wherever you tell it to —
-Ollama on localhost, your own LiteLLM gateway, or none at all (search
-falls back to BM25). Binds to `127.0.0.1` by default; you decide if it
-ever leaves the machine.
+no telemetry. The LLM is optional and points at any OpenAI-compatible
+server you run yourself (vLLM, llama.cpp, LM Studio, LiteLLM proxy,
+Ollama via `/v1`) — or skip the LLM entirely and search falls back to
+BM25. Binds to `127.0.0.1` by default; you decide if it ever leaves
+the machine.
 
 ---
 
@@ -129,7 +130,7 @@ Want a local LLM (RAG chat + per-link TL;DR)? Two extra steps:
 
 ```bash
 make env-template    # cp .env.example → .env (skips if .env exists)
-$EDITOR .env         # uncomment the Ollama or LiteLLM block
+$EDITOR .env         # uncomment the openai or ollama block
 ```
 
 See **[Configuration](#configuration)** below for the env-var values.
@@ -185,9 +186,11 @@ ui.{show_images_default, reader_font, reader_width}    # cosmetic defaults
 ### Pick an LLM backend (or skip)
 
 `make env-template` (or `cp .env.example .env`) then uncomment one of
-the blocks below.
+the blocks below. **Use `openai` for any local LLM** — it's the
+canonical choice and works with vLLM, llama.cpp, LM Studio, LiteLLM
+proxy, OpenAI itself, and Ollama (via its `/v1` endpoint).
 
-**Ollama on localhost** (zero config beyond `ollama pull`):
+**Ollama via OpenAI-compatible API** (recommended even for Ollama):
 
 ```bash
 ollama pull qwen3:14b
@@ -195,19 +198,22 @@ ollama pull nomic-embed-text
 ```
 
 ```ini
-LINKLORE_LLM_BACKEND=ollama
+LINKLORE_LLM_BACKEND=openai
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama        # any non-empty string
 LINKLORE_LLM_MODEL=qwen3:14b
 LINKLORE_LLM_EMBED_MODEL=nomic-embed-text
-# OLLAMA_HOST=http://localhost:11434     # default
 ```
 
-**LiteLLM / OpenAI-compatible gateway** (LiteLLM, llama.cpp `server`,
-vLLM — anything that speaks `/chat/completions` + `/embeddings`):
+**Other OpenAI-compatible servers** (vLLM, llama.cpp, LiteLLM, …):
+just point `OPENAI_BASE_URL` at the right port. Same shape.
+
+**Ollama native API** (legacy — only if you need Ollama options that
+aren't on `/v1`):
 
 ```ini
-LINKLORE_LLM_BACKEND=litellm
-LITELLM_BASE_URL=http://localhost:4000/v1
-LITELLM_API_KEY=sk-...
+LINKLORE_LLM_BACKEND=ollama
+OLLAMA_HOST=http://localhost:11434
 LINKLORE_LLM_MODEL=qwen3:14b
 LINKLORE_LLM_EMBED_MODEL=nomic-embed-text
 ```
@@ -218,6 +224,10 @@ disabled banner, ingestion still fetches and extracts):
 ```ini
 LINKLORE_LLM_BACKEND=none
 ```
+
+> **Deprecated**: `LINKLORE_LLM_BACKEND=litellm`, `LITELLM_BASE_URL`,
+> `LITELLM_API_KEY` still work as aliases — they're silently rewritten
+> to the canonical `openai` / `OPENAI_*` names at startup.
 
 ### Precedence
 
@@ -234,15 +244,20 @@ LINKLORE_LLM_BACKEND=none ./bin/linklore serve
 ### All env vars
 
 ```
-LINKLORE_LLM_BACKEND          none | ollama | litellm
+LINKLORE_LLM_BACKEND          none | openai | ollama   (litellm = openai alias)
 LINKLORE_LLM_MODEL            chat/summary model
 LINKLORE_LLM_EMBED_MODEL      embedding model
-LITELLM_BASE_URL              OpenAI-compatible gateway URL
-LITELLM_API_KEY               bearer token (sent only when set)
-OLLAMA_HOST                   ollama daemon URL
+OPENAI_BASE_URL               OpenAI-compatible base URL (canonical)
+OPENAI_API_KEY                bearer token (any non-empty for local servers)
+OLLAMA_HOST                   Ollama daemon URL (native /api/* path)
 LINKLORE_ADDR                 server bind address
 LINKLORE_DB_PATH              SQLite path
 LINKLORE_WORKER_CONCURRENCY   parallel ingest workers
+
+# Deprecated aliases (still work, mapped to the canonical names above):
+LITELLM_BASE_URL              → OPENAI_BASE_URL
+LITELLM_API_KEY               → OPENAI_API_KEY
+LINKLORE_LLM_BACKEND=litellm  → openai
 ```
 
 ---
@@ -289,7 +304,7 @@ client wrappers that are exercised end-to-end via `make smoke`.
 | Responsive layout (breakpoints, off-canvas) | [`docs/responsive.md`](docs/responsive.md) |
 | Drag-and-drop chip + insertion bar | [`docs/dnd.md`](docs/dnd.md) |
 | Keyboard shortcuts | [`docs/keyboard.md`](docs/keyboard.md) |
-| LLM modes (`none` / `ollama` / `litellm`) | [`docs/llm-modes.md`](docs/llm-modes.md) |
+| LLM modes (`none` / `openai` / `ollama`) | [`docs/llm-modes.md`](docs/llm-modes.md) |
 
 ---
 

@@ -1341,13 +1341,13 @@ func (s *Server) llmHealthSnapshot() (bool, string) {
 // llmConfigHint produces the "how to enable the LLM" copy, varying by
 // the active backend so the user sees the right env var to set.
 func (s *Server) llmConfigHint() string {
-	switch s.cfg.LLM.Backend {
+	switch llm.CanonicalBackend(s.cfg.LLM.Backend) {
 	case llm.BackendOllama:
-		return "LLM disabled — start Ollama and set OLLAMA_HOST (or llm.ollama.host + llm.ollama.model in config.yaml)"
-	case llm.BackendLitellm:
-		return "LLM disabled — set llm.litellm.base_url + llm.litellm.model (or LITELLM_BASE_URL + LITELLM_API_KEY env vars)"
+		return "LLM disabled — start Ollama and set OLLAMA_HOST (native /api/* path)"
+	case llm.BackendOpenAI:
+		return "LLM disabled — set OPENAI_BASE_URL + OPENAI_API_KEY + LINKLORE_LLM_MODEL (works for any OpenAI-compatible local server: vLLM, llama.cpp, LM Studio, LiteLLM, Ollama via /v1)"
 	default:
-		return "LLM disabled — set llm.backend to ollama or litellm in config.yaml"
+		return "LLM disabled — set LINKLORE_LLM_BACKEND=openai (canonical) or =ollama (legacy native)"
 	}
 }
 
@@ -2694,9 +2694,9 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 // chat is currently calling. Useful in the UI so the user knows what's
 // generating the answer.
 func (s *Server) activeModelName() string {
-	switch s.cfg.LLM.Backend {
-	case llm.BackendLitellm:
-		return s.cfg.LLM.LiteLLM.Model
+	switch llm.CanonicalBackend(s.cfg.LLM.Backend) {
+	case llm.BackendOpenAI:
+		return s.cfg.LLM.OpenAI.Model
 	case llm.BackendOllama:
 		return s.cfg.LLM.Ollama.Model
 	default:
@@ -2929,13 +2929,16 @@ type settingsForm struct {
 
 func (s *Server) settingsFormFromConfig() settingsForm {
 	c := s.currentConfig()
-	f := settingsForm{Backend: c.LLM.Backend}
-	switch c.LLM.Backend {
-	case llm.BackendLitellm:
-		f.Endpoint = c.LLM.LiteLLM.BaseURL
-		f.Model = c.LLM.LiteLLM.Model
-		f.EmbedModel = c.LLM.LiteLLM.EmbedModel
-		f.APIKey = c.LLM.LiteLLM.APIKey
+	// Show the canonical backend name in the form even if the config
+	// still carries the deprecated "litellm" alias.
+	canonical := llm.CanonicalBackend(c.LLM.Backend)
+	f := settingsForm{Backend: canonical}
+	switch canonical {
+	case llm.BackendOpenAI:
+		f.Endpoint = c.LLM.OpenAI.BaseURL
+		f.Model = c.LLM.OpenAI.Model
+		f.EmbedModel = c.LLM.OpenAI.EmbedModel
+		f.APIKey = c.LLM.OpenAI.APIKey
 	case llm.BackendOllama:
 		f.Endpoint = c.LLM.Ollama.Host
 		f.Model = c.LLM.Ollama.Model
@@ -2960,7 +2963,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"Form":     s.settingsFormFromConfig(),
 		"CfgPath":  s.cfgPath,
 		"EnvPath":  s.envPath,
-		"Backends": []string{llm.BackendNone, llm.BackendOllama, llm.BackendLitellm},
+		"Backends": []string{llm.BackendNone, llm.BackendOpenAI, llm.BackendOllama},
 	})
 }
 
@@ -2970,8 +2973,9 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	form := parseSettingsForm(r)
+	form.Backend = llm.CanonicalBackend(form.Backend)
 	switch form.Backend {
-	case llm.BackendNone, llm.BackendOllama, llm.BackendLitellm:
+	case llm.BackendNone, llm.BackendOllama, llm.BackendOpenAI:
 	default:
 		s.writeSettingsBanner(w, "err", "Unknown backend: "+form.Backend)
 		return
@@ -2981,11 +2985,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	c := s.currentConfig()
 	c.LLM.Backend = form.Backend
 	switch form.Backend {
-	case llm.BackendLitellm:
-		c.LLM.LiteLLM.BaseURL = form.Endpoint
-		c.LLM.LiteLLM.Model = form.Model
-		c.LLM.LiteLLM.EmbedModel = form.EmbedModel
-		c.LLM.LiteLLM.APIKey = form.APIKey
+	case llm.BackendOpenAI:
+		c.LLM.OpenAI.BaseURL = form.Endpoint
+		c.LLM.OpenAI.Model = form.Model
+		c.LLM.OpenAI.EmbedModel = form.EmbedModel
+		c.LLM.OpenAI.APIKey = form.APIKey
+		c.LLM.LiteLLM = c.LLM.OpenAI // keep alias in sync
 	case llm.BackendOllama:
 		c.LLM.Ollama.Host = form.Endpoint
 		c.LLM.Ollama.Model = form.Model
@@ -3030,11 +3035,12 @@ func (s *Server) handleTestSettings(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
+	form.Backend = llm.CanonicalBackend(form.Backend)
 	switch form.Backend {
 	case llm.BackendNone, "":
 		s.writeSettingsBanner(w, "err", "Backend disabled")
 		return
-	case llm.BackendLitellm:
+	case llm.BackendOpenAI:
 		count, err := probeLitellm(ctx, form.Endpoint, form.APIKey)
 		if err != nil {
 			s.writeSettingsBanner(w, "err", err.Error())

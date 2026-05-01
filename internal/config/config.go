@@ -2,10 +2,12 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/gabriele-mastrapasqua/linklore/internal/llm"
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,11 +42,27 @@ type Database struct {
 // absent so a stray `llm:` block in config.yaml is ignored. The keys
 // live in .env (gitignored) so private endpoints + API keys don't end
 // up in the public yaml.
+//
+// Backend is one of: "openai" (any OpenAI-compatible HTTP gateway —
+// vLLM, llama.cpp server, LM Studio, LiteLLM proxy, Ollama via /v1),
+// "ollama" (Ollama's native /api/* endpoints — legacy, prefer
+// "openai"), or "none" (disable). The historical "litellm" value is
+// accepted as a deprecated alias and silently rewritten to "openai"
+// at load time.
 type LLM struct {
 	Backend string
 	Ollama  Ollama
-	LiteLLM LiteLLM
+	OpenAI  OpenAICompat
+	// LiteLLM is kept as a deprecated alias of OpenAI; values are
+	// copied between the two at load time so old callers and old yaml
+	// keep working.
+	LiteLLM OpenAICompat
 }
+
+// OpenAICompat holds the connection details for any OpenAI-compatible
+// HTTP API. The concrete URL points at /v1 of whichever local server
+// you're running.
+type OpenAICompat = LiteLLM
 
 type Ollama struct {
 	Host           string
@@ -186,16 +204,51 @@ func Load(path string) (Config, error) {
 		}
 	}
 	applyEnv(&cfg)
-	// Only fill in the LiteLLM master-key fallback when LiteLLM is the
+	cfg.canonicaliseLLM()
+	// Only fill in the OpenAI master-key fallback when OpenAI is the
 	// active backend. Ollama/none configs should never carry a phantom
 	// API key in their dump.
-	if cfg.LLM.Backend == "litellm" && cfg.LLM.LiteLLM.APIKey == "" {
+	if cfg.LLM.Backend == llm.BackendOpenAI && cfg.LLM.OpenAI.APIKey == "" {
+		cfg.LLM.OpenAI.APIKey = litellmDefaultAPIKey
 		cfg.LLM.LiteLLM.APIKey = litellmDefaultAPIKey
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// canonicaliseLLM rewrites deprecated names into their canonical
+// counterparts:
+//   - backend "litellm" → "openai" (with a warning log).
+//   - llm.litellm yaml block / LITELLM_* env vars → llm.openai /
+//     OPENAI_*. Both struct fields stay in sync so callers reading
+//     either side see the same data.
+func (c *Config) canonicaliseLLM() {
+	if c.LLM.Backend == llm.BackendLitellm {
+		log.Printf("config: llm.backend=%q is deprecated, use %q", llm.BackendLitellm, llm.BackendOpenAI)
+		c.LLM.Backend = llm.BackendOpenAI
+	}
+	// Merge the two structs: any non-empty field wins. OpenAI takes
+	// priority on conflicts (canonical name).
+	merged := c.LLM.OpenAI
+	if merged.BaseURL == "" {
+		merged.BaseURL = c.LLM.LiteLLM.BaseURL
+	}
+	if merged.Model == "" {
+		merged.Model = c.LLM.LiteLLM.Model
+	}
+	if merged.EmbedModel == "" {
+		merged.EmbedModel = c.LLM.LiteLLM.EmbedModel
+	}
+	if merged.APIKey == "" {
+		merged.APIKey = c.LLM.LiteLLM.APIKey
+	}
+	if merged.TimeoutSeconds == 0 {
+		merged.TimeoutSeconds = c.LLM.LiteLLM.TimeoutSeconds
+	}
+	c.LLM.OpenAI = merged
+	c.LLM.LiteLLM = merged
 }
 
 func applyEnv(c *Config) {
@@ -211,27 +264,34 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("OLLAMA_HOST"); v != "" {
 		c.LLM.Ollama.Host = v
 	}
-	if v := os.Getenv("LITELLM_BASE_URL"); v != "" {
-		c.LLM.LiteLLM.BaseURL = v
+	// Canonical OPENAI_* env vars first; legacy LITELLM_* vars only
+	// fill in fields the canonical didn't already set. Both write to
+	// LiteLLM struct (it's the storage; canonicaliseLLM mirrors back).
+	if v := os.Getenv("OPENAI_BASE_URL"); v != "" {
+		c.LLM.OpenAI.BaseURL = v
+	} else if v := os.Getenv("LITELLM_BASE_URL"); v != "" {
+		c.LLM.OpenAI.BaseURL = v
 	}
-	if v := os.Getenv("LITELLM_API_KEY"); v != "" {
-		c.LLM.LiteLLM.APIKey = v
+	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+		c.LLM.OpenAI.APIKey = v
+	} else if v := os.Getenv("LITELLM_API_KEY"); v != "" {
+		c.LLM.OpenAI.APIKey = v
 	}
 	// Model overrides apply to whichever backend is active so the user
 	// can switch model without editing YAML.
 	if v := os.Getenv("LINKLORE_LLM_MODEL"); v != "" {
-		switch c.LLM.Backend {
-		case "litellm":
-			c.LLM.LiteLLM.Model = v
-		case "ollama":
+		switch llm.CanonicalBackend(c.LLM.Backend) {
+		case llm.BackendOpenAI:
+			c.LLM.OpenAI.Model = v
+		case llm.BackendOllama:
 			c.LLM.Ollama.Model = v
 		}
 	}
 	if v := os.Getenv("LINKLORE_LLM_EMBED_MODEL"); v != "" {
-		switch c.LLM.Backend {
-		case "litellm":
-			c.LLM.LiteLLM.EmbedModel = v
-		case "ollama":
+		switch llm.CanonicalBackend(c.LLM.Backend) {
+		case llm.BackendOpenAI:
+			c.LLM.OpenAI.EmbedModel = v
+		case llm.BackendOllama:
 			c.LLM.Ollama.EmbedModel = v
 		}
 	}
@@ -279,8 +339,8 @@ func (c Config) SaveYAML(path string) error {
 // are missing from the existing .env, so the file stays grouped sensibly.
 var llmEnvKeys = []string{
 	"LINKLORE_LLM_BACKEND",
-	"LITELLM_BASE_URL",
-	"LITELLM_API_KEY",
+	"OPENAI_BASE_URL",
+	"OPENAI_API_KEY",
 	"LINKLORE_LLM_MODEL",
 	"LINKLORE_LLM_EMBED_MODEL",
 	"OLLAMA_HOST",
@@ -293,13 +353,13 @@ func (c Config) llmEnvKeysFor() map[string]string {
 	out := map[string]string{
 		"LINKLORE_LLM_BACKEND": c.LLM.Backend,
 	}
-	switch c.LLM.Backend {
-	case "litellm":
-		out["LITELLM_BASE_URL"] = c.LLM.LiteLLM.BaseURL
-		out["LITELLM_API_KEY"] = c.LLM.LiteLLM.APIKey
-		out["LINKLORE_LLM_MODEL"] = c.LLM.LiteLLM.Model
-		out["LINKLORE_LLM_EMBED_MODEL"] = c.LLM.LiteLLM.EmbedModel
-	case "ollama":
+	switch llm.CanonicalBackend(c.LLM.Backend) {
+	case llm.BackendOpenAI:
+		out["OPENAI_BASE_URL"] = c.LLM.OpenAI.BaseURL
+		out["OPENAI_API_KEY"] = c.LLM.OpenAI.APIKey
+		out["LINKLORE_LLM_MODEL"] = c.LLM.OpenAI.Model
+		out["LINKLORE_LLM_EMBED_MODEL"] = c.LLM.OpenAI.EmbedModel
+	case llm.BackendOllama:
 		out["OLLAMA_HOST"] = c.LLM.Ollama.Host
 		out["LINKLORE_LLM_MODEL"] = c.LLM.Ollama.Model
 		out["LINKLORE_LLM_EMBED_MODEL"] = c.LLM.Ollama.EmbedModel
@@ -405,10 +465,10 @@ func (c Config) Validate() error {
 	if c.Database.Path == "" {
 		return fmt.Errorf("database.path required")
 	}
-	switch c.LLM.Backend {
-	case "ollama", "litellm", "none":
+	switch llm.CanonicalBackend(c.LLM.Backend) {
+	case llm.BackendOllama, llm.BackendOpenAI, llm.BackendNone:
 	default:
-		return fmt.Errorf("llm.backend must be ollama, litellm or none, got %q", c.LLM.Backend)
+		return fmt.Errorf("llm.backend must be openai, ollama or none, got %q", c.LLM.Backend)
 	}
 	if c.Worker.Concurrency <= 0 {
 		return fmt.Errorf("worker.concurrency must be > 0")

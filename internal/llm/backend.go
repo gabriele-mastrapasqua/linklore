@@ -63,8 +63,27 @@ type HealthChecker interface {
 // Backend identifiers used in config + UI hints. Always reference these
 // constants instead of bare string literals so a typo at the call site
 // becomes a compile error.
+//
+// "openai" is the canonical name for any OpenAI-compatible HTTP API
+// (vLLM, llama.cpp server, LM Studio, LiteLLM proxy, even Ollama via
+// its /v1 endpoints). "litellm" is kept as a deprecated alias so old
+// configs keep working. "ollama" is the *native* Ollama API path
+// (/api/generate, /api/embed) — only useful if you specifically need
+// Ollama's native options; otherwise prefer backend=openai with
+// base_url=http://localhost:11434/v1.
 const (
 	BackendNone    = "none"
+	BackendOpenAI  = "openai"
 	BackendOllama  = "ollama"
-	BackendLitellm = "litellm"
+	BackendLitellm = "litellm" // deprecated alias of BackendOpenAI
 )
+
+// CanonicalBackend maps deprecated aliases onto the canonical name.
+// Use this at config-load time so the rest of the code can compare
+// against just BackendNone | BackendOpenAI | BackendOllama.
+func CanonicalBackend(name string) string {
+	if name == BackendLitellm {
+		return BackendOpenAI
+	}
+	return name
+}

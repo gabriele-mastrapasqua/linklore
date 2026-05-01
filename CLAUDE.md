@@ -1,6 +1,6 @@
 # Linklore
 
-Local-first link/bookmark manager. Go + SQLite (WAL + FTS5 + BLOB embeddings) + HTMX UI + optional LLM (Ollama / any OpenAI-compatible gateway) for summary, auto-tags, and RAG chat.
+Local-first link/bookmark manager. Go + SQLite (WAL + FTS5 + BLOB embeddings) + HTMX UI + optional LLM (any OpenAI-compatible HTTP API — vLLM, llama.cpp, LM Studio, Ollama via /v1, LiteLLM proxy) for summary, auto-tags, and RAG chat.
 
 See `PLAN.md` for full architecture, schema, and phased TODO list.
 
@@ -11,7 +11,7 @@ cmd/linklore/        # single binary: serve | ingest-url | reindex
 internal/
   config/            # YAML + env override
   storage/           # SQLite WAL + FTS5 + migrations
-  llm/               # Backend iface + ollama, litellm
+  llm/               # Backend iface + ollama (native), litellm (OpenAI-compat client used for backend=openai)
   extract/           # HTTP fetch + readability + html→md
   summarize/         # LLM TL;DR + auto-tags
   embed/             # embedding service (BLOB) + cosine
@@ -41,7 +41,7 @@ make migrate         # apply DB migrations (idempotent)
 - **Go 1.25+**, stdlib `net/http.ServeMux` (no chi/gin), stdlib `html/template`.
 - **SQLite via `github.com/mattn/go-sqlite3`** with WAL, FTS5, BLOB embeddings. No `sqlite-vec` — cosine in Go is fine at this scale.
 - **HTMX + pico.css from CDN.** No Node, no npm, no JS build chain. Alpine.js only if strictly needed.
-- **LLM**: `Backend` interface (`Generate`, `GenerateStream`, `Embed`). Ollama + any OpenAI-compatible gateway backends; switchable via config; `none` opts out cleanly.
+- **LLM**: `Backend` interface (`Generate`, `GenerateStream`, `Embed`). Three values for `LINKLORE_LLM_BACKEND`: `openai` (canonical — any OpenAI-compatible HTTP API), `ollama` (legacy native /api/* path), or `none`. `litellm` is accepted as a deprecated alias of `openai`.
 - **HTML→Markdown** before sending to LLM (smaller context, better signal). Library: `JohannesKaufmann/html-to-markdown/v2`.
 - **Readability**: `go-shiori/go-readability`.
 - **OG/meta tags**: `PuerkitoBio/goquery`.
@@ -78,19 +78,26 @@ When working in this repo, remember:
 
 ## Configuration
 
-`configs/config.yaml` controls server addr, DB path, LLM backend
-(`none|ollama|litellm`), worker concurrency, and UI defaults. Env
-overrides are whitelisted: `LINKLORE_DB_PATH`, `LINKLORE_ADDR`,
-`OLLAMA_HOST`, `LINKLORE_LLM_BACKEND`, `LINKLORE_LLM_MODEL`,
-`LINKLORE_LLM_EMBED_MODEL`, `LITELLM_BASE_URL`, `LITELLM_API_KEY`,
-`LINKLORE_WORKER_CONCURRENCY`.
+`configs/config.yaml` controls server addr, DB path, worker
+concurrency, UI defaults, and reminders. The LLM is **env-only**
+(yaml-skipped) so config.yaml stays free of secrets. Env overrides
+(canonical names):
+`LINKLORE_DB_PATH`, `LINKLORE_ADDR`, `LINKLORE_LLM_BACKEND`
+(`none|openai|ollama`), `LINKLORE_LLM_MODEL`,
+`LINKLORE_LLM_EMBED_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`,
+`OLLAMA_HOST`, `LINKLORE_WORKER_CONCURRENCY`.
+
+Deprecated aliases (still accepted, mapped to canonical at load):
+`LITELLM_BASE_URL` → `OPENAI_BASE_URL`, `LITELLM_API_KEY` →
+`OPENAI_API_KEY`, `LINKLORE_LLM_BACKEND=litellm` → `openai`.
 
 ## Where the LLM is used
 
-Pick any OpenAI-compatible gateway (LiteLLM, llama.cpp's `server`,
-vLLM, etc.) for the `litellm` backend, or `ollama` for a local
-daemon, or `none` to opt out entirely. All three are equally
-supported.
+Default: **`openai` backend pointed at any OpenAI-compatible HTTP
+API** (vLLM, llama.cpp server, LM Studio, LiteLLM proxy, Ollama via
+`http://localhost:11434/v1`). `ollama` is kept as a legacy native-API
+backend for users who specifically need Ollama options not exposed on
+`/v1`. `none` opts out entirely.
 
 | Phase | What | Required? |
 |-------|------|-----------|

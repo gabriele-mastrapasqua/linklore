@@ -124,6 +124,8 @@ func TestLoad_envOverrides(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("LINKLORE_ADDR", ":7777")
 	t.Setenv("LINKLORE_DB_PATH", "/tmp/env.db")
+	// Use the deprecated alias on purpose — Load must canonicalise it
+	// to "openai" + the LITELLM_API_KEY var must populate OPENAI side.
 	t.Setenv("LINKLORE_LLM_BACKEND", "litellm")
 	t.Setenv("OLLAMA_HOST", "http://envhost:11434")
 	t.Setenv("LITELLM_API_KEY", "secret")
@@ -139,14 +141,20 @@ func TestLoad_envOverrides(t *testing.T) {
 	if c.Database.Path != "/tmp/env.db" {
 		t.Errorf("path = %q", c.Database.Path)
 	}
-	if c.LLM.Backend != "litellm" {
-		t.Errorf("backend = %q", c.LLM.Backend)
+	// "litellm" alias must canonicalise to "openai".
+	if c.LLM.Backend != "openai" {
+		t.Errorf("backend = %q, want openai (canonical)", c.LLM.Backend)
 	}
 	if c.LLM.Ollama.Host != "http://envhost:11434" {
 		t.Errorf("ollama.host = %q", c.LLM.Ollama.Host)
 	}
+	// LITELLM_API_KEY (deprecated alias) populates the canonical OpenAI
+	// struct; LiteLLM struct is mirrored for back-compat.
+	if c.LLM.OpenAI.APIKey != "secret" {
+		t.Errorf("openai.apikey = %q", c.LLM.OpenAI.APIKey)
+	}
 	if c.LLM.LiteLLM.APIKey != "secret" {
-		t.Errorf("apikey = %q", c.LLM.LiteLLM.APIKey)
+		t.Errorf("litellm.apikey alias = %q", c.LLM.LiteLLM.APIKey)
 	}
 	if c.Worker.Concurrency != 16 {
 		t.Errorf("concurrency = %d", c.Worker.Concurrency)
@@ -175,11 +183,11 @@ LINKLORE_DB_PATH=/tmp/from-dotenv.db
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if c.LLM.Backend != "litellm" {
-		t.Errorf("backend from .env: %q", c.LLM.Backend)
+	if c.LLM.Backend != "openai" {
+		t.Errorf("backend from .env (after canonicalise): %q", c.LLM.Backend)
 	}
-	if c.LLM.LiteLLM.APIKey != "from-dotenv" {
-		t.Errorf("api key from .env: %q", c.LLM.LiteLLM.APIKey)
+	if c.LLM.OpenAI.APIKey != "from-dotenv" {
+		t.Errorf("api key from .env: %q", c.LLM.OpenAI.APIKey)
 	}
 	if c.Server.Addr != ":9991" {
 		t.Errorf("addr from .env: %q", c.Server.Addr)
@@ -229,11 +237,11 @@ LINKLORE_LLM_BACKEND=ollama
 	}
 
 	cfg := Default()
-	cfg.LLM.Backend = "litellm"
-	cfg.LLM.LiteLLM.BaseURL = "http://x:8000/v1"
-	cfg.LLM.LiteLLM.APIKey = "secret # value"
-	cfg.LLM.LiteLLM.Model = "qwen3"
-	cfg.LLM.LiteLLM.EmbedModel = "nomic"
+	cfg.LLM.Backend = "openai"
+	cfg.LLM.OpenAI.BaseURL = "http://x:8000/v1"
+	cfg.LLM.OpenAI.APIKey = "secret # value"
+	cfg.LLM.OpenAI.Model = "qwen3"
+	cfg.LLM.OpenAI.EmbedModel = "nomic"
 
 	if err := cfg.WriteLLMDotEnv(envPath); err != nil {
 		t.Fatalf("WriteLLMDotEnv: %v", err)
@@ -252,12 +260,12 @@ LINKLORE_LLM_BACKEND=ollama
 	if strings.Count(got, "LINKLORE_LLM_BACKEND=") != 1 {
 		t.Errorf("backend not replaced in place:\n%s", got)
 	}
-	if !strings.Contains(got, "LINKLORE_LLM_BACKEND=litellm") {
+	if !strings.Contains(got, "LINKLORE_LLM_BACKEND=openai") {
 		t.Errorf("backend not updated:\n%s", got)
 	}
 	// API key has '#' so must be quoted.
-	if !strings.Contains(got, `LITELLM_API_KEY="secret # value"`) {
-		t.Errorf("api key not quoted:\n%s", got)
+	if !strings.Contains(got, `OPENAI_API_KEY="secret # value"`) {
+		t.Errorf("api key not quoted with canonical key name:\n%s", got)
 	}
 
 	// Round-trip via Load — yaml is empty, all values come from .env.
@@ -265,21 +273,18 @@ LINKLORE_LLM_BACKEND=ollama
 	if err := os.WriteFile(yamlPath, []byte(""), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Also need to disable cwd ./.env autoload so the test only reads
-	// the dir-local .env. Load reads ./.env first; we rely on
-	// clearEnv(t) so a process-level value can't lurk.
 	loaded, err := Load(yamlPath)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.LLM.Backend != "litellm" {
+	if loaded.LLM.Backend != "openai" {
 		t.Errorf("loaded backend: %q", loaded.LLM.Backend)
 	}
-	if loaded.LLM.LiteLLM.BaseURL != "http://x:8000/v1" {
-		t.Errorf("loaded base_url: %q", loaded.LLM.LiteLLM.BaseURL)
+	if loaded.LLM.OpenAI.BaseURL != "http://x:8000/v1" {
+		t.Errorf("loaded base_url: %q", loaded.LLM.OpenAI.BaseURL)
 	}
-	if loaded.LLM.LiteLLM.APIKey != "secret # value" {
-		t.Errorf("loaded api_key: %q", loaded.LLM.LiteLLM.APIKey)
+	if loaded.LLM.OpenAI.APIKey != "secret # value" {
+		t.Errorf("loaded api_key: %q", loaded.LLM.OpenAI.APIKey)
 	}
 }
 
@@ -338,7 +343,7 @@ func TestValidate_errors(t *testing.T) {
 	cases := map[string]func(*Config){
 		"no addr":     func(c *Config) { c.Server.Addr = "" },
 		"no db":       func(c *Config) { c.Database.Path = "" },
-		"bad backend": func(c *Config) { c.LLM.Backend = "openai" },
+		"bad backend": func(c *Config) { c.LLM.Backend = "totally-bogus" },
 		"zero conc":   func(c *Config) { c.Worker.Concurrency = 0 },
 		"zero batch":  func(c *Config) { c.Worker.EmbedBatchSize = 0 },
 		"bad chunk":   func(c *Config) { c.Chunking.OverlapTokens = c.Chunking.TargetTokens },

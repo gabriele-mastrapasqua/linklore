@@ -1,74 +1,104 @@
 # LLM modes
 
-`config.yaml` has an `llm.backend` field with three valid values. The
-choice is **opt-in** — you can run linklore with no LLM at all and the
-core link-management features still work. Where features depend on the
-LLM, the UI degrades cleanly (banner instead of broken state).
+Linklore's LLM is **opt-in**. The core (saving links, fetch + extract,
+BM25 search, tags, drag-and-drop, highlights, reminders) all run with
+no LLM at all. When the LLM is disabled the UI degrades gracefully:
+banners instead of broken pages.
 
-## The three modes
+The `LINKLORE_LLM_BACKEND` env var (or the legacy `llm.backend` yaml
+field) picks one of three values. **Pick `openai` unless you have a
+specific reason not to.**
+
+## The backends
 
 ### `none`
 
 No LLM. Linklore behaves as a pure FTS5 bookmark manager:
 
-- ✅ Save links, fetch + extract content, render Preview.
+- ✅ Save links, fetch + extract, render Preview, render highlights.
 - ✅ Search via BM25 (no semantic re-rank).
-- ✅ Tag, organise into collections, drag-and-drop, bulk move.
+- ✅ Tags, collections, drag-and-drop, bulk move, reminders.
 - ❌ No TL;DR or auto-tags during ingest.
 - ❌ No semantic-similarity re-rank in search.
-- ❌ Chat tab in the drawer is hidden, and `/chat` shows a
-  configuration banner explaining how to enable it.
+- ❌ Chat tab in the drawer is hidden; `/chat` shows a config banner.
 
-### `ollama`
+### `openai` — the canonical choice
 
-A local Ollama daemon at `OLLAMA_HOST` (default `http://127.0.0.1:11434`).
-Configured in `llm.ollama` of `config.yaml`. All requests stay on the
-same machine. Embedding model and chat model are independent — you
-can run a tiny embed model alongside a heavier chat model.
+Any **OpenAI-compatible** HTTP API. This single backend covers every
+common local LLM server, because they all expose the same
+`/chat/completions` + `/embeddings` shape:
 
-### `litellm`
+| Server         | Typical `OPENAI_BASE_URL`             |
+|----------------|---------------------------------------|
+| Ollama (`/v1`) | `http://localhost:11434/v1`           |
+| llama.cpp      | `http://localhost:8080/v1`            |
+| vLLM           | `http://localhost:8000/v1`            |
+| LM Studio      | `http://localhost:1234/v1`            |
+| LiteLLM proxy  | `http://localhost:4000/v1`            |
+| OpenAI itself  | `https://api.openai.com/v1`           |
 
-Any OpenAI-compatible gateway: LiteLLM proxy, vLLM,
-`llama.cpp/server`, etc. Configured in `llm.litellm`. The
-`base_url` + `api_key` env overrides are `LITELLM_BASE_URL` and
-`LITELLM_API_KEY`. The model name in `llm.litellm.model` is what gets
-sent in the chat completion request.
+Env vars:
+
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY` (use any non-empty string for local servers that
+  don't auth — `ollama`, `lm-studio`, etc.)
+- `LINKLORE_LLM_MODEL` — the chat model name your server advertises
+- `LINKLORE_LLM_EMBED_MODEL` — the embedding model
+
+Switching servers means changing one URL. The old `llm.backend=litellm`
+value is accepted as a deprecated alias and silently rewritten to
+`openai` at startup; `LITELLM_BASE_URL` / `LITELLM_API_KEY` work as
+aliases of the canonical `OPENAI_*` names.
+
+### `ollama` — legacy native API
+
+This backend uses Ollama's **native** `/api/generate`, `/api/embed`,
+`/api/tags` endpoints — _not_ the OpenAI-compatible `/v1/...` path.
+It exists for backward compatibility and for the rare case where you
+want native Ollama options that aren't surfaced over `/v1`.
+
+For most users **prefer `openai` with `OPENAI_BASE_URL=http://localhost:11434/v1`**
+— same daemon, less divergence in linklore code.
+
+Env vars: `OLLAMA_HOST`, `LINKLORE_LLM_MODEL`, `LINKLORE_LLM_EMBED_MODEL`.
 
 ## Where the LLM is called
 
-| Phase         | Operation                                | Required when |
-|---------------|------------------------------------------|---------------|
-| Ingest        | Per-link: chunk embeddings               | Optional. Skipped silently when backend is `none`. |
-| Ingest        | Per-link: TL;DR + auto-tags (JSON)       | Optional. Skipped silently when backend is `none`. |
-| Search        | Query-side embedding for cosine re-rank  | Optional. Search degrades to BM25-only. |
-| Chat          | RAG answer (streaming via SSE)           | Required. The Chat tab is hidden when `none`; `/chat` shows a banner. |
+| Phase   | Operation                              | Required? |
+|---------|----------------------------------------|-----------|
+| Ingest  | Per-link chunk embeddings              | Optional. Skipped silently when backend is `none`. |
+| Ingest  | Per-link TL;DR + auto-tags             | Optional. Skipped silently when backend is `none`. |
+| Search  | Query-side embedding for cosine re-rank| Optional. Falls back to BM25-only. |
+| Chat    | RAG answer (streamed via SSE)          | **Required.** Chat tab is hidden + `/chat` shows a banner when `none`. |
 
 ## Health checks
 
-Two endpoints expose status:
+- `GET /healthz/llm` — renders the topbar status badge. Probes the
+  configured backend with a short timeout.
+- `GET /worker/status` — background-task status; SSE-pushed every 5 s.
 
-- `GET /healthz/llm` → renders a small badge in the topbar. Probes
-  the configured backend with a short timeout.
-- `GET /worker/status` → background-task status. Refreshed every 5 s
-  by the SSE stream.
-
-The `worker.LLMHealth()` cache is queried by `llmHealthSnapshot()` in
-`internal/server/server.go` and surfaces both a boolean and a
-backend-specific hint string ("set `OLLAMA_HOST`…" vs "set
-`llm.litellm.base_url`…").
+`worker.LLMHealth()` caches the last result and the server's
+`llmConfigHint()` produces a backend-specific "how to enable" string
+(OPENAI_* vs OLLAMA_HOST).
 
 ## Switching backends
 
-Edit `config.yaml`, restart the server. The configured backend is
-shown on `/settings`. Existing data is unaffected — embeddings already
-in the DB stay valid until you change the embed model dimensions
-(linklore stores the dim in the BLOB and rejects mismatches).
+Edit `.env` (or `/settings` in the UI), restart. The new backend takes
+over for fresh ingests, and the chat. Existing embeddings keep
+working until you change the embed model dimensions — linklore stores
+the dim in the BLOB and rejects mismatches.
 
 ## Source code
 
-- Interface: `internal/llm/llm.go` (`Backend` interface: `Generate`,
-  `GenerateStream`, `Embed`).
-- Implementations: `internal/llm/ollama/`, `internal/llm/litellm/`,
-  `internal/llm/fake/` (test only).
-- Config: `internal/config/config.go`.
-- Health probe: `internal/worker/health.go` (cached snapshot).
+- Interface: `internal/llm/backend.go` (`Backend.Generate`,
+  `GenerateStream`, `Embed`; constants `BackendOpenAI`, `BackendOllama`,
+  `BackendNone`).
+- Implementations:
+  - `internal/llm/litellm/` — the OpenAI-compatible client (used for
+    `backend=openai`). The package keeps its historical name; only
+    the user-facing config value changed.
+  - `internal/llm/ollama/` — Ollama native API client.
+  - `internal/llm/fake/` — test fake.
+- Config: `internal/config/config.go` — `canonicaliseLLM` resolves
+  `litellm` → `openai` and mirrors `LiteLLM` ↔ `OpenAI` structs.
+- Health probe: `internal/worker/health.go`.
