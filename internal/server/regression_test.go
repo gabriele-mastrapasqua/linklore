@@ -4,6 +4,7 @@
 package server
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"fmt"
@@ -1083,6 +1084,53 @@ func TestSearchSuggest_matchesCollectionsAndTags(t *testing.T) {
 	// Popover never shows snippets / link results.
 	if strings.Contains(body, "search-result") || strings.Contains(body, "link-row") {
 		t.Errorf("suggest should not render link results: %q", body)
+	}
+}
+
+// ---------- /backup.zip global backup ----------
+
+// /backup.zip serves a ZIP with linklore-export.html (combined
+// Netscape) plus a README.txt. The DB file copy is skipped when
+// running on :memory: (which is what newTestServer uses), so the
+// test asserts the streamed payload is a valid zip with the html
+// and readme entries.
+func TestBackupZip_streamsExpectedEntries(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l, _ := st.CreateLink(ctx, col.ID, "https://example.com/p")
+	_ = st.UpdateLinkExtraction(ctx, l.ID, "Title", "", "", "", "en", "")
+
+	resp, err := ts.Client().Get(ts.URL + "/backup.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("content-type = %q, want application/zip", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "linklore-backup-") {
+		t.Errorf("content-disposition = %q, want linklore-backup-… filename", cd)
+	}
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
+	if err != nil {
+		t.Fatalf("zip parse: %v", err)
+	}
+	got := map[string]bool{}
+	for _, f := range zr.File {
+		got[f.Name] = true
+	}
+	for _, want := range []string{"linklore-export.html", "README.txt"} {
+		if !got[want] {
+			t.Errorf("zip missing entry %q (got %v)", want, got)
+		}
 	}
 }
 
