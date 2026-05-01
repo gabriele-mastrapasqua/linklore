@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"io/fs"
 	"log"
@@ -185,6 +186,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /links/{id}/reminder", s.handleSetReminder)
 	mux.HandleFunc("DELETE /links/{id}/reminder", s.handleClearReminder)
 	mux.HandleFunc("POST /links/bulk/reminder", s.handleBulkReminder)
+	mux.HandleFunc("POST /links/{id}/highlights", s.handleCreateHighlight)
+	mux.HandleFunc("DELETE /highlights/{id}", s.handleDeleteHighlight)
+	mux.HandleFunc("POST /highlights/{id}/note", s.handleHighlightNote)
+	mux.HandleFunc("GET /highlights.md", s.handleExportHighlights)
 	mux.HandleFunc("GET /tags", s.handleTagsPage)
 	mux.HandleFunc("GET /tags/{slug}", s.handleTagDetail)
 	mux.HandleFunc("POST /tags/merge", s.handleMergeTags)
@@ -605,6 +610,123 @@ func (s *Server) handleBulkReminder(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"toast":"reminder set on %d links"}`, strings.Count(idsRaw, ",")+1))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleCreateHighlight POST /links/{id}/highlights. Form fields:
+//
+//	start  — int, character offset into the link's content_md
+//	end    — int, exclusive end offset
+//	text   — the literal selected text (used as fuzzy fallback)
+//	note   — optional free-text annotation
+//
+// Returns 201 with a small JSON shape so the inline JS can locally
+// mark the selection without re-rendering the whole article.
+func (s *Server) handleCreateHighlight(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	start, _ := strconv.Atoi(r.PostForm.Get("start"))
+	end, _ := strconv.Atoi(r.PostForm.Get("end"))
+	text := strings.TrimSpace(r.PostForm.Get("text"))
+	note := strings.TrimSpace(r.PostForm.Get("note"))
+	if text == "" || end <= start {
+		http.Error(w, "invalid range", http.StatusBadRequest)
+		return
+	}
+	h, err := s.store.CreateHighlight(r.Context(), storage.Highlight{
+		LinkID: id, StartOffset: start, EndOffset: end,
+		Text: text, Note: note,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": h.ID, "start": h.StartOffset, "end": h.EndOffset,
+		"text": h.Text, "note": h.Note,
+	})
+}
+
+// handleDeleteHighlight DELETE /highlights/{id}. Returns 204; the
+// caller (drawer JS) removes the <mark> locally.
+func (s *Server) handleDeleteHighlight(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.DeleteHighlight(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleHighlightNote POST /highlights/{id}/note. Form: note=<text>.
+// Empty note is allowed (clears it).
+func (s *Server) handleHighlightNote(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	note := strings.TrimSpace(r.PostForm.Get("note"))
+	if err := s.store.UpdateHighlightNote(r.Context(), id, note); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleExportHighlights GET /highlights.md. Streams every highlight
+// as a Markdown document grouped by link. Optional ?c=<slug> scopes
+// the export to one collection.
+func (s *Server) handleExportHighlights(w http.ResponseWriter, r *http.Request) {
+	var collectionID int64
+	if slug := strings.TrimSpace(r.URL.Query().Get("c")); slug != "" {
+		if c, _ := s.store.GetCollectionBySlug(r.Context(), slug); c != nil {
+			collectionID = c.ID
+		}
+	}
+	hls, err := s.store.ListAllHighlights(r.Context(), collectionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="linklore-highlights.md"`)
+	fmt.Fprintf(w, "# linklore highlights\n\nGenerated %s\n\n", time.Now().UTC().Format("2006-01-02"))
+	var lastLinkID int64
+	for _, h := range hls {
+		if h.LinkID != lastLinkID {
+			title := h.LinkTitle
+			if title == "" {
+				title = h.LinkURL
+			}
+			fmt.Fprintf(w, "\n## [%s](%s)\n\n", title, h.LinkURL)
+			lastLinkID = h.LinkID
+		}
+		// Quote the highlighted text. Indent any embedded newlines so
+		// the blockquote stays valid Markdown.
+		quoted := strings.ReplaceAll(strings.TrimSpace(h.Text), "\n", "\n> ")
+		fmt.Fprintf(w, "> %s\n", quoted)
+		if h.Note != "" {
+			fmt.Fprintf(w, "\n_%s_\n", h.Note)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 // addFileToZip copies the file at srcPath into the zip stream as
@@ -1255,8 +1377,26 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx["Article"] = reader.Render(link.ContentMD)
+	ctx["Article"] = s.renderArticleWithHighlights(r.Context(), link)
 	s.renderFragment(w, "preview_drawer", ctx)
+}
+
+// renderArticleWithHighlights pulls the link's highlights and runs the
+// reader pipeline with them wrapped as <mark> spans. Falls back to
+// plain Render on storage errors so the preview always renders.
+func (s *Server) renderArticleWithHighlights(ctx context.Context, link *storage.Link) template.HTML {
+	hs, err := s.store.ListHighlightsByLink(ctx, link.ID)
+	if err != nil || len(hs) == 0 {
+		return reader.Render(link.ContentMD)
+	}
+	spans := make([]reader.HighlightSpan, len(hs))
+	for i, h := range hs {
+		spans[i] = reader.HighlightSpan{
+			ID: h.ID, Start: h.StartOffset, End: h.EndOffset,
+			Text: h.Text, Note: h.Note,
+		}
+	}
+	return reader.RenderWithHighlights(link.ContentMD, spans)
 }
 
 // drawerContext loads the link plus the metadata every drawer tab
@@ -1300,7 +1440,7 @@ func (s *Server) handleDrawerTab(w http.ResponseWriter, r *http.Request) {
 	case "edit":
 		s.renderFragment(w, "drawer_edit", ctx)
 	case "preview":
-		ctx["Article"] = reader.Render(link.ContentMD)
+		ctx["Article"] = s.renderArticleWithHighlights(r.Context(), link)
 		s.renderFragment(w, "drawer_preview_body", ctx)
 	case "web":
 		s.renderFragment(w, "drawer_web", ctx)
@@ -2256,6 +2396,7 @@ func (s *Server) handleGlobalLinks(w http.ResponseWriter, r *http.Request) {
 	notagsOnly := q.Get("notags") == "1" || q.Get("notags") == "true"
 	statusFilter := strings.TrimSpace(q.Get("status"))
 	dueOnly := q.Get("due") == "1" || q.Get("due") == "true"
+	highlightedOnly := q.Get("highlighted") == "1" || q.Get("highlighted") == "true"
 
 	// Due-only takes a fast path through ListDueLinks so we don't
 	// scan every link in the DB.
@@ -2290,6 +2431,10 @@ func (s *Server) handleGlobalLinks(w http.ResponseWriter, r *http.Request) {
 			tagPresence[all[i].ID] = len(tags) > 0
 		}
 	}
+	var highlighted map[int64]bool
+	if highlightedOnly {
+		highlighted, _ = s.store.ListHighlightedLinkIDs(r.Context())
+	}
 
 	out := all[:0]
 	for i := range all {
@@ -2303,12 +2448,17 @@ func (s *Server) handleGlobalLinks(w http.ResponseWriter, r *http.Request) {
 		if notagsOnly && tagPresence[l.ID] {
 			continue
 		}
+		if highlightedOnly && !highlighted[l.ID] {
+			continue
+		}
 		out = append(out, *l)
 	}
 
 	// Compose a page title that reflects the active filters.
 	title := "All links"
 	switch {
+	case highlightedOnly:
+		title = "Highlighted"
 	case notagsOnly:
 		title = "Without tags"
 	case statusFilter == "failed":
@@ -2392,6 +2542,9 @@ func (s *Server) handleSearchLive(w http.ResponseWriter, r *http.Request) {
 // applyFacets is a thin wrapper around search.Facets.Apply that loads
 // the per-link tag sets needed to evaluate tag: / -tag: predicates.
 // Skipped when facets are empty so plain text queries pay nothing.
+//
+// highlight:foo is enforced at the storage layer via SearchHighlightsFTS;
+// any result whose link is not in that set is dropped.
 func (s *Server) applyFacets(ctx context.Context, in []search.LinkResult, f search.Facets) []search.LinkResult {
 	if f.Empty() || len(in) == 0 {
 		return in
@@ -2401,7 +2554,41 @@ func (s *Server) applyFacets(ctx context.Context, in []search.LinkResult, f sear
 		log.Printf("apply facets: build link tags: %v", err)
 		return in
 	}
-	return f.Apply(in, tags)
+	out := f.Apply(in, tags)
+	if len(f.Highlights) > 0 {
+		// Build the per-token allow set: every highlight: token must
+		// individually match (AND across tokens). FTS5 prefix-match.
+		allow := map[int64]bool{}
+		var first = true
+		for _, q := range f.Highlights {
+			ids, err := s.store.SearchHighlightsFTS(ctx, q+"*", 500)
+			if err != nil {
+				continue
+			}
+			set := map[int64]bool{}
+			for _, id := range ids {
+				set[id] = true
+			}
+			if first {
+				allow = set
+				first = false
+				continue
+			}
+			for k := range allow {
+				if !set[k] {
+					delete(allow, k)
+				}
+			}
+		}
+		filtered := out[:0]
+		for _, r := range out {
+			if r.Link != nil && allow[r.Link.ID] {
+				filtered = append(filtered, r)
+			}
+		}
+		out = filtered
+	}
+	return out
 }
 
 // sortByDate orders results by the underlying link's FetchedAt

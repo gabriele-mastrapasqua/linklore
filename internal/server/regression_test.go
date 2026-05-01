@@ -1168,6 +1168,100 @@ func TestReminder_dueFilterReturnsOnlyOverdue(t *testing.T) {
 	}
 }
 
+// ---------- F1 highlights ----------
+
+// POST /links/{id}/highlights stores a range + text + note. The
+// stored highlight is rendered into the Preview as a <mark> with
+// the same dataset id.
+func TestHighlights_createAndRender(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l, _ := st.CreateLink(ctx, col.ID, "https://example.com/p")
+	_ = st.UpdateLinkExtraction(ctx, l.ID, "Title", "", "", "Lorem ipsum dolor sit amet.", "en", "")
+
+	resp, err := ts.Client().PostForm(
+		ts.URL+fmt.Sprintf("/links/%d/highlights", l.ID),
+		url.Values{
+			"start": {"6"}, "end": {"11"},
+			"text": {"ipsum"}, "note": {"key concept"},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	hs, _ := st.ListHighlightsByLink(ctx, l.ID)
+	if len(hs) != 1 || hs[0].Text != "ipsum" || hs[0].Note != "key concept" {
+		t.Fatalf("highlight not persisted: %+v", hs)
+	}
+
+	// Preview tab body should now embed a <mark class="hl"> wrapping
+	// the highlighted slice.
+	code, body := get(t, ts, fmt.Sprintf("/links/%d/drawer/preview", l.ID))
+	if code != 200 {
+		t.Fatalf("preview status %d", code)
+	}
+	if !strings.Contains(body, `class="hl"`) {
+		t.Errorf("preview body missing mark.hl: %s", excerpt(body, "ipsum", 80))
+	}
+	if !strings.Contains(body, `data-hid=`) {
+		t.Errorf("preview body missing data-hid attribute")
+	}
+}
+
+// /highlights.md exports markdown grouped by link. Smoke check the
+// shape only — full mark formatting is in reader unit tests.
+func TestHighlights_exportMarkdown(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l, _ := st.CreateLink(ctx, col.ID, "https://example.com/p")
+	_, err := st.CreateHighlight(ctx, storage.Highlight{
+		LinkID: l.ID, StartOffset: 0, EndOffset: 5,
+		Text: "hello", Note: "greeting",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, body := get(t, ts, "/highlights.md")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	for _, want := range []string{"# linklore highlights", "https://example.com/p", "> hello", "_greeting_"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("export missing %q. got: %s", want, body)
+		}
+	}
+}
+
+// /links?highlighted=1 returns only links that have at least one
+// highlight.
+func TestHighlights_globalFilter(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	hi, _ := st.CreateLink(ctx, col.ID, "https://example.com/with")
+	bare, _ := st.CreateLink(ctx, col.ID, "https://example.com/bare")
+	_ = st.UpdateLinkExtraction(ctx, hi.ID, "WithHL", "", "", "", "en", "")
+	_ = st.UpdateLinkExtraction(ctx, bare.ID, "BareOne", "", "", "", "en", "")
+	_, _ = st.CreateHighlight(ctx, storage.Highlight{
+		LinkID: hi.ID, StartOffset: 0, EndOffset: 3, Text: "abc",
+	})
+	code, body := get(t, ts, "/links?highlighted=1")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "WithHL") {
+		t.Errorf("expected WithHL in highlighted view: %s", excerpt(body, "Highlighted", 80))
+	}
+	if strings.Contains(body, "BareOne") {
+		t.Errorf("BareOne should be hidden: %q", body)
+	}
+}
+
 // ---------- /backup.zip global backup ----------
 
 // /backup.zip serves a ZIP with linklore-export.html (combined

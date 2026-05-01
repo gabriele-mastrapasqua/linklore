@@ -54,6 +54,10 @@
 				<span class="sidebar-name">Due</span>
 				{{if and .DueCount (gt .DueCount 0)}}<span class="sidebar-count">{{.DueCount}}</span>{{end}}
 			</a>
+			<a href="/links?highlighted=1" class="sidebar-link">
+				<span class="sidebar-glyph">✦</span>
+				<span class="sidebar-name">Highlighted</span>
+			</a>
 		</nav>
 	</div>
 
@@ -107,6 +111,10 @@
 			<a href="/backup.zip" class="sidebar-link" title="download a zip with every collection's links + the SQLite file">
 				<span class="sidebar-glyph">⬇</span>
 				<span class="sidebar-name">Backup</span>
+			</a>
+			<a href="/highlights.md" class="sidebar-link" title="markdown export of every highlight">
+				<span class="sidebar-glyph">✦</span>
+				<span class="sidebar-name">Highlights export</span>
 			</a>
 			<a href="/settings" class="sidebar-link">
 				<span class="sidebar-glyph">⚙</span>

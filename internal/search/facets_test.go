@@ -23,6 +23,9 @@ func TestParseFacets(t *testing.T) {
 		{"-foo react", "-foo react", Facets{}},         // dash-only token without colon → not a facet
 		{": orphan", ": orphan", Facets{}},             // bare colon also passes through
 		{"unknown:key keep", "unknown:key keep", Facets{}},
+		{"highlight:foo bar", "bar", Facets{Highlights: []string{"foo"}}},
+		{"highlight:foo highlight:bar res", "res", Facets{Highlights: []string{"foo", "bar"}}},
+		{"-highlight:foo plain", "-highlight:foo plain", Facets{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {

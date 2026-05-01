@@ -196,6 +196,22 @@ type Tag struct {
 	Name string
 }
 
+// Highlight is a saved selection inside a link's extracted markdown.
+// StartOffset / EndOffset are character offsets into Link.ContentMD
+// at capture time; they may shift if the markdown re-extracts. The
+// Text field is the literal selected text — used by the renderer as
+// a fuzzy-match fallback when the offsets miss.
+type Highlight struct {
+	ID          int64
+	LinkID      int64
+	StartOffset int
+	EndOffset   int
+	Text        string
+	Note        string
+	Color       string
+	CreatedAt   time.Time
+}
+
 const (
 	StatusPending    = "pending"
 	StatusFetched    = "fetched"
@@ -1759,6 +1775,161 @@ func (s *Store) GetChunksByIDs(ctx context.Context, ids []int64) ([]Chunk, error
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ---- highlights (F1) ----
+
+// CreateHighlight inserts a new highlight and returns it with the
+// generated id + timestamp.
+func (s *Store) CreateHighlight(ctx context.Context, h Highlight) (*Highlight, error) {
+	if h.Color == "" {
+		h.Color = "yellow"
+	}
+	if h.CreatedAt.IsZero() {
+		h.CreatedAt = time.Now().UTC()
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO highlights (link_id, start_offset, end_offset, text, note, color, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		h.LinkID, h.StartOffset, h.EndOffset, h.Text, h.Note, h.Color, h.CreatedAt.Unix())
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	h.ID = id
+	return &h, nil
+}
+
+// DeleteHighlight removes one highlight by id.
+func (s *Store) DeleteHighlight(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM highlights WHERE id = ?`, id)
+	return err
+}
+
+// UpdateHighlightNote rewrites just the note (the most-changed field
+// after the highlight itself stops moving).
+func (s *Store) UpdateHighlightNote(ctx context.Context, id int64, note string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE highlights SET note = ? WHERE id = ?`, note, id)
+	return err
+}
+
+// ListHighlightsByLink returns every highlight for a link, ordered
+// by start offset so the renderer can walk the article once.
+func (s *Store) ListHighlightsByLink(ctx context.Context, linkID int64) ([]Highlight, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, link_id, start_offset, end_offset, text,
+		        COALESCE(note,''), COALESCE(color,'yellow'), created_at
+		   FROM highlights WHERE link_id = ?
+		   ORDER BY start_offset ASC`, linkID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Highlight
+	for rows.Next() {
+		var h Highlight
+		var createdAt int64
+		if err := rows.Scan(&h.ID, &h.LinkID, &h.StartOffset, &h.EndOffset,
+			&h.Text, &h.Note, &h.Color, &createdAt); err != nil {
+			return nil, err
+		}
+		h.CreatedAt = time.Unix(createdAt, 0).UTC()
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ListHighlightedLinkIDs returns all link IDs that have at least one
+// highlight. Used by the "Highlighted" sidebar filter.
+func (s *Store) ListHighlightedLinkIDs(ctx context.Context) (map[int64]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT link_id FROM highlights`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// SearchHighlightsFTS finds link IDs whose highlights' text or note
+// matches the FTS query. Used to wire the highlight:foo facet into
+// the search engine.
+func (s *Store) SearchHighlightsFTS(ctx context.Context, q string, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT h.link_id
+		   FROM highlights_fts f
+		   JOIN highlights h ON h.id = f.rowid
+		  WHERE highlights_fts MATCH ?
+		  LIMIT ?`, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// HighlightWithLink pairs a highlight with its link's display fields
+// so the export can render quote blocks grouped by link.
+type HighlightWithLink struct {
+	Highlight
+	LinkTitle string
+	LinkURL   string
+	LinkSlug  string
+}
+
+// ListAllHighlights streams every highlight in the database, optionally
+// filtered to one collection.
+func (s *Store) ListAllHighlights(ctx context.Context, collectionID int64) ([]HighlightWithLink, error) {
+	q := `
+		SELECT h.id, h.link_id, h.start_offset, h.end_offset, h.text,
+		       COALESCE(h.note,''), COALESCE(h.color,'yellow'), h.created_at,
+		       COALESCE(l.title,''), l.url, c.slug
+		  FROM highlights h
+		  JOIN links l       ON l.id = h.link_id
+		  JOIN collections c ON c.id = l.collection_id`
+	args := []any{}
+	if collectionID > 0 {
+		q += ` WHERE l.collection_id = ?`
+		args = append(args, collectionID)
+	}
+	q += ` ORDER BY l.id, h.start_offset ASC`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HighlightWithLink
+	for rows.Next() {
+		var hl HighlightWithLink
+		var createdAt int64
+		if err := rows.Scan(&hl.ID, &hl.LinkID, &hl.StartOffset, &hl.EndOffset,
+			&hl.Text, &hl.Note, &hl.Color, &createdAt,
+			&hl.LinkTitle, &hl.LinkURL, &hl.LinkSlug); err != nil {
+			return nil, err
+		}
+		hl.CreatedAt = time.Unix(createdAt, 0).UTC()
+		out = append(out, hl)
 	}
 	return out, rows.Err()
 }

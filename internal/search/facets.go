@@ -14,19 +14,22 @@ import (
 //
 // Supported syntax (mirrored in docs/search.md):
 //
-//	tag:foo      → must have tag with slug or name "foo"
-//	-tag:foo     → must NOT have tag "foo"
-//	kind:video   → kind == "video" (one of the storage.Kind* constants)
-//	in:title     → restrict text matching to title (sets Scope=ScopeTitle)
-//	in:url       → restrict text matching to URL   (sets Scope=ScopeURL)
+//	tag:foo        → must have tag with slug or name "foo"
+//	-tag:foo       → must NOT have tag "foo"
+//	kind:video     → kind == "video" (one of the storage.Kind* constants)
+//	in:title       → restrict text matching to title (sets Scope=ScopeTitle)
+//	in:url         → restrict text matching to URL   (sets Scope=ScopeURL)
+//	highlight:foo  → result must have a highlight whose text or note
+//	                 matches "foo" (FTS-prefix, joined to highlights table)
 //
 // Multiple facets compose with AND. Anything that doesn't parse as a
 // facet stays in the residual text query, which is what FTS sees.
 type Facets struct {
-	Tags    []string // include — link must have all of these
-	NotTags []string // exclude — link must have none of these
-	Kind    string   // empty = any
-	Scope   string   // "", "title", "url"
+	Tags       []string // include — link must have all of these
+	NotTags    []string // exclude — link must have none of these
+	Kind       string   // empty = any
+	Scope      string   // "", "title", "url"
+	Highlights []string // each token must match the link's highlights_fts
 }
 
 // ScopeTitle / ScopeURL are valid values for Facets.Scope.
@@ -78,6 +81,12 @@ func ParseFacets(query string) (string, Facets) {
 			} else {
 				keep = append(keep, raw)
 			}
+		case "highlight":
+			if !neg && val != "" {
+				f.Highlights = append(f.Highlights, val)
+			} else {
+				keep = append(keep, raw)
+			}
 		default:
 			keep = append(keep, raw)
 		}
@@ -88,7 +97,9 @@ func ParseFacets(query string) (string, Facets) {
 // Empty reports whether no facet was parsed; callers can skip the
 // post-filter pass entirely on common bare-text queries.
 func (f Facets) Empty() bool {
-	return f.Kind == "" && f.Scope == "" && len(f.Tags) == 0 && len(f.NotTags) == 0
+	return f.Kind == "" && f.Scope == "" &&
+		len(f.Tags) == 0 && len(f.NotTags) == 0 &&
+		len(f.Highlights) == 0
 }
 
 // Apply returns the subset of `in` that satisfies the facet predicates.

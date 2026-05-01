@@ -1058,6 +1058,50 @@ body[data-drawer="full"] .drawer { width: 100vw; max-width: none; }
 	background: transparent; border: 0; color: var(--muted); cursor: pointer;
 	font-size: 1.1rem; line-height: 1;
 }
+
+/* F1 — Highlights. Single yellow swatch (per locked design). The
+   tooltip on title="" carries the optional note; clicking the mark
+   surfaces an inline "× delete" affordance. */
+mark.hl {
+	background: rgba(255, 230, 90, .55);
+	color: inherit;
+	padding: 0 .1em; border-radius: 2px;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+	cursor: pointer;
+	position: relative;
+}
+mark.hl:hover { background: rgba(255, 215, 50, .7); }
+.drawer[data-theme="dark"] mark.hl,
+:root[data-theme="dark"] mark.hl {
+	background: rgba(255, 220, 100, .25);
+	color: #fff7e0;
+}
+mark.hl .hl-actions {
+	position: absolute; top: -28px; right: 0;
+	white-space: nowrap;
+	background: var(--card); border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	padding: .15rem .35rem; font-size: .75rem;
+	box-shadow: var(--shadow-pop);
+	z-index: 5;
+}
+mark.hl .hl-actions button {
+	background: transparent; border: 0; cursor: pointer;
+	color: var(--danger); font: inherit;
+}
+
+/* Floating "✎ Highlight" button that appears above a fresh selection.
+   Fixed-position so the page scroll doesn't disconnect it. */
+.hl-float {
+	position: fixed; z-index: 200;
+	background: var(--accent); color: #fff;
+	border: 0; border-radius: var(--radius-pill);
+	padding: .35rem .75rem; font: 500 .85rem var(--ff-sans);
+	cursor: pointer;
+	box-shadow: var(--shadow-pop);
+}
+.hl-float:hover { filter: brightness(1.1); }
 .drawer-edit-foot {
 	display: flex; justify-content: flex-end;
 	padding-top: var(--space-3);

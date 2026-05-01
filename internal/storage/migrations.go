@@ -122,4 +122,40 @@ var migrations = []string{
 		INSERT INTO chunks_fts(chunks_fts, rowid, text) VALUES('delete', old.id, old.text);
 		INSERT INTO chunks_fts(rowid, text) VALUES (new.id, new.text);
 	END`,
+
+	// F1 — Highlights. Range-based: start/end_offset are character
+	// offsets into links.content_md as it was when the highlight was
+	// captured. On render, if (start, end) doesn't match the current
+	// markdown the renderer falls back to fuzzy-finding `text`.
+	`CREATE TABLE IF NOT EXISTS highlights (
+		id           INTEGER PRIMARY KEY,
+		link_id      INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+		start_offset INTEGER NOT NULL,
+		end_offset   INTEGER NOT NULL,
+		text         TEXT NOT NULL,
+		note         TEXT,
+		color        TEXT NOT NULL DEFAULT 'yellow',
+		created_at   INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_highlights_link ON highlights(link_id)`,
+
+	// Highlights FTS: text + note. Backs `highlight:foo` in the
+	// search facet syntax + the search-engine join-back to link IDs.
+	`CREATE VIRTUAL TABLE IF NOT EXISTS highlights_fts USING fts5(
+		text, note, content='highlights', content_rowid='id'
+	)`,
+	`CREATE TRIGGER IF NOT EXISTS highlights_ai AFTER INSERT ON highlights BEGIN
+		INSERT INTO highlights_fts(rowid, text, note)
+		VALUES (new.id, new.text, COALESCE(new.note,''));
+	END`,
+	`CREATE TRIGGER IF NOT EXISTS highlights_ad AFTER DELETE ON highlights BEGIN
+		INSERT INTO highlights_fts(highlights_fts, rowid, text, note)
+		VALUES('delete', old.id, old.text, COALESCE(old.note,''));
+	END`,
+	`CREATE TRIGGER IF NOT EXISTS highlights_au AFTER UPDATE ON highlights BEGIN
+		INSERT INTO highlights_fts(highlights_fts, rowid, text, note)
+		VALUES('delete', old.id, old.text, COALESCE(old.note,''));
+		INSERT INTO highlights_fts(rowid, text, note)
+		VALUES (new.id, new.text, COALESCE(new.note,''));
+	END`,
 }
