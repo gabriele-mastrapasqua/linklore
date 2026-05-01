@@ -841,13 +841,8 @@ body.select-off .bulk-bar { display: none !important; }
 #links-list.layout-headlines .link-row .title { font-weight: 500; }
 
 #links-list.layout-moodboard {
-	column-count: 3; column-gap: 1rem;
+	column-width: var(--card-min); column-gap: 1rem;
 }
-/* Container queries: respond to the main pane width, not the viewport.
-   When the drawer opens, main shrinks → moodboard re-flows; when the
-   sidebar is off-canvas (mobile), main is the full width. */
-@container main (max-width: 1100px) { #links-list.layout-moodboard { column-count: 2; } }
-@container main (max-width: 700px)  { #links-list.layout-moodboard { column-count: 1; } }
 #links-list.layout-moodboard .link-row {
 	display: block; break-inside: avoid;
 	margin: 0 0 1rem 0; padding: 0;
@@ -1129,6 +1124,19 @@ mark.hl .hl-actions button {
 	height: clamp(420px, 70vh, 1200px);
 	border: 1px solid var(--border); border-radius: var(--radius-md);
 	background: #fff;
+}
+.drawer-web-jstoggle {
+	display: inline-flex; align-items: center; gap: .3rem;
+	padding: .15rem .5rem;
+	font-size: .72rem; font-weight: 600;
+	color: var(--muted);
+	border: 1px solid var(--border); border-radius: var(--radius-pill);
+	background: var(--card);
+	cursor: pointer; user-select: none;
+}
+.drawer-web-jstoggle input { margin: 0; accent-color: var(--accent); }
+.drawer-web-jstoggle:has(input:checked) {
+	color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
 }
 .drawer-web-note { font-size: .8rem; line-height: 1.5; }
 .drawer-web-note code {
@@ -2265,5 +2273,193 @@ header.topbar input[type="search"]:focus {
 	flex: 0 1 auto;
 	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	max-width: 50%; opacity: .7;
+}
+
+/* ============================================================
+   v30: Raindrop-style sidebar — Collections is the hero, Library
+   and Tools moved off-canvas into a topbar overflow menu so the
+   collections list can breathe vertically.
+   ============================================================ */
+
+/* "All collections" + Ask render as plain sidebar rows so the
+   entire left column reads as one coherent list. */
+.sidebar-nav-top { margin-bottom: var(--space-3); }
+.sidebar-link-all { font-weight: 600; }
+.sidebar-glyph-all {
+	color: var(--accent);
+	font-size: 1rem;
+}
+.sidebar-link-all.active .sidebar-glyph-all { color: var(--accent); }
+
+/* Section titles: a touch heavier so the header reads as a real label. */
+.sidebar-title {
+	font-size: .72rem;
+	font-weight: 700;
+	letter-spacing: .08em;
+}
+
+/* Collections list — capped at ~50% of viewport height with its
+   own scroll. No min-height: a 2-collection list collapses to its
+   natural size and the next section sits right under it (matching
+   Raindrop's behaviour). A long list scrolls inside the cap so it
+   never pushes Filters / Tags off-screen. */
+.sidebar-section-collections {
+	display: flex; flex-direction: column;
+	min-height: 0;
+}
+.sidebar-nav-collections {
+	overflow-y: auto;
+	max-height: 50vh;
+	padding-right: 6px;
+}
+.sidebar-nav-collections .sidebar-link {
+	padding: .4rem .6rem;
+	font-size: .92rem;
+	font-weight: 500;
+	letter-spacing: -.005em;
+}
+
+/* Active-collection tag panel: same treatment — cap + scroll, no
+   min-height, so it can't crowd the collections list. */
+.sidebar-section-tags {
+	min-height: 0;
+	display: flex; flex-direction: column;
+}
+.sidebar-section-tags .sidebar-tags {
+	overflow-y: auto;
+	max-height: 30vh;
+	padding-right: 6px;
+}
+
+/* Themed scrollbars for the sidebar's scrollable regions. Track is
+   the bg colour so it disappears when there's nothing to scroll;
+   the thumb is an accent tint that brightens on hover so the user
+   sees where they are in a long list. Firefox + WebKit covered. */
+.sidebar,
+.sidebar-nav-collections,
+.sidebar-section-tags .sidebar-tags {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--accent) 45%, transparent) transparent;
+}
+.sidebar::-webkit-scrollbar,
+.sidebar-nav-collections::-webkit-scrollbar,
+.sidebar-section-tags .sidebar-tags::-webkit-scrollbar {
+	-webkit-appearance: none;
+	width: 10px;
+}
+.sidebar::-webkit-scrollbar-track,
+.sidebar-nav-collections::-webkit-scrollbar-track,
+.sidebar-section-tags .sidebar-tags::-webkit-scrollbar-track {
+	background: color-mix(in srgb, var(--text) 6%, transparent);
+	border-radius: 999px;
+	margin: 4px 0;
+}
+.sidebar::-webkit-scrollbar-thumb,
+.sidebar-nav-collections::-webkit-scrollbar-thumb,
+.sidebar-section-tags .sidebar-tags::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--accent) 45%, transparent);
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar-nav-collections::-webkit-scrollbar-thumb:hover,
+.sidebar-section-tags .sidebar-tags::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--accent) 75%, transparent);
+	background-clip: padding-box;
+}
+
+/* "+ Add" pill in the Collections header — primary-coloured. */
+.sidebar-section-collections .sidebar-add {
+	width: auto; height: 24px;
+	padding: 0 .55rem;
+	font-size: .75rem; font-weight: 600;
+	letter-spacing: -.005em;
+	color: #fff;
+	background: var(--accent);
+	border-color: var(--accent);
+}
+.sidebar-section-collections .sidebar-add:hover { filter: brightness(1.12); }
+
+/* Topbar "+ Add": solid accent pill, white label, real contrast. */
+.topbar-add-btn {
+	display: inline-flex; align-items: center; gap: .3rem;
+	padding: .35rem .7rem;
+	font-size: .82rem; font-weight: 600;
+	letter-spacing: -.005em;
+	color: #fff !important;
+	background: var(--accent);
+	border: 1px solid var(--accent);
+	border-radius: var(--radius-sm);
+	text-decoration: none;
+	white-space: nowrap;
+	box-shadow: 0 1px 0 rgba(0,0,0,.15) inset, 0 1px 2px rgba(0,0,0,.2);
+	transition: filter .12s ease, transform .12s ease;
+}
+.topbar-add-btn:hover { filter: brightness(1.12); }
+.topbar-add-btn:active { transform: translateY(1px); }
+.topbar-add-btn .topbar-add-plus {
+	font-size: 1rem; line-height: 1; font-weight: 700;
+	margin-top: -1px;
+}
+
+/* Topbar overflow menu — Library + Tools + Preferences live here
+   so the sidebar stays focused on Collections. */
+.topbar-more { position: relative; }
+.topbar-more > summary {
+	list-style: none; cursor: pointer; user-select: none;
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 30px; height: 30px;
+	font-size: 1.1rem; line-height: 1; font-weight: 700;
+	color: var(--muted);
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+}
+.topbar-more > summary::-webkit-details-marker { display: none; }
+.topbar-more > summary:hover { color: var(--text); border-color: var(--muted); }
+.topbar-more[open] > summary { color: var(--text); border-color: var(--accent); }
+
+.topbar-more-menu {
+	position: absolute; top: calc(100% + 6px); right: 0;
+	min-width: 220px;
+	background: var(--card); color: var(--text);
+	border: 1px solid var(--border); border-radius: var(--radius-md);
+	box-shadow: var(--shadow-pop);
+	padding: var(--space-1);
+	z-index: 40;
+	display: flex; flex-direction: column;
+}
+.topbar-more-section {
+	font-size: .65rem; text-transform: uppercase; letter-spacing: .08em;
+	font-weight: 700; color: var(--muted);
+	padding: var(--space-2) var(--space-3) var(--space-1);
+}
+.topbar-more-item {
+	display: flex; align-items: center; gap: .55rem;
+	padding: .45rem .65rem;
+	border-radius: var(--radius-sm);
+	color: var(--text); text-decoration: none;
+	font: inherit; font-size: .88rem; font-weight: 500;
+	background: transparent; border: 0; cursor: pointer;
+	text-align: left;
+	width: 100%;
+}
+.topbar-more-item:hover { background: var(--badge-bg); }
+.topbar-more-item .topbar-more-glyph {
+	width: 18px; flex-shrink: 0;
+	display: inline-flex; align-items: center; justify-content: center;
+	color: var(--muted); font-size: .9rem;
+}
+.topbar-more-item strong { color: var(--text); font-weight: 600; margin-left: .2rem; }
+
+/* Hide the now-redundant pref pills in the topbar — they live in
+   the overflow menu. */
+.topbar-nav-side > .pref-btn,
+.topbar-nav-side > form { display: none; }
+
+@media (max-width: 760px) {
+	.topbar-add-btn { padding: .35rem .55rem; }
+	.topbar-add-btn span:last-child { display: none; }
 }
 

@@ -54,7 +54,9 @@ the migration.
 - **Smart capture** — paste a link or RSS/Atom feed; the same field
   handles both. Bookmarklet + Netscape import/export.
 - **Four views per collection** — list / grid / headlines /
-  Pinterest-style moodboard, persisted server-side.
+  Pinterest-style moodboard, persisted server-side. Moodboard
+  card width is slider-driven so you can pack 6 columns or stretch
+  to 2.
 - **Hybrid search** — FTS5 + semantic (cosine on stored embeddings),
   with a clean BM25 fallback when no LLM is around.
 - **RAG chat** with inline `[src:N]` citations and a sources rail that
@@ -63,6 +65,14 @@ the migration.
   default.
 - **Reader drawer** — in-place preview with size / width /
   light-sepia-dark.
+- **Web preview that actually loads** — a same-origin proxy strips
+  `X-Frame-Options` / `frame-ancestors`, injects a `<base>` so CSS
+  + images resolve against the upstream, and (by default) neutralises
+  scripts so SPA routers can't bounce the page off its first paint.
+  Toggle JS back on per page if a site needs hydration.
+- **Raindrop-style sidebar** — Collections is the hero, capped at 50
+  vh with a themed scrollbar; Library + Tools + theme/preview toggles
+  live in the topbar overflow menu so the sidebar stays focused.
 - **Type filter** — article / video / image / audio / document / book
   chips per collection.
 - **⌘K palette**, `j/k` keyboard nav, right-click menu, drag-and-drop
@@ -84,8 +94,12 @@ chunk it used.
 <td colspan="2"><strong>Chat with your library</strong> — streaming answer with inline <code>[src:N]</code> citations. The sources rail on the right highlights the chunks the model actually used and dims the ones that were retrieved but irrelevant. Powered by hybrid FTS5 + embedding retrieval over your own SQLite.<br><img src="docs/screenshots/02-chat.png" alt="RAG chat with inline citations"></td>
 </tr>
 <tr>
-<td width="50%"><strong>Collection — list view</strong><br>Favicon + LLM summary + tags + a single big hero image per row.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
+<td width="50%"><strong>Collection — list view</strong><br>Favicon + LLM summary + tags + a single big hero image per row. Sidebar leads with All collections + Ask, Collections is the visual anchor with a primary <code>+ Add</code> pill.<br><img src="docs/screenshots/03-collection.png" alt="Collection list view"></td>
 <td width="50%"><strong>Reader drawer</strong><br>Slide-in preview with size / width / theme controls + a TL;DR card.<br><img src="docs/screenshots/04-drawer.png" alt="Reader drawer"></td>
+</tr>
+<tr>
+<td width="50%"><strong>Web preview — proxied</strong><br>Same-origin proxy strips <code>X-Frame-Options</code>, injects a <code>&lt;base&gt;</code>, and disables JS by default so the SSR'd first paint stays put. Pages other readers can't embed render here, fully styled.<br><img src="docs/screenshots/08-web-proxy.png" alt="Web preview proxy with full styling"></td>
+<td width="50%"><strong>Topbar overflow menu</strong><br>Tags, Duplicates, Broken links, Bookmarklet, Backup, Highlights export, Settings, plus theme + previews toggles — all behind one <code>⋯</code> so the sidebar stays focused on Collections.<br><img src="docs/screenshots/09-overflow-menu.png" alt="Topbar overflow menu with Library, Tools, Preferences"></td>
 </tr>
 <tr>
 <td width="50%"><strong>Type filter</strong><br>Per-collection chips: article / video / image / audio / document / book.<br><img src="docs/screenshots/07-types.png" alt="Type filter chips"></td>

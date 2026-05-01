@@ -793,7 +793,7 @@ func TestDrawerTabs_eachTabRendersStandalone(t *testing.T) {
 	}{
 		{"edit", []string{"drawer-edit", "Note", "Collection", "Tags", "Delete"}},
 		{"preview", []string{"drawer-toolbar", "drawer-article"}},
-		{"web", []string{"drawer-web", "iframe", "X-Frame-Options"}},
+		{"web", []string{"drawer-web", "iframe", "/proxy/web"}},
 		{"archive", []string{"Wayback Machine", "All snapshots", "web.archive.org"}},
 	}
 	for _, c := range cases {

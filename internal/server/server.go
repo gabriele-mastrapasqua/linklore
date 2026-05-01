@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /search/live", s.handleSearchLive)
 	mux.HandleFunc("GET /search/suggest", s.handleSearchSuggest)
 
+	mux.HandleFunc("GET /proxy/web", s.handleProxyWeb)
 	mux.HandleFunc("GET /worker/status", s.handleWorkerStatus)
 	mux.HandleFunc("GET /healthz/llm", s.handleLLMHealth)
 	mux.HandleFunc("GET /events", s.handleEvents)

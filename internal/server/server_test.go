@@ -834,8 +834,8 @@ func TestSidebar_listsActiveCollection(t *testing.T) {
 
 	// Home → "All" must be active, neither collection slug.
 	_, body := get(t, ts, "/")
-	if !strings.Contains(body, `class="sidebar-link active"`) {
-		t.Errorf("home should have an active sidebar link")
+	if !strings.Contains(body, `sidebar-link-all`) || !strings.Contains(body, `active`) {
+		t.Errorf("home should have an active sidebar All-collections link")
 	}
 	if !strings.Contains(body, "All collections") {
 		t.Errorf("All entry missing from sidebar")

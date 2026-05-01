@@ -15,7 +15,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=28">
+	<link rel="stylesheet" href="/static/app.css?v=36">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -69,15 +69,34 @@
 			<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
 			<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
 			<a href="/chat" class="ai-link" title="chat with your library">✦ chat</a>
-			<button class="pref-btn" hx-post="/preferences/previews" hx-swap="none" title="toggle image previews">
-				previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
-			</button>
-			<form hx-post="/preferences/theme" hx-swap="none" style="display:inline;margin:0">
-				<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
-				<button class="pref-btn" type="submit" title="cycle theme: auto → light → dark">
-					theme: <strong>{{.Theme}}</strong>
-				</button>
-			</form>
+			<a href="/" class="topbar-add-btn" title="Add a bookmark or collection">
+				<span class="topbar-add-plus" aria-hidden="true">+</span><span>Add</span>
+			</a>
+			<details class="topbar-more">
+				<summary class="topbar-more-btn" title="More">⋯</summary>
+				<div class="topbar-more-menu">
+					<div class="topbar-more-section">Library</div>
+					<a href="/tags" class="topbar-more-item"><span class="topbar-more-glyph">#</span>Tags</a>
+					<a href="/duplicates" class="topbar-more-item"><span class="topbar-more-glyph">⧉</span>Duplicates</a>
+					<a href="/checks" class="topbar-more-item"><span class="topbar-more-glyph">⚠</span>Broken links</a>
+					<div class="topbar-more-section">Tools</div>
+					<a href="/bookmarklet" class="topbar-more-item"><span class="topbar-more-glyph">📎</span>Bookmarklet</a>
+					<a href="/backup.zip" class="topbar-more-item"><span class="topbar-more-glyph">⬇</span>Backup</a>
+					<a href="/highlights.md" class="topbar-more-item"><span class="topbar-more-glyph">✦</span>Highlights export</a>
+					<a href="/settings" class="topbar-more-item"><span class="topbar-more-glyph">⚙</span>Settings</a>
+					<div class="topbar-more-section">Preferences</div>
+					<button class="topbar-more-item" type="button"
+					        hx-post="/preferences/previews" hx-swap="none">
+						<span class="topbar-more-glyph">▦</span>previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
+					</button>
+					<form hx-post="/preferences/theme" hx-swap="none" style="margin:0">
+						<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
+						<button class="topbar-more-item" type="submit">
+							<span class="topbar-more-glyph">◐</span>theme: <strong>{{.Theme}}</strong>
+						</button>
+					</form>
+				</div>
+			</details>
 		</div>
 	</nav>
 </header>

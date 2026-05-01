@@ -2,18 +2,22 @@
 <div class="drawer-web">
 	<div class="drawer-web-bar muted">
 		<span class="drawer-url">{{.Link.URL}}</span>
+		<label class="drawer-web-jstoggle" title="Run the proxied page's JS. Off (default) shows the SSR'd first paint without SPA routers redirecting away.">
+			<input type="checkbox" id="drawer-web-js" onchange="linklore.toggleProxyJS(this.checked, '{{.Link.URL}}')">
+			<span>JS</span>
+		</label>
 		<a class="seg-opt" href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" title="open original">↗ open in new tab</a>
 	</div>
-	<iframe class="drawer-web-frame"
-	        src="{{.Link.URL}}"
+	<iframe id="drawer-web-frame" class="drawer-web-frame"
+	        src="/proxy/web?u={{.Link.URL | urlquery}}"
 	        title="{{if .Link.Title}}{{.Link.Title}}{{else}}{{.Link.URL}}{{end}}"
 	        loading="lazy"
-	        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+	        sandbox="allow-scripts allow-popups allow-forms"
 	        referrerpolicy="no-referrer">
 	</iframe>
 	<p class="drawer-web-note muted">
-		Some sites block embedding via <code>X-Frame-Options</code> / <code>frame-ancestors</code>.
-		If the page stays blank, use <strong>↗ open in new tab</strong>.
+		Proxied with JS disabled by default — you see the page's first paint, no SPA redirects.
+		Toggle <strong>JS</strong> if a site needs scripts to render.
 	</p>
 </div>
 {{end}}

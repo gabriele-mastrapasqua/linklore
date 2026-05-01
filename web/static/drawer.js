@@ -79,6 +79,16 @@
 		}, 220);
 	};
 
+	// Web tab JS toggle: swap the iframe src to opt scripts in/out for
+	// the proxied page. Off (default) shows the SSR'd first paint;
+	// on lets the page run JS so SPAs hydrate.
+	ns.toggleProxyJS = function (on, url) {
+		var f = document.getElementById('drawer-web-frame');
+		if (!f) return;
+		var u = '/proxy/web?u=' + encodeURIComponent(url) + (on ? '&nojs=0' : '');
+		f.src = u;
+	};
+
 	ns.drawerSize  = function (v) { drawer().setAttribute('data-size',  v);  localStorage.setItem(KEY_SIZE,  v); applySaved(); };
 	ns.drawerWidth = function (v) { drawer().setAttribute('data-width', v); localStorage.setItem(KEY_WIDTH, v); applySaved(); };
 	ns.drawerTheme = function (v) { drawer().setAttribute('data-theme', v); localStorage.setItem(KEY_THEME, v); applySaved(); };

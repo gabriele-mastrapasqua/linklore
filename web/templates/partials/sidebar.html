@@ -1,30 +1,34 @@
 {{define "sidebar"}}
 <aside class="sidebar">
-	<div class="sidebar-section">
-		<div class="sidebar-title-row">
-			<span class="sidebar-title">Library</span>
-		</div>
-		<nav class="sidebar-nav">
-			<a href="/" class="sidebar-link {{if eq .ActiveSlug ""}}active{{end}}">
-				<span class="sidebar-glyph">▦</span>
-				<span class="sidebar-name">All collections</span>
-			</a>
-			<a href="/tags" class="sidebar-link">
-				<span class="sidebar-glyph">#</span>
-				<span class="sidebar-name">Tags</span>
-			</a>
-			<a href="/duplicates" class="sidebar-link">
-				<span class="sidebar-glyph">⧉</span>
-				<span class="sidebar-name">Duplicates</span>
-			</a>
-			<a href="/checks" class="sidebar-link" title="dead-link checker">
-				<span class="sidebar-glyph">⚠</span>
-				<span class="sidebar-name">Broken links</span>
-			</a>
-			<a href="/chat" class="sidebar-link ai-link">
-				<span class="sidebar-glyph">✦</span>
-				<span class="sidebar-name">Ask</span>
-			</a>
+	<nav class="sidebar-nav sidebar-nav-top">
+		<a href="/" class="sidebar-link sidebar-link-all {{if eq .ActiveSlug ""}}active{{end}}">
+			<span class="sidebar-glyph sidebar-glyph-all" aria-hidden="true">▦</span>
+			<span class="sidebar-name">All collections</span>
+		</a>
+		<a href="/chat" class="sidebar-link ai-link">
+			<span class="sidebar-glyph">✦</span>
+			<span class="sidebar-name">Ask</span>
+		</a>
+	</nav>
+
+	<div class="sidebar-section sidebar-section-collections">
+		<details class="sidebar-new-collection">
+			<summary class="sidebar-title-row">
+				<span class="sidebar-title">Collections</span>
+				<span class="sidebar-add" title="new collection">+ Add</span>
+			</summary>
+			<form class="sidebar-new-collection-form" hx-post="/collections"
+			      hx-swap="none"
+			      hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}">
+				<input type="text" name="name" placeholder="New collection name…" required autocomplete="off">
+			</form>
+		</details>
+		<nav id="sidebar-collections" class="sidebar-nav sidebar-nav-collections">
+			{{range .Sidebar}}
+			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}
+			{{else}}
+			<div class="muted" style="padding:.4rem .6rem;font-size:.8rem">none yet</div>
+			{{end}}
 		</nav>
 	</div>
 
@@ -61,27 +65,6 @@
 		</nav>
 	</div>
 
-	<details class="sidebar-section sidebar-section-collections sidebar-new-collection">
-		<summary class="sidebar-title-row">
-			<span class="sidebar-title">Collections</span>
-			<span class="sidebar-add" title="new collection">+</span>
-		</summary>
-		<form class="sidebar-new-collection-form" hx-post="/collections"
-		      hx-swap="none"
-		      hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}">
-			<input type="text" name="name" placeholder="New collection name…" required autocomplete="off">
-		</form>
-	</details>
-	<div class="sidebar-section sidebar-section-collections">
-		<nav id="sidebar-collections" class="sidebar-nav sidebar-nav-scroll">
-			{{range .Sidebar}}
-			{{template "sidebar_collection_entry" (dict "Cs" . "ActiveSlug" $.ActiveSlug)}}
-			{{else}}
-			<div class="muted" style="padding:.4rem .6rem;font-size:.8rem">none yet</div>
-			{{end}}
-		</nav>
-	</div>
-
 	{{if .ActiveTags}}
 	<div class="sidebar-section sidebar-section-tags">
 		<div class="sidebar-title-row">
@@ -98,29 +81,5 @@
 		</nav>
 	</div>
 	{{end}}
-
-	<div class="sidebar-section sidebar-section-tools">
-		<div class="sidebar-title-row">
-			<span class="sidebar-title">Tools</span>
-		</div>
-		<nav class="sidebar-nav">
-			<a href="/bookmarklet" class="sidebar-link">
-				<span class="sidebar-glyph">📎</span>
-				<span class="sidebar-name">Bookmarklet</span>
-			</a>
-			<a href="/backup.zip" class="sidebar-link" title="download a zip with every collection's links + the SQLite file">
-				<span class="sidebar-glyph">⬇</span>
-				<span class="sidebar-name">Backup</span>
-			</a>
-			<a href="/highlights.md" class="sidebar-link" title="markdown export of every highlight">
-				<span class="sidebar-glyph">✦</span>
-				<span class="sidebar-name">Highlights export</span>
-			</a>
-			<a href="/settings" class="sidebar-link">
-				<span class="sidebar-glyph">⚙</span>
-				<span class="sidebar-name">Settings</span>
-			</a>
-		</nav>
-	</div>
 </aside>
 {{end}}
