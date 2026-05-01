@@ -113,6 +113,25 @@
 		<input type="hidden" name="ids" class="bulk-ids">
 		<button type="submit" class="danger">Delete</button>
 	</form>
+	<form class="inline" hx-post="/links/bulk/reminder" hx-swap="none"
+	      onsubmit="return linklore.bulkPopulate(this)" title="set the same reminder on every selected link">
+		<input type="hidden" name="ids" class="bulk-ids">
+		<select name="in" required>
+			<option value="" disabled selected>Remind in…</option>
+			<option value="1d">1 day</option>
+			<option value="3d">3 days</option>
+			<option value="1w">1 week</option>
+			<option value="1m">1 month</option>
+			<option value="3m">3 months</option>
+			<option value="6m">6 months</option>
+		</select>
+		<select name="cadence">
+			<option value="fixed">one-shot</option>
+			<option value="1w">repeat every 1w</option>
+			<option value="1m">repeat every 1m</option>
+		</select>
+		<button type="submit">🔔 Remind</button>
+	</form>
 	<button type="button" class="link-button" onclick="linklore.bulkClear()">clear</button>
 </div>
 

@@ -17,14 +17,15 @@ import (
 // The yaml file is safe to commit; .env is gitignored. The /settings
 // page writes LLM changes to .env, never to yaml.
 type Config struct {
-	Server   Server   `yaml:"server"`
-	Database Database `yaml:"database"`
-	LLM      LLM      `yaml:"-"` // env-only — see applyEnv + WriteLLMDotEnv
-	Worker   Worker   `yaml:"worker"`
-	Extract  Extract  `yaml:"extract"`
-	Chunking Chunking `yaml:"chunking"`
-	Tags     Tags     `yaml:"tags"`
-	UI       UI       `yaml:"ui"`
+	Server    Server    `yaml:"server"`
+	Database  Database  `yaml:"database"`
+	LLM       LLM       `yaml:"-"` // env-only — see applyEnv + WriteLLMDotEnv
+	Worker    Worker    `yaml:"worker"`
+	Extract   Extract   `yaml:"extract"`
+	Chunking  Chunking  `yaml:"chunking"`
+	Tags      Tags      `yaml:"tags"`
+	UI        UI        `yaml:"ui"`
+	Reminders Reminders `yaml:"reminders"`
 }
 
 type Server struct {
@@ -91,6 +92,17 @@ type UI struct {
 	ReaderWidth       string `yaml:"reader_width"`
 }
 
+// Reminders config (F4). Enabled gates the entire feature — when
+// false the bell button stays hidden and /links?due=1 returns nothing.
+// DefaultOffset is what the bell quick-action prefills when the user
+// clicks without picking a date. Accepts Go duration syntax
+// ("168h", "1w" via custom parsing, etc.). Parsing helper lives in
+// the server package to keep this struct yaml-friendly.
+type Reminders struct {
+	Enabled       bool   `yaml:"enabled"`
+	DefaultOffset string `yaml:"default_offset"`
+}
+
 // Default returns a Config populated with sensible defaults.
 // Used as the base before YAML/env overrides.
 //
@@ -126,8 +138,9 @@ func Default() Config {
 		Worker:   Worker{Concurrency: 4, EmbedBatchSize: 32, FetchTimeoutSeconds: 15},
 		Extract:  Extract{MinReadableChars: 200},
 		Chunking: Chunking{TargetTokens: 800, OverlapTokens: 100, MinTokens: 40},
-		Tags:     Tags{MaxPerLink: 5, ActiveCap: 200, ReuseDistance: 1},
-		UI:       UI{ReaderFont: "serif", ReaderWidth: "narrow"},
+		Tags:      Tags{MaxPerLink: 5, ActiveCap: 200, ReuseDistance: 1},
+		UI:        UI{ReaderFont: "serif", ReaderWidth: "narrow"},
+		Reminders: Reminders{Enabled: true, DefaultOffset: "1w"},
 	}
 }
 

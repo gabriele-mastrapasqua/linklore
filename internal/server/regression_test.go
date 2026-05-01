@@ -1087,6 +1087,87 @@ func TestSearchSuggest_matchesCollectionsAndTags(t *testing.T) {
 	}
 }
 
+// ---------- /links/{id}/reminder ----------
+
+// POST with no fields uses the configured default offset (~1w) and
+// fixed cadence. The follow-up GET on the link reads the value back.
+func TestReminder_setDefaultsToFixedOneWeek(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l, _ := st.CreateLink(ctx, col.ID, "https://example.com/p")
+
+	resp, err := ts.Client().PostForm(
+		ts.URL+fmt.Sprintf("/links/%d/reminder", l.ID), url.Values{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	got, _ := st.GetLink(ctx, l.ID)
+	if got.ReminderAt == nil {
+		t.Fatalf("reminder not persisted")
+	}
+	if got.ReminderCadence != "fixed" {
+		t.Errorf("cadence = %q, want fixed", got.ReminderCadence)
+	}
+	delta := time.Until(*got.ReminderAt)
+	if delta < 6*24*time.Hour || delta > 8*24*time.Hour {
+		t.Errorf("reminder is %.1fh from now, want ~1w", delta.Hours())
+	}
+}
+
+func TestReminder_clearViaDelete(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	l, _ := st.CreateLink(ctx, col.ID, "https://example.com/p")
+	at := time.Now().Add(7 * 24 * time.Hour)
+	_ = st.SetReminder(ctx, l.ID, &at, "fixed")
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		ts.URL+fmt.Sprintf("/links/%d/reminder", l.ID), nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	got, _ := st.GetLink(ctx, l.ID)
+	if got.ReminderAt != nil {
+		t.Errorf("reminder still set: %v", got.ReminderAt)
+	}
+}
+
+func TestReminder_dueFilterReturnsOnlyOverdue(t *testing.T) {
+	ts, st := newTestServer(t)
+	ctx := context.Background()
+	col, _ := st.CreateCollection(ctx, "c", "C", "")
+	overdue, _ := st.CreateLink(ctx, col.ID, "https://example.com/overdue")
+	future, _ := st.CreateLink(ctx, col.ID, "https://example.com/future")
+	_ = st.UpdateLinkExtraction(ctx, overdue.ID, "OverdueOne", "", "", "", "en", "")
+	_ = st.UpdateLinkExtraction(ctx, future.ID, "FutureOne", "", "", "", "en", "")
+	past := time.Now().Add(-1 * time.Hour)
+	soon := time.Now().Add(7 * 24 * time.Hour)
+	_ = st.SetReminder(ctx, overdue.ID, &past, "fixed")
+	_ = st.SetReminder(ctx, future.ID, &soon, "fixed")
+
+	code, body := get(t, ts, "/links?due=1")
+	if code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if !strings.Contains(body, "OverdueOne") {
+		t.Errorf("expected OverdueOne in /links?due=1: %s", excerpt(body, "Due", 80))
+	}
+	if strings.Contains(body, "FutureOne") {
+		t.Errorf("future reminder should not appear in due list: %q", body)
+	}
+}
+
 // ---------- /backup.zip global backup ----------
 
 // /backup.zip serves a ZIP with linklore-export.html (combined

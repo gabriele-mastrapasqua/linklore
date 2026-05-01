@@ -1005,6 +1005,59 @@ body[data-drawer="full"] .drawer { width: 100vw; max-width: none; }
 	background: var(--card); color: var(--text); font: inherit; resize: vertical;
 }
 .drawer-edit-meta { font-size: .8rem; padding-top: var(--space-2); }
+
+/* Reminder block in the Edit tab. Quick chips on top, custom picker
+   below. Currently-set reminder shows in a small banner above. */
+.drawer-reminder { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; min-width: 0; }
+.drawer-reminder-current {
+	display: flex; align-items: center; gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	background: color-mix(in srgb, var(--accent) 8%, var(--card));
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+	border-radius: var(--radius-sm); font-size: .85rem;
+}
+.reminder-bell { font-size: 1.05rem; }
+.drawer-reminder-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.drawer-reminder-quick { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.drawer-reminder-custom { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.drawer-reminder-custom input[type="date"],
+.drawer-reminder-custom select {
+	padding: .35rem .5rem;
+	border: 1px solid var(--border); border-radius: var(--radius-sm);
+	background: var(--bg); color: var(--text); font: inherit; font-size: .85rem;
+}
+
+/* Bell pip on the link row when a reminder is set. Sits next to the
+   status badge in .badges. */
+.link-row .reminder-pip {
+	display: inline-flex; align-items: center; gap: .2rem;
+	padding: .05rem .4rem;
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+	color: var(--accent);
+	border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+	border-radius: var(--radius-pill);
+	font-size: .72rem; font-weight: 600;
+}
+.link-row .reminder-pip.due { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+
+/* Top-of-page Due banner. Visible at the very top of <main> when
+   any link is past due; user can dismiss it for the session. */
+.due-banner {
+	display: flex; align-items: center; gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	background: color-mix(in srgb, var(--warn) 14%, var(--card));
+	border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
+	border-radius: var(--radius-md);
+	margin: 0 0 var(--space-3);
+	font-size: .9rem;
+}
+.due-banner strong { color: var(--warn); }
+.due-banner a { color: var(--text); font-weight: 600; text-decoration: underline; }
+.due-banner button {
+	margin-left: auto;
+	background: transparent; border: 0; color: var(--muted); cursor: pointer;
+	font-size: 1.1rem; line-height: 1;
+}
 .drawer-edit-foot {
 	display: flex; justify-content: flex-end;
 	padding-top: var(--space-3);

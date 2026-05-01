@@ -49,6 +49,11 @@
 				<span class="sidebar-glyph">⚠</span>
 				<span class="sidebar-name">Failed</span>
 			</a>
+			<a href="/links?due=1" class="sidebar-link">
+				<span class="sidebar-glyph">🔔</span>
+				<span class="sidebar-name">Due</span>
+				{{if and .DueCount (gt .DueCount 0)}}<span class="sidebar-count">{{.DueCount}}</span>{{end}}
+			</a>
 		</nav>
 	</div>
 

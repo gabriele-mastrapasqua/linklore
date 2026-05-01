@@ -104,6 +104,13 @@ func (s *Store) migrate(ctx context.Context) error {
 			{"last_check_at", "INTEGER"},
 			{"last_check_status", "TEXT"},
 			{"last_check_code", "INTEGER"},
+			// Reminder columns (F4): when a reminder is "due" we surface
+			// it in the /links?due=1 view + a top-of-page banner. The
+			// cadence column distinguishes one-shot from spaced-repetition.
+			//   reminder_at        — unix seconds; nullable. NULL = no reminder.
+			//   reminder_cadence   — "fixed" | "1d" | "3d" | "1w" | "1m" | "3m" | "6m"
+			{"reminder_at", "INTEGER"},
+			{"reminder_cadence", "TEXT"},
 		},
 		"collections": {
 			{"feed_url", "TEXT"},
@@ -167,6 +174,10 @@ type Link struct {
 	LastCheckAt     *time.Time
 	LastCheckStatus string // "" | ok | broken | timeout | dns | 5xx
 	LastCheckCode   int    // HTTP status, 0 for transport errors
+	// Reminder fields (F4). ReminderAt nil = no reminder set.
+	// ReminderCadence is one of "fixed", "1d", "3d", "1w", "1m", "3m", "6m".
+	ReminderAt      *time.Time
+	ReminderCadence string
 	FetchedAt       *time.Time
 	CreatedAt       time.Time
 }
@@ -592,6 +603,126 @@ func (s *Store) SetLinkKind(ctx context.Context, id int64, kind string) error {
 	return err
 }
 
+// SetReminder sets a reminder on a link. cadence is one of:
+//
+//	""                — alias for "fixed"
+//	"fixed"           — one-shot, clears after firing
+//	"1d|3d|1w|1m|3m|6m" — spaced repetition; on fire, the next due
+//	                    date is bumped by this interval.
+//
+// Pass at=nil to clear the reminder. The validation here is liberal —
+// the handler is the policy gate.
+func (s *Store) SetReminder(ctx context.Context, linkID int64, at *time.Time, cadence string) error {
+	if at == nil {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE links SET reminder_at = NULL, reminder_cadence = NULL WHERE id = ?`, linkID)
+		return err
+	}
+	if cadence == "" {
+		cadence = "fixed"
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE links SET reminder_at = ?, reminder_cadence = ? WHERE id = ?`,
+		at.UTC().Unix(), cadence, linkID)
+	return err
+}
+
+// ListDueLinks returns every link whose reminder_at is in the past
+// (relative to `now`) AND has a non-NULL reminder_at. Ordered by the
+// oldest-due-first so the user sees the most overdue items at the
+// top.
+func (s *Store) ListDueLinks(ctx context.Context, now time.Time, limit int) ([]Link, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, collection_id, url,
+		        COALESCE(title,''), COALESCE(description,''), COALESCE(image_url,''),
+		        COALESCE(favicon_url,''), COALESCE(extra_images,''),
+		        COALESCE(content_md,''), COALESCE(content_lang,''), COALESCE(summary,''),
+		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
+		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
+		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
+		        fetched_at, created_at
+		   FROM links
+		  WHERE reminder_at IS NOT NULL AND reminder_at <= ?
+		  ORDER BY reminder_at ASC
+		  LIMIT ?`, now.UTC().Unix(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		l, err := scanLink(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
+}
+
+// CountDueLinks returns just the number of due links — used by the
+// top-of-page banner to decide whether to render at all.
+func (s *Store) CountDueLinks(ctx context.Context, now time.Time) (int, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM links
+		  WHERE reminder_at IS NOT NULL AND reminder_at <= ?`, now.UTC().Unix())
+	var n int
+	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// BumpReminder moves a spaced-repetition reminder to its next due
+// date according to cadence. For "fixed" cadence the reminder is
+// cleared instead. Returns the new ReminderAt (or nil if cleared) so
+// the caller can echo it back to the UI.
+func (s *Store) BumpReminder(ctx context.Context, linkID int64, from time.Time) (*time.Time, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(reminder_cadence,'') FROM links WHERE id = ?`, linkID)
+	var cadence string
+	if err := row.Scan(&cadence); err != nil {
+		return nil, err
+	}
+	d, ok := CadenceDuration(cadence)
+	if !ok {
+		// "fixed" or empty → one-shot, clear it.
+		if err := s.SetReminder(ctx, linkID, nil, ""); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	next := from.Add(d)
+	if err := s.SetReminder(ctx, linkID, &next, cadence); err != nil {
+		return nil, err
+	}
+	return &next, nil
+}
+
+// CadenceDuration maps the cadence shorthand to a Go duration.
+// Returns ok=false for "fixed" or unknown values.
+func CadenceDuration(cadence string) (time.Duration, bool) {
+	switch cadence {
+	case "1d":
+		return 24 * time.Hour, true
+	case "3d":
+		return 3 * 24 * time.Hour, true
+	case "1w":
+		return 7 * 24 * time.Hour, true
+	case "1m":
+		return 30 * 24 * time.Hour, true
+	case "3m":
+		return 90 * 24 * time.Hour, true
+	case "6m":
+		return 180 * 24 * time.Hour, true
+	}
+	return 0, false
+}
+
 func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, collection_id, url,
@@ -601,6 +732,7 @@ func (s *Store) GetLink(ctx context.Context, id int64) (*Link, error) {
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
 		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
 		        fetched_at, created_at
 		 FROM links WHERE id = ?`, id)
 	return scanLink(row.Scan)
@@ -618,6 +750,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
 		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
 		        fetched_at, created_at
 		 FROM links WHERE collection_id = ?
 		 ORDER BY order_idx DESC, created_at DESC LIMIT ? OFFSET ?`,
@@ -640,7 +773,7 @@ func (s *Store) ListLinksByCollection(ctx context.Context, collectionID int64, l
 // scanLink works for both *sql.Row and *sql.Rows by accepting their Scan func.
 func scanLink(scan func(...any) error) (*Link, error) {
 	var l Link
-	var readAt, fetchedAt, lastCheckAt sql.NullInt64
+	var readAt, fetchedAt, lastCheckAt, reminderAt sql.NullInt64
 	var createdAt int64
 	var extraJSON string
 	err := scan(&l.ID, &l.CollectionID, &l.URL,
@@ -650,12 +783,17 @@ func scanLink(scan func(...any) error) (*Link, error) {
 		&l.Status, &readAt, &l.FetchError, &l.ArchivePath,
 		&l.OrderIdx, &l.Note, &l.Kind,
 		&lastCheckAt, &l.LastCheckStatus, &l.LastCheckCode,
+		&reminderAt, &l.ReminderCadence,
 		&fetchedAt, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
+	}
+	if reminderAt.Valid && reminderAt.Int64 > 0 {
+		t := time.Unix(reminderAt.Int64, 0).UTC()
+		l.ReminderAt = &t
 	}
 	if extraJSON != "" {
 		// Tolerate legacy rows that may carry junk: a malformed list just
@@ -811,6 +949,7 @@ func (s *Store) ListBrokenLinks(ctx context.Context, limit int) ([]Link, error) 
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
 		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
 		        fetched_at, created_at
 		   FROM links
 		  WHERE last_check_status IS NOT NULL
@@ -979,6 +1118,7 @@ func (s *Store) ListLinksByStatus(ctx context.Context, status string, limit int)
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
 		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
 		        fetched_at, created_at
 		   FROM links WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		status, limit)
@@ -1355,6 +1495,7 @@ func (s *Store) ListAllLinks(ctx context.Context) ([]Link, error) {
 		        status, read_at, COALESCE(fetch_error,''), COALESCE(archive_path,''),
 		        order_idx, COALESCE(note,''), COALESCE(kind,'article'),
 		        last_check_at, COALESCE(last_check_status,''), COALESCE(last_check_code,0),
+		        reminder_at, COALESCE(reminder_cadence,''),
 		        fetched_at, created_at
 		   FROM links ORDER BY created_at DESC`)
 	if err != nil {
@@ -1385,6 +1526,7 @@ func (s *Store) ListLinksByTag(ctx context.Context, slug string, limit int) ([]L
 		       l.status, l.read_at, COALESCE(l.fetch_error,''), COALESCE(l.archive_path,''),
 		       l.order_idx, COALESCE(l.note,''), COALESCE(l.kind,'article'),
 		       l.last_check_at, COALESCE(l.last_check_status,''), COALESCE(l.last_check_code,0),
+		       l.reminder_at, COALESCE(l.reminder_cadence,''),
 		       l.fetched_at, l.created_at
 		  FROM links l
 		  JOIN link_tags lt ON lt.link_id = l.id

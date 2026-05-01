@@ -29,6 +29,9 @@
 			<span class="badge {{.Status}}">{{.Status}}</span>
 			{{if .ContentLang}}<span class="badge">{{.ContentLang}}</span>{{end}}
 			{{if .FetchError}}<span class="badge failed" title="{{.FetchError}}">error</span>{{end}}
+			{{if .ReminderAt}}
+			<span class="reminder-pip{{if reminderDue .ReminderAt}} due{{end}}" title="reminder {{.ReminderAt.Format "2 Jan 2006"}}">🔔 {{.ReminderAt.Format "2 Jan"}}</span>
+			{{end}}
 		</div>
 		{{if .ExtraImages}}
 		<div class="preview preview-strip">

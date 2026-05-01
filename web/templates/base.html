@@ -15,7 +15,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=26">
+	<link rel="stylesheet" href="/static/app.css?v=27">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -84,6 +84,14 @@
 	{{if not .HideSidebar}}{{template "sidebar" .}}{{end}}
 	<main>
 		<div id="search-results"></div>
+		{{if and .DueCount (gt .DueCount 0)}}
+		<div class="due-banner" id="due-banner">
+			<span>🔔 <strong>{{.DueCount}}</strong> link{{if ne .DueCount 1}}s{{end}} due for review.</span>
+			<a href="/links?due=1">Open due list →</a>
+			<button type="button" title="dismiss for this session"
+			        onclick="document.getElementById('due-banner').remove()">×</button>
+		</div>
+		{{end}}
 		{{template "content" .}}
 	</main>
 </div>

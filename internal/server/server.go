@@ -182,6 +182,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /import", s.handleImportNetscape)
 	mux.HandleFunc("GET /c/{slug}/export.html", s.handleExportNetscape)
 	mux.HandleFunc("GET /backup.zip", s.handleBackupZip)
+	mux.HandleFunc("POST /links/{id}/reminder", s.handleSetReminder)
+	mux.HandleFunc("DELETE /links/{id}/reminder", s.handleClearReminder)
+	mux.HandleFunc("POST /links/bulk/reminder", s.handleBulkReminder)
 	mux.HandleFunc("GET /tags", s.handleTagsPage)
 	mux.HandleFunc("GET /tags/{slug}", s.handleTagDetail)
 	mux.HandleFunc("POST /tags/merge", s.handleMergeTags)
@@ -468,6 +471,140 @@ Not included: config.yaml and .env. Those are user-owned and may carry
 secrets — back them up separately if needed.
 `, stamp, time.Now().UTC().Format(time.RFC3339))
 	}
+}
+
+// validCadences is the closed set of cadence values the reminder
+// endpoints accept. "fixed" plus the spaced-repetition steps.
+var validCadences = map[string]bool{
+	"fixed": true,
+	"1d":    true, "3d": true, "1w": true,
+	"1m": true, "3m": true, "6m": true,
+}
+
+// parseReminderForm reads "at" (RFC3339 or YYYY-MM-DD) + "cadence"
+// from a form. When at is empty AND a "in" shorthand is given
+// ("1w", "1m", …) the date is computed as now+offset. Returns
+// (zero, "", nil) when the form means "clear the reminder".
+func (s *Server) parseReminderForm(r *http.Request) (time.Time, string, error) {
+	if err := r.ParseForm(); err != nil {
+		return time.Time{}, "", err
+	}
+	cadence := strings.TrimSpace(r.PostForm.Get("cadence"))
+	if cadence == "" {
+		cadence = "fixed"
+	}
+	if !validCadences[cadence] {
+		return time.Time{}, "", fmt.Errorf("invalid cadence %q", cadence)
+	}
+	at := strings.TrimSpace(r.PostForm.Get("at"))
+	in := strings.TrimSpace(r.PostForm.Get("in"))
+	now := time.Now().UTC()
+	if at != "" {
+		// Try the two formats the picker emits.
+		if t, err := time.Parse(time.RFC3339, at); err == nil {
+			return t, cadence, nil
+		}
+		if t, err := time.Parse("2006-01-02", at); err == nil {
+			return t, cadence, nil
+		}
+		return time.Time{}, "", fmt.Errorf("unrecognised date %q", at)
+	}
+	if in != "" {
+		d, ok := storage.CadenceDuration(in)
+		if !ok {
+			return time.Time{}, "", fmt.Errorf("invalid in= %q", in)
+		}
+		return now.Add(d), cadence, nil
+	}
+	// Neither at nor in → use the configured default offset.
+	def := s.cfg.Reminders.DefaultOffset
+	if def == "" {
+		def = "1w"
+	}
+	d, ok := storage.CadenceDuration(def)
+	if !ok {
+		// fall back to one week
+		d = 7 * 24 * time.Hour
+	}
+	return now.Add(d), cadence, nil
+}
+
+// handleSetReminder POST /links/{id}/reminder. Body fields:
+//
+//	at=YYYY-MM-DD or RFC3339   — explicit date; takes precedence over in=
+//	in=1d|3d|1w|1m|3m|6m       — relative offset from now
+//	cadence=fixed|1d|...|6m    — fire pattern (default fixed)
+//
+// Empty body falls back to (now + Reminders.DefaultOffset, fixed).
+func (s *Server) handleSetReminder(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Reminders.Enabled {
+		http.Error(w, "reminders disabled in config", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	at, cadence, err := s.parseReminderForm(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetReminder(r.Context(), id, &at, cadence); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Echo the freshly-saved drawer Edit body so the bell flips state
+	// without a full reload. Reuses the existing tab fragment.
+	r.SetPathValue("tab", "edit")
+	s.handleDrawerTab(w, r)
+}
+
+// handleClearReminder DELETE /links/{id}/reminder.
+func (s *Server) handleClearReminder(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetReminder(r.Context(), id, nil, ""); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	r.SetPathValue("tab", "edit")
+	s.handleDrawerTab(w, r)
+}
+
+// handleBulkReminder POST /links/bulk/reminder. Form: ids=1,2,3 +
+// the same fields as handleSetReminder. Sets the same reminder on
+// every selected link.
+func (s *Server) handleBulkReminder(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Reminders.Enabled {
+		http.Error(w, "reminders disabled in config", http.StatusForbidden)
+		return
+	}
+	at, cadence, err := s.parseReminderForm(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	idsRaw := strings.TrimSpace(r.PostForm.Get("ids"))
+	if idsRaw == "" {
+		http.Error(w, "no ids", http.StatusBadRequest)
+		return
+	}
+	for _, raw := range strings.Split(idsRaw, ",") {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil {
+			continue
+		}
+		if err := s.store.SetReminder(r.Context(), id, &at, cadence); err != nil {
+			log.Printf("bulk reminder %d: %v", id, err)
+		}
+	}
+	w.Header().Set("HX-Trigger", fmt.Sprintf(`{"toast":"reminder set on %d links"}`, strings.Count(idsRaw, ",")+1))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // addFileToZip copies the file at srcPath into the zip stream as
@@ -1141,11 +1278,12 @@ func (s *Server) drawerContext(w http.ResponseWriter, r *http.Request) (*storage
 	linkTags, _ := s.store.ListTagsByLink(r.Context(), id)
 	allCollections, _ := s.store.ListCollections(r.Context())
 	return link, map[string]any{
-		"Link":           link,
-		"Collection":     col,
-		"Tags":           linkTags,
-		"AllCollections": allCollections,
-		"LLMOn":          s.cfg.LLM.Backend != llm.BackendNone,
+		"Link":             link,
+		"Collection":       col,
+		"Tags":             linkTags,
+		"AllCollections":   allCollections,
+		"LLMOn":            s.cfg.LLM.Backend != llm.BackendNone,
+		"RemindersEnabled": s.cfg.Reminders.Enabled,
 	}, true
 }
 
@@ -2109,14 +2247,33 @@ func (s *Server) handleWorkerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGlobalLinks renders a cross-collection list with optional
-// filters (kind, notags, status). Backs the sidebar Filters section
-// — gives the user a "show me every Article in the library" view
-// without forcing them into a search.
+// filters (kind, notags, status, due). Backs the sidebar Filters
+// section — gives the user a "show me every Article in the library"
+// view without forcing them into a search.
 func (s *Server) handleGlobalLinks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	kindFilter := strings.TrimSpace(q.Get("kind"))
 	notagsOnly := q.Get("notags") == "1" || q.Get("notags") == "true"
 	statusFilter := strings.TrimSpace(q.Get("status"))
+	dueOnly := q.Get("due") == "1" || q.Get("due") == "true"
+
+	// Due-only takes a fast path through ListDueLinks so we don't
+	// scan every link in the DB.
+	if dueOnly {
+		links, err := s.store.ListDueLinks(r.Context(), time.Now(), 500)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.renderPageRq(w, r, "links_global", map[string]any{
+			"Title":   "Due reminders",
+			"Heading": "Due reminders",
+			"Links":   links,
+			"Total":   len(links),
+			"Due":     true,
+		})
+		return
+	}
 
 	all, err := s.store.ListAllLinks(r.Context())
 	if err != nil {
@@ -2495,6 +2652,16 @@ func (s *Server) renderPageRq(w http.ResponseWriter, r *http.Request, name strin
 					data["ActiveTags"] = tags
 					data["ActiveCollectionName"] = col.Name
 				}
+			}
+		}
+	}
+	// Due-reminder count for the top-of-page banner. Cheap COUNT(*) — the
+	// Reminders.Enabled gate keeps the query out of the path entirely
+	// when reminders are turned off.
+	if s.cfg.Reminders.Enabled {
+		if _, hide := data["HideSidebar"]; !hide {
+			if n, err := s.store.CountDueLinks(r.Context(), time.Now()); err == nil {
+				data["DueCount"] = n
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"time"
 
 	"github.com/gabriele-mastrapasqua/linklore/web"
 )
@@ -29,6 +30,14 @@ func funcMap() template.FuncMap {
 		},
 		"list": func(values ...any) []any { return values },
 		"add":  func(a, b int) int { return a + b },
+		// reminderDue: true when the reminder timestamp is at or past
+		// "now". Used by link_row to flag overdue reminders in red.
+		"reminderDue": func(t *time.Time) bool {
+			if t == nil {
+				return false
+			}
+			return !t.After(time.Now())
+		},
 	}
 }
 

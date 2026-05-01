@@ -57,6 +57,48 @@
 		<a href="{{.Link.URL}}" target="_blank" rel="noopener noreferrer" class="drawer-url">{{.Link.URL}}</a>
 	</div>
 
+	{{if .RemindersEnabled}}
+	<div class="drawer-edit-row">
+		<span class="drawer-edit-label">Remind me</span>
+		<div class="drawer-reminder">
+			{{if .Link.ReminderAt}}
+			<div class="drawer-reminder-current">
+				<span class="reminder-bell">🔔</span>
+				<span>{{.Link.ReminderAt.Format "2 Jan 2006"}}</span>
+				{{if and .Link.ReminderCadence (ne .Link.ReminderCadence "fixed")}}
+				<span class="muted">· every {{.Link.ReminderCadence}}</span>
+				{{end}}
+				<button type="button" class="seg-opt" title="clear reminder"
+				        hx-delete="/links/{{.Link.ID}}/reminder"
+				        hx-target="#drawer-tab-body" hx-swap="innerHTML">clear</button>
+			</div>
+			{{end}}
+			<form class="drawer-reminder-form"
+			      hx-post="/links/{{.Link.ID}}/reminder"
+			      hx-target="#drawer-tab-body" hx-swap="innerHTML">
+				<div class="drawer-reminder-quick">
+					<button type="submit" name="in" value="1d" class="seg-opt">1d</button>
+					<button type="submit" name="in" value="3d" class="seg-opt">3d</button>
+					<button type="submit" name="in" value="1w" class="seg-opt">1w</button>
+					<button type="submit" name="in" value="1m" class="seg-opt">1m</button>
+					<button type="submit" name="in" value="3m" class="seg-opt">3m</button>
+					<button type="submit" name="in" value="6m" class="seg-opt">6m</button>
+				</div>
+				<div class="drawer-reminder-custom">
+					<input type="date" name="at">
+					<select name="cadence" title="cadence">
+						<option value="fixed">one-shot</option>
+						<option value="1w">every 1w</option>
+						<option value="1m">every 1m</option>
+						<option value="3m">every 3m</option>
+					</select>
+					<button type="submit" class="seg-opt">Set</button>
+				</div>
+			</form>
+		</div>
+	</div>
+	{{end}}
+
 	<div class="drawer-edit-meta muted">
 		{{if .Link.FetchedAt}}Saved {{.Link.FetchedAt.Format "2 Jan 2006, 15:04"}}{{end}}
 		{{if .Link.ContentLang}} · {{.Link.ContentLang}}{{end}}
