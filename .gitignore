@@ -32,6 +32,12 @@ PLAN-*.md
 !docs/screenshots/*.png
 !docs/screenshots/*.jpeg
 !docs/screenshots/*.jpg
+!assets/*.png
+!assets/*.jpeg
+!assets/*.jpg
+!web/static/*.png
+!web/static/*.jpeg
+!web/static/*.jpg
 
 # Reference screenshots from third-party apps (raindrop.io etc.)
 # kept locally as visual references for UX work — never published.

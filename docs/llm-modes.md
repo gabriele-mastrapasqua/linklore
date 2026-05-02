@@ -5,9 +5,9 @@ BM25 search, tags, drag-and-drop, highlights, reminders) all run with
 no LLM at all. When the LLM is disabled the UI degrades gracefully:
 banners instead of broken pages.
 
-The `LINKLORE_LLM_BACKEND` env var (or the legacy `llm.backend` yaml
-field) picks one of three values. **Pick `openai` unless you have a
-specific reason not to.**
+The `LINKLORE_LLM_BACKEND` env var picks the backend. **Use `openai`
+for any local LLM — it covers every common server through the
+OpenAI-compatible `/v1` API.** `none` opts out entirely.
 
 ## The backends
 
@@ -30,37 +30,41 @@ common local LLM server, because they all expose the same
 
 | Server         | Typical `OPENAI_BASE_URL`             |
 |----------------|---------------------------------------|
-| Ollama (`/v1`) | `http://localhost:11434/v1`           |
 | llama.cpp      | `http://localhost:8080/v1`            |
 | vLLM           | `http://localhost:8000/v1`            |
 | LM Studio      | `http://localhost:1234/v1`            |
-| LiteLLM proxy  | `http://localhost:4000/v1`            |
 | OpenAI itself  | `https://api.openai.com/v1`           |
 
 Env vars:
 
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY` (use any non-empty string for local servers that
-  don't auth — `ollama`, `lm-studio`, etc.)
+  don't auth)
 - `LINKLORE_LLM_MODEL` — the chat model name your server advertises
 - `LINKLORE_LLM_EMBED_MODEL` — the embedding model
 
-Switching servers means changing one URL. The old `llm.backend=litellm`
-value is accepted as a deprecated alias and silently rewritten to
-`openai` at startup; `LITELLM_BASE_URL` / `LITELLM_API_KEY` work as
-aliases of the canonical `OPENAI_*` names.
+Switching servers means changing one URL.
 
-### `ollama` — legacy native API
+<details>
+<summary>Using Ollama? Two options.</summary>
 
-This backend uses Ollama's **native** `/api/generate`, `/api/embed`,
-`/api/tags` endpoints — _not_ the OpenAI-compatible `/v1/...` path.
-It exists for backward compatibility and for the rare case where you
-want native Ollama options that aren't surfaced over `/v1`.
+The recommended path is **`openai`** — Ollama exposes an
+OpenAI-compatible endpoint at `/v1`, so the linklore code path is
+identical to every other server:
 
-For most users **prefer `openai` with `OPENAI_BASE_URL=http://localhost:11434/v1`**
-— same daemon, less divergence in linklore code.
+```ini
+LINKLORE_LLM_BACKEND=openai
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
+```
 
-Env vars: `OLLAMA_HOST`, `LINKLORE_LLM_MODEL`, `LINKLORE_LLM_EMBED_MODEL`.
+A separate `LINKLORE_LLM_BACKEND=ollama` exists that uses Ollama's
+native `/api/generate`, `/api/embed`, `/api/tags` endpoints. It's only
+useful if you need a flag the `/v1` shim doesn't surface — otherwise
+prefer `openai`. Env vars: `OLLAMA_HOST`, `LINKLORE_LLM_MODEL`,
+`LINKLORE_LLM_EMBED_MODEL`.
+
+</details>
 
 ## Where the LLM is called
 
@@ -78,8 +82,8 @@ Env vars: `OLLAMA_HOST`, `LINKLORE_LLM_MODEL`, `LINKLORE_LLM_EMBED_MODEL`.
 - `GET /worker/status` — background-task status; SSE-pushed every 5 s.
 
 `worker.LLMHealth()` caches the last result and the server's
-`llmConfigHint()` produces a backend-specific "how to enable" string
-(OPENAI_* vs OLLAMA_HOST).
+`llmConfigHint()` produces a "how to enable" string for the configured
+backend.
 
 ## Switching backends
 
@@ -97,8 +101,7 @@ the dim in the BLOB and rejects mismatches.
   - `internal/llm/litellm/` — the OpenAI-compatible client (used for
     `backend=openai`). The package keeps its historical name; only
     the user-facing config value changed.
-  - `internal/llm/ollama/` — Ollama native API client.
+  - `internal/llm/ollama/` — Ollama native API client (legacy).
   - `internal/llm/fake/` — test fake.
-- Config: `internal/config/config.go` — `canonicaliseLLM` resolves
-  `litellm` → `openai` and mirrors `LiteLLM` ↔ `OpenAI` structs.
+- Config: `internal/config/config.go`.
 - Health probe: `internal/worker/health.go`.

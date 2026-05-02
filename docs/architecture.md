@@ -15,7 +15,7 @@ internal/
   extract/           HTTP fetch + readability + html->md
   feed/              outbound Atom export per collection
   feedimport/        gofeed-based RSS/Atom importer + auto-discover
-  llm/               Backend interface: ollama, litellm, fake
+  llm/               Backend interface: openai (canonical), ollama (legacy native), fake
   netscape/          Netscape Bookmark File reader/writer
   reader/            content_md -> sanitised HTML
   search/            FTS5 + cosine hybrid ranking
