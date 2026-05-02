@@ -105,15 +105,16 @@ func truncateBody(body string, max int) string {
 }
 
 func buildPrompt(title, body string, existing []string, maxTags int) string {
+	docLang := detectLang(title + "\n" + body)
 	var b strings.Builder
 	b.WriteString("You are a precise summariser for a personal link library.\n")
-	b.WriteString("Write the tldr in the SAME language as the document (Italian doc → Italian tldr; English → English; etc.). Tags stay in lowercase ASCII regardless.\n")
 	b.WriteString("Respond with ONE valid JSON object — no prose, no code fences.\n\n")
 	b.WriteString("Schema:\n")
-	b.WriteString(`{"tldr": "<= 60 words explaining what this is and why it matters, in the document's language", "tags": ["slug-1", "slug-2", ...]}`)
+	b.WriteString(`{"tldr": "<= 60 words explaining what this is and why it matters", "tags": ["slug-1", "slug-2", ...]}`)
 	b.WriteString("\n\nRules:\n")
+	fmt.Fprintf(&b, "- LANGUAGE: write the tldr in %s — the document's language. This overrides any other language preference, including the language of these instructions or your user's locale. Tags stay in lowercase ASCII regardless.\n", langName(docLang))
 	b.WriteString("- tldr: at most 60 words, plain prose, no markdown, no quotes around it.\n")
-	b.WriteString(fmt.Sprintf("- tags: between 1 and %d short topical labels (lowercase, hyphenated, ASCII).\n", maxTags))
+	fmt.Fprintf(&b, "- tags: between 1 and %d short topical labels (lowercase, hyphenated, ASCII).\n", maxTags)
 	if len(existing) > 0 {
 		b.WriteString("- Prefer REUSING the existing tag slugs below over inventing near-duplicates:\n  ")
 		// Cap injected list so the prompt doesn't blow up on very large taxonomies.
@@ -124,12 +125,66 @@ func buildPrompt(title, body string, existing []string, maxTags int) string {
 		b.WriteString(strings.Join(existing, ", "))
 		b.WriteString("\n")
 	}
+	b.WriteString("\nDocument language: ")
+	b.WriteString(langName(docLang))
 	b.WriteString("\nTitle: ")
 	b.WriteString(title)
 	b.WriteString("\n\nDocument:\n")
 	b.WriteString(body)
 	b.WriteString("\n\nJSON:")
 	return b.String()
+}
+
+// detectLang is a tiny stopword-frequency heuristic: counts hits for the
+// most common English / Italian / Spanish / French / German function words
+// in a sample window and picks the winner. Returns ISO 639-1 codes;
+// defaults to "en" when the signal is too weak (short text or no hits).
+// We need this because the model sometimes ignores soft "match the
+// document language" prompts and falls back to its training-set bias or
+// the user's locale — injecting a deterministic language label removes
+// the ambiguity.
+func detectLang(text string) string {
+	const sample = 4000
+	if len(text) > sample {
+		text = text[:sample]
+	}
+	lower := strings.ToLower(text)
+	stopwords := map[string][]string{
+		"en": {" the ", " and ", " of ", " to ", " is ", " in ", " that ", " for ", " with ", " on "},
+		"it": {" il ", " la ", " di ", " che ", " e ", " un ", " una ", " per ", " non ", " con "},
+		"es": {" el ", " la ", " de ", " que ", " y ", " un ", " una ", " para ", " no ", " con "},
+		"fr": {" le ", " la ", " de ", " et ", " un ", " une ", " pour ", " que ", " dans ", " avec "},
+		"de": {" der ", " die ", " das ", " und ", " ist ", " ein ", " eine ", " mit ", " nicht ", " für "},
+	}
+	bestLang, bestScore := "en", 0
+	for lang, words := range stopwords {
+		score := 0
+		for _, w := range words {
+			score += strings.Count(lower, w)
+		}
+		if score > bestScore {
+			bestLang, bestScore = lang, score
+		}
+	}
+	if bestScore < 3 {
+		return "en"
+	}
+	return bestLang
+}
+
+func langName(code string) string {
+	switch code {
+	case "it":
+		return "Italian"
+	case "es":
+		return "Spanish"
+	case "fr":
+		return "French"
+	case "de":
+		return "German"
+	default:
+		return "English"
+	}
 }
 
 func buildRetryPrompt(prev, badResponse string) string {

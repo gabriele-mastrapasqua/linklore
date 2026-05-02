@@ -113,6 +113,27 @@ func TestSummarize_capPerLinkApplied(t *testing.T) {
 	}
 }
 
+func TestBuildPrompt_languageHint(t *testing.T) {
+	cases := []struct {
+		name, body, wantLang string
+	}{
+		{"english", "The quick brown fox jumps over the lazy dog and the cat is on the mat with the bird in the tree.", "English"},
+		{"italian", "Il gatto è sul tavolo e la finestra è aperta. Una giornata di sole, con un libro per leggere e non dormire.", "Italian"},
+		{"short noisy → defaults to english", "x y z", "English"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := buildPrompt("title", tc.body, nil, 5)
+			if !strings.Contains(p, "Document language: "+tc.wantLang) {
+				t.Errorf("missing 'Document language: %s' in prompt:\n%s", tc.wantLang, p)
+			}
+			if !strings.Contains(p, "LANGUAGE: write the tldr in "+tc.wantLang) {
+				t.Errorf("missing LANGUAGE rule for %s in prompt", tc.wantLang)
+			}
+		})
+	}
+}
+
 func TestSummarize_existingTagsInjectedInPrompt(t *testing.T) {
 	rec := &recordingBackend{out: `{"tldr":"x","tags":[]}`}
 	s := New(rec, Default())
