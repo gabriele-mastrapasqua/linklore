@@ -5,7 +5,6 @@
 	<title>{{.Title}} · linklore</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="icon" type="image/png" sizes="512x512" href="/static/favicon-512.png">
-	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 	<link rel="apple-touch-icon" href="/static/favicon-512.png">
 	<meta name="description" content="Linklore — local-first bookmark manager. Your library, not theirs.">
 	<meta property="og:title" content="linklore — bookmarks you actually own">
@@ -16,7 +15,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/app.css?v=36">
+	<link rel="stylesheet" href="/static/app.css?v=41">
 	<script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 	<script src="/static/dnd.js" defer></script>
 	<script src="/static/events.js" defer></script>
@@ -37,16 +36,7 @@
 	{{if not .HideSidebar}}<label class="menu-btn" for="sidebar-toggle" aria-label="Open menu" title="Menu"></label>{{end}}
 	<h1>
 		<a href="/" class="brand" title="Bookmarks you actually own">
-			<svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-				<defs>
-					<linearGradient id="bm" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0%" stop-color="#7c3aed"/>
-						<stop offset="100%" stop-color="#2563eb"/>
-					</linearGradient>
-				</defs>
-				<path d="M16 3 C 9 13, 5 18, 5 22 a11 11 0 0 0 22 0 c 0 -4 -4 -9 -11 -19 z" fill="url(#bm)"/>
-				<path d="M14 14 v8 h6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-			</svg>
+			<img class="brand-mark" src="/static/favicon-512.png" alt="" width="512" height="512" decoding="async">
 			<span class="brand-word">linklore</span>
 		</a>
 	</h1>
@@ -67,6 +57,18 @@
 	</div>
 	<nav class="topbar-nav">
 		<div class="topbar-nav-side">
+			<button class="pref-btn" type="button"
+			        title="Toggle image previews"
+			        hx-post="/preferences/previews" hx-swap="none">
+				previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
+			</button>
+			<form hx-post="/preferences/theme" hx-swap="none" style="margin:0">
+				<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
+				<button class="pref-btn" type="submit" title="Cycle theme: auto -> light -> dark">
+					theme: <strong>{{.Theme}}</strong>
+				</button>
+			</form>
+			<span class="topbar-divider" aria-hidden="true"></span>
 			<span id="worker-status" hx-get="/worker/status" hx-trigger="load, every 5s" hx-swap="innerHTML"></span>
 			<span id="llm-status" hx-get="/healthz/llm" hx-trigger="load, every 30s" hx-swap="innerHTML"></span>
 			<a href="/chat" class="ai-link" title="chat with your library">✦ chat</a>
@@ -85,17 +87,6 @@
 					<a href="/backup.zip" class="topbar-more-item"><span class="topbar-more-glyph">⬇</span>Backup</a>
 					<a href="/highlights.md" class="topbar-more-item"><span class="topbar-more-glyph">✦</span>Highlights export</a>
 					<a href="/settings" class="topbar-more-item"><span class="topbar-more-glyph">⚙</span>Settings</a>
-					<div class="topbar-more-section">Preferences</div>
-					<button class="topbar-more-item" type="button"
-					        hx-post="/preferences/previews" hx-swap="none">
-						<span class="topbar-more-glyph">▦</span>previews: <strong>{{if .Previews}}on{{else}}off{{end}}</strong>
-					</button>
-					<form hx-post="/preferences/theme" hx-swap="none" style="margin:0">
-						<input type="hidden" name="theme" value="{{if eq .Theme "auto"}}light{{else if eq .Theme "light"}}dark{{else}}auto{{end}}">
-						<button class="topbar-more-item" type="submit">
-							<span class="topbar-more-glyph">◐</span>theme: <strong>{{.Theme}}</strong>
-						</button>
-					</form>
 				</div>
 			</details>
 		</div>

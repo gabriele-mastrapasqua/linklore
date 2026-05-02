@@ -38,8 +38,10 @@ common local LLM server, because they all expose the same
 Env vars:
 
 - `OPENAI_BASE_URL`
-- `OPENAI_API_KEY` (use any non-empty string for local servers that
-  don't auth)
+- `OPENAI_API_KEY` — **optional**. Leave empty / unset for local
+  servers (linklore omits the `Authorization` header). Set a real
+  `sk-...` key only for the OpenAI cloud, or for local servers
+  you've protected with auth.
 - `LINKLORE_LLM_MODEL` — the chat model name your server advertises
 - `LINKLORE_LLM_EMBED_MODEL` — the embedding model
 

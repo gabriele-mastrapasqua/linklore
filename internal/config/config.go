@@ -154,9 +154,12 @@ func Default() Config {
 	}
 }
 
-// openAIDefaultAPIKey is what we send when the user hasn't set one.
-// Many local OpenAI-compatible servers (Ollama /v1, LM Studio,
-// llama.cpp) accept any non-empty bearer token.
+// openAIDefaultAPIKey is the placeholder we substitute when the user
+// hasn't set OPENAI_API_KEY. The key is optional from linklore's side
+// (the HTTP client omits the Authorization header when empty), but
+// some local servers demand *any* non-empty bearer — this keeps those
+// happy without the user having to pick a value. Real OpenAI cloud
+// users always set a real sk-... key, which trivially overrides this.
 const openAIDefaultAPIKey = "sk-local"
 
 // Load reads a YAML config from path, falls back to defaults for missing

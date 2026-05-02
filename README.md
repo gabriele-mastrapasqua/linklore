@@ -209,12 +209,29 @@ the blocks below. **Use `openai` for any local LLM** — point
 `/v1/chat/completions` + `/v1/embeddings` shape (vLLM, llama.cpp,
 LM Studio, OpenAI itself, …). Switching servers is one URL.
 
+> **`OPENAI_API_KEY` is optional.** Leave it empty (or omit it) for
+> local servers — linklore won't send an `Authorization` header at
+> all. Set a real `sk-...` key only when you talk to the actual
+> OpenAI cloud (or to a local server you've protected with auth).
+
+**Local LLM (no key needed):**
+
 ```ini
 LINKLORE_LLM_BACKEND=openai
-OPENAI_BASE_URL=http://localhost:8000/v1     # your local server
-OPENAI_API_KEY=sk-local                       # any non-empty string for local
+OPENAI_BASE_URL=http://localhost:8000/v1     # vLLM / llama.cpp / LM Studio / …
 LINKLORE_LLM_MODEL=qwen3:14b
 LINKLORE_LLM_EMBED_MODEL=nomic-embed-text
+# OPENAI_API_KEY=                              # leave empty for local
+```
+
+**Real OpenAI cloud** (key required, paid):
+
+```ini
+LINKLORE_LLM_BACKEND=openai
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=sk-...your-real-key...
+LINKLORE_LLM_MODEL=gpt-4o-mini
+LINKLORE_LLM_EMBED_MODEL=text-embedding-3-small
 ```
 
 **No LLM** (default — search degrades to BM25, chat shows a friendly
@@ -264,7 +281,9 @@ LINKLORE_LLM_BACKEND          none | openai   (ollama also accepted, see above)
 LINKLORE_LLM_MODEL            chat/summary model
 LINKLORE_LLM_EMBED_MODEL      embedding model
 OPENAI_BASE_URL               OpenAI-compatible base URL
-OPENAI_API_KEY                bearer token (any non-empty for local servers)
+OPENAI_API_KEY                bearer token. OPTIONAL: leave empty for
+                              local servers; set a real sk-... only
+                              for the real OpenAI cloud
 LINKLORE_ADDR                 server bind address
 LINKLORE_DB_PATH              SQLite path
 LINKLORE_WORKER_CONCURRENCY   parallel ingest workers

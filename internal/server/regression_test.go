@@ -1394,19 +1394,16 @@ func TestSearch_facetChipRenders(t *testing.T) {
 func TestBase_includesFaviconLink(t *testing.T) {
 	ts, _ := newTestServer(t)
 	_, body := get(t, ts, "/")
-	if !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, `/static/favicon.svg`) {
+	if !strings.Contains(body, `rel="icon"`) || !strings.Contains(body, `/static/favicon-512.png`) {
 		t.Errorf("base.html missing favicon link, body excerpt: %s", excerpt(body, "favicon", 80))
 	}
 }
 
 func TestStatic_faviconServed(t *testing.T) {
 	ts, _ := newTestServer(t)
-	code, body := get(t, ts, "/static/favicon.svg")
+	code, _ := get(t, ts, "/static/favicon-512.png")
 	if code != 200 {
 		t.Errorf("favicon status %d", code)
-	}
-	if !strings.Contains(body, "<svg") {
-		t.Errorf("favicon body not SVG: %q", body)
 	}
 }
 

@@ -147,6 +147,12 @@ header.topbar nav a:hover { color: var(--text); }
 	border-left: 1px solid var(--border);
 }
 .topbar-nav-side a { margin-right: 0; }
+.topbar-divider {
+	display: inline-block;
+	width: 1px; height: 18px;
+	background: var(--border);
+	flex-shrink: 0;
+}
 
 /* Preference toggle (theme + previews). Compact pill with the same
    border treatment so the cluster reads as one group. */
@@ -271,7 +277,11 @@ header.topbar nav a:hover { color: var(--text); }
 	display: inline-flex; align-items: center; gap: .45rem;
 	color: var(--text); text-decoration: none;
 }
-.topbar h1 .brand-mark { width: 22px; height: 22px; display: block; }
+.topbar h1 .brand-mark {
+	width: 26px; height: 26px; display: block;
+	border-radius: 6px;
+	object-fit: cover;
+}
 .topbar h1 .brand-word { font-weight: 700; letter-spacing: -.01em; }
 
 /* Below 760 px the topbar gets crowded (we still show the desktop
@@ -2452,11 +2462,6 @@ header.topbar input[type="search"]:focus {
 	color: var(--muted); font-size: .9rem;
 }
 .topbar-more-item strong { color: var(--text); font-weight: 600; margin-left: .2rem; }
-
-/* Hide the now-redundant pref pills in the topbar — they live in
-   the overflow menu. */
-.topbar-nav-side > .pref-btn,
-.topbar-nav-side > form { display: none; }
 
 @media (max-width: 760px) {
 	.topbar-add-btn { padding: .35rem .55rem; }

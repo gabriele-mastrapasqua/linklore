@@ -1322,6 +1322,24 @@ func (s *Server) handleLinkDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// llmDefinitelyDown returns (true, hint) only when the worker has run
+// at least one probe and that probe failed. "No worker" or "not yet
+// probed" return (false, "") — we don't have evidence to disable chat
+// just because we haven't checked. Used to gate the chat UI/stream.
+func (s *Server) llmDefinitelyDown() (bool, string) {
+	if s.worker == nil {
+		return false, ""
+	}
+	healthy, err, at := s.worker.LLMHealth()
+	if at.IsZero() || healthy {
+		return false, ""
+	}
+	if err != nil {
+		return true, err.Error()
+	}
+	return true, "LLM unreachable"
+}
+
 // llmHealthSnapshot returns a (healthy, message) pair for the templates.
 // The hint copy is tailored to the configured backend so Ollama users
 // don't see "set OPENAI_API_KEY" and vice-versa.
@@ -1346,7 +1364,7 @@ func (s *Server) llmConfigHint() string {
 	case llm.BackendOllama:
 		return "LLM disabled — start Ollama and set OLLAMA_HOST (native /api/* path)"
 	case llm.BackendOpenAI:
-		return "LLM disabled — set OPENAI_BASE_URL + OPENAI_API_KEY + LINKLORE_LLM_MODEL (works for any OpenAI-compatible local server: vLLM, llama.cpp, LM Studio, LiteLLM, Ollama via /v1)"
+		return "LLM disabled — set OPENAI_BASE_URL + LINKLORE_LLM_MODEL (OPENAI_API_KEY is optional for local servers; use a real sk-... key for the OpenAI cloud)"
 	default:
 		return "LLM disabled — set LINKLORE_LLM_BACKEND=openai (canonical) or =ollama (legacy native)"
 	}
@@ -2687,6 +2705,9 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	if s.chat == nil {
 		data["Disabled"] = true
 		data["DisabledHint"] = s.llmConfigHint()
+	} else if down, hint := s.llmDefinitelyDown(); down {
+		data["Disabled"] = true
+		data["DisabledHint"] = "LLM server unreachable: " + hint + ". Start your local LLM server, then refresh this page."
 	}
 	s.renderPageRq(w, r, "chat", data)
 }
@@ -2711,6 +2732,10 @@ func (s *Server) activeModelName() string {
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if s.chat == nil {
 		http.Error(w, "chat unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if down, hint := s.llmDefinitelyDown(); down {
+		http.Error(w, "LLM unreachable: "+hint, http.StatusServiceUnavailable)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
