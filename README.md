@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/linklore-github-1280x640.png" alt="Linklore — bookmarks you actually own. Local-first · hybrid search · private RAG.">
+  <img src="assets/linklore-github-1280x640.png" alt="Linklore — bookmarks you actually own. Local-first · hybrid search · private RAG." width="640">
 </p>
 
 # Linklore
